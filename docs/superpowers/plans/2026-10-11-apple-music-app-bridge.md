@@ -16,7 +16,9 @@
 - `src/utils` 是叶子层，不 import `omni` 或注册表。判断歌曲是否由外部引擎播放，一律用 `omni.isExternalPlaybackSong(song)` 或 Task 10 的 `involvesExternalPlayback`。
 - 新文件在 import 之后加一行文件路径注释（例如 `// src/services/externalPlayback/silentCarrier.ts`）；复杂函数加一句注释；不删除、不改写已有注释和 `@note`。
 - provider id 固定为 `'apple-music'`。persistent ID 用 `/^[0-9A-F]{16}$/i` 校验，歌单 id 另外允许 `'library'`。
-- 同步阈值：偏差 < 0.08 s 不处理；0.08–1 s 时 `playbackRate` 取 `1 ± 0.05`；> 1 s 直接 seek。开播超时 8000 ms。状态轮询 1000 ms。控制命令超时 8000 ms，列表命令（`listPlaylists` / `getPlaylistTracks` / `searchLibrary`）超时 30000 ms。
+- 同步阈值：偏差 < 0.08 s 不处理；0.08–1 s 时 `playbackRate` 取 `1 ± 0.05`；> 1 s 直接 seek。每次 play / resume / seek 命令之后 1000 ms 内不做漂移校正。开播超时 8000 ms。状态轮询 1000 ms，`play` 成功后的 8000 ms 内改为 250 ms。控制命令超时 8000 ms，列表命令（`listPlaylists` / `getPlaylistTracks` / `searchLibrary`）超时 30000 ms。
+- 载体 `<audio>` 元素永远不设 `muted`（页面隐藏时 Chromium 会把静音媒体的时钟降到约 0.25×）。歌曲是外部播放时，Folia 的静音通过把「音乐」App 音量设为 0 实现。
+- Spike 结论见 spec 末尾的「Spike 结论」，后面的任务以它为准。
 - 载体格式：8 kHz、单声道、8-bit unsigned PCM WAV，样本值全为 `0x80`。如果 Task 1 发现 Chromium 不能播放 8-bit WAV，改为 16-bit signed、样本值 0；各任务里的数值同步更新。
 - 单测命令：`npx vitest run -c vitest.config.ts <path>`。类型检查：`npm run typecheck`。不跑 `npm run build`，不打包。
 - 提交信息用 `feat(apple-music): …` / `test(apple-music): …`，末尾加 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
@@ -393,7 +395,7 @@ git commit -m "feat(apple-music): 生成等长静音载体" -m "Co-Authored-By: 
 ### Task 4：主进程桥接
 
 **Files：**
-- Create：`electron/appleMusic/musicAppScript.cjs`（`module.exports = { MUSIC_APP_JXA_SOURCE: String.raw\`…\` }`，内容是 Task 1 验证过的脚本）
+- Create：`electron/appleMusic/musicAppScript.cjs`（`module.exports = { MUSIC_APP_JXA_SOURCE: String.raw\`…\` }`，内容逐字复制自 Task 1 验证过的 `.superpowers/sdd/2026-10-11-apple-music-app-bridge/music-app-jxa.js`，包括其中的注释；不要改动脚本逻辑）
 - Create：`electron/appleMusic/musicAppBridge.cjs`
 - Test：`test/unit/electron/appleMusicBridge.test.ts`
 
@@ -407,10 +409,10 @@ createMusicAppBridge({
   now = Date.now,
   setTimer = setTimeout, clearTimer = clearTimeout,
   onState = () => {},        // (ExternalPlaybackState) => void
-  artwork,                   // { tmpPath(): string, readFile(p): Promise<Buffer>, removeFile(p): Promise<void>,
-                             //   has(assetId): Promise<boolean>, write(assetId, bytes, mime): Promise<unknown> }
+  artwork,                   // { has(assetId): Promise<boolean>, write(assetId, bytes, mime): Promise<unknown> }
   artworkIndex,              // { get(trackId): string | undefined, set(trackId, assetId): void }
   controlTimeoutMs = 8000, listTimeoutMs = 30000, pollIntervalMs = 1000,
+  startupPollIntervalMs = 250, startupPollWindowMs = 8000,
   restartDelaysMs = [500, 2000, 10000],
 }) → {
   isAvailable(): boolean,                                // 仅 darwin
@@ -437,12 +439,12 @@ createMusicAppBridge({
   - `position` 是有限且 ≥ 0 的数
   - `volume` 是 0–1 的数，在桥接里换算成 `Math.round(volume * 100)` 再发给 JXA
 - `getArtwork`：
-  - 主进程生成临时路径，传给 JXA 的 `{ id, path }`
-  - 读出字节后按魔数判断：`FF D8 FF` → `image/jpeg`，`89 50 4E 47` → `image/png`，其他 → 返回 `null`
-  - 计算 `sha256` 得到 `assetId = 'sha256:' + hex`；`has` 为 false 时才 `write`
-  - 写入 `artworkIndex`，最后删除临时文件
+  - JXA 收到 `{ id }`，返回 `{ hex } | null`（`rawData()` 实际是描述符文本，脚本里已经提取出十六进制串）
+  - 主进程 `Buffer.from(hex, 'hex')`，按魔数判断：`FF D8 FF` → `image/jpeg`，`89 50 4E 47` → `image/png`，其他 → 返回 `null`
+  - 计算字节的 `sha256` 得到 `assetId = 'sha256:' + hex`；`has` 为 false 时才 `write`
+  - 写入 `artworkIndex`，返回 `{ assetId }`
 - `stopIfOwned`：只在最近一次成功的 `play` 之后、还没有成功的 `stop` 时才发 `stop`。
-- 轮询：只在 `setMonitoring(true)` 期间，每 `pollIntervalMs` 发一次 `getState`，结果交给 `onState`。`play` / `pause` / `resume` / `seek` 成功后立即补发一次 `getState`。
+- 轮询：只在 `setMonitoring(true)` 期间进行，结果交给 `onState`。平时每 `pollIntervalMs` 一次；`play` 成功后的 `startupPollWindowMs` 内改为每 `startupPollIntervalMs` 一次（「音乐」App 报 `playing` 后还要缓冲约 1.5 s 才出声，开播 hold 需要更细的采样）。`play` / `pause` / `resume` / `seek` 成功后立即补发一次 `getState`。
 
 - [ ] **Step 1：写失败测试**
 
@@ -472,8 +474,10 @@ it('refreshes state right after a successful control command', async () => { /* 
 it('converts volume to the 0-100 scale', async () => { /* setVolume({volume:0.426}) → 写入 args.volume === 43 */ });
 it('stops Music on quit only when Folia started the playback', async () => { /* 没 play 过 → stopIfOwned 不写入；play 成功后 → 写入 stop；stop 成功后再调 → 不写入 */ });
 it('stores artwork bytes as a content-addressed cover and indexes it', async () => {
-    /* readFile 返回以 FF D8 FF 开头的 Buffer → write('sha256:<hex>', bytes, 'image/jpeg')，返回 { assetId }，并删除临时文件；
-       之后 getTrack 的结果带上 artworkAssetId */ });
+    /* JXA 回 { hex: 'FFD8FFE000104A46…' } → write('sha256:<字节的 sha256>', <解码后的 Buffer>, 'image/jpeg')，返回 { assetId }；
+       has 为 true 时不再 write；之后 getTrack 的结果带上 artworkAssetId；hex 解码后魔数不认识 → 返回 null 且不 write */ });
+it('polls every 250 ms for 8 s after play, then every second', async () => {
+    /* setMonitoring(true)，play 成功 → 250 ms 后写入 getState；8000 ms 之后间隔恢复为 1000 ms */ });
 it('is unavailable and never spawns on other platforms', async () => { /* platform:'linux' → isAvailable() false，request → unavailable */ });
 ```
 
@@ -530,7 +534,7 @@ window.electron.appleMusic?: {
 `getAppleMusicBridge()`：非 darwin 返回 `null`，否则只创建一次。注入的依赖：
 - `spawn`：`require('child_process').spawn`
 - `onState`：`state => mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.send('apple-music-state', state)`
-- `artwork`：基于 `os.tmpdir()`、`crypto.randomUUID()`、`fs.promises`，以及 `localCoverAssetStore.has` / `write`
+- `artwork`：`{ has: assetId => localCoverAssetStore.has(assetId), write: (assetId, bytes, mime) => localCoverAssetStore.write(assetId, bytes, mime) }`
 - `artworkIndex`：基于 `store` 的键 `apple_music_artwork_index`（普通对象；超过 5000 条时按插入顺序删除最旧的）
 
 IPC：
@@ -617,7 +621,7 @@ provider 的具体行为：
   - `coverUrl` 优先取 `record.artworkAssetId`，其次取模块内 `albumArtwork` map（按 album id 记录，任何一首该专辑的曲目拿到 assetId 后写入），换算用 `getLocalCoverAssetUrl(id, 1024)`
 - `songMetadata.getSongMetadata`：先用 `createProviderSongMetadata`，再用 `albumArtwork` map 补上 `coverUrl`。
 - `auth`：
-  - `getLoginStatus()` 先调 `probe`：权限为 `denied` 时返回 `null`；否则返回 `{ id:'local', nickname:'音乐资料库' }`
+  - `getLoginStatus()`：调 `probe`（不发 Apple Event，所以不会触发授权弹窗，也测不出权限）确认桥接可用；transport 记录的权限为 `'denied'`（之前某个真实请求收到过 `auth-required`）时返回 `null`；否则返回 `{ id:'local', nickname:'音乐资料库' }`
   - `logout()` 清空模块缓存
   - 不提供任何二维码相关方法
 - `library.getUserPlaylists(userId, limit, offset)`：
@@ -661,8 +665,10 @@ it('returns a silent blob carrier without starting playback', async () => {
 it('returns empty lyrics so the shared auto-match runs', async () => {
     expect(await appleMusicProvider.lyrics!.getLyrics(song)).toEqual({ lyrics: null, isPureMusic: false });
 });
-it('returns no user and reports not-configured when the probe says access is denied', async () => {
-    /* request('probe') 返回 {ok:true,data:{running:true,permission:'denied'}} → getLoginStatus() 为 null，getAvailability() 为 { configured:false, reason:'not-configured' } */ });
+it('signs in the local library from the probe without touching permissions', async () => {
+    /* request('probe') 返回 {ok:true,data:{running:false,permission:'unknown'}} → getLoginStatus() 为 { id:'local', nickname:'音乐资料库' }；getAvailability() 为 configured */ });
+it('returns no user once a real request was refused with auth-required', async () => {
+    /* 先让 listPlaylists 返回 auth-required → 之后 getLoginStatus() 为 null，getAvailability() 为 { configured:false, reason:'not-configured' } */ });
 it('reports not-configured after the bridge answers auth-required', async () => {
     /* 任意请求返回 {ok:false,error:{code:'auth-required'}} → requestAppleMusic 抛 OnlineProviderError('auth-required')，之后 getAvailability() 为 not-configured；下一次请求成功后恢复为 configured */ });
 it('is runtime-unavailable without the desktop bridge', () => { /* 删除 window.electron.appleMusic → { configured:false, reason:'runtime-unavailable' } */ });
@@ -783,6 +789,8 @@ export const SYNC_DRIFT_SEEK_SEC = 1;
 export const SYNC_RATE_NUDGE = 0.05;
 export const SYNC_START_TIMEOUT_MS = 8000;
 export const SYNC_END_GRACE_SEC = 1.5;
+export const SYNC_SETTLE_MS = 1000;
+export const SYNC_START_ADVANCE_SEC = 0.05;
 
 export interface ExternalPlaybackCarrier {
     currentTime: number;
@@ -820,9 +828,11 @@ export class ExternalPlaybackSync {
 - **过期状态**：发出 `play` / `pause` / `resume` / `seek` 时记录 `lastCommandAtMs = now()`；`sampledAtMs < lastCommandAtMs` 的状态一律忽略。
 - **推算位置**：状态为 `playing` 时 `est = positionSec + (now() − sampledAtMs) / 1000`；否则就是 `positionSec`。偏差 `drift = est − carrier.currentTime`。
 - **内部操作要打标记**：控制器自己写 `currentTime`、调用 `pause()` / `play()` 之前先置标记，对应的 `seeked` / `pause` / `play` 事件只清掉标记，不转发给引擎。
+- **稳定期**：每次发出 play / resume / seek 之后的 `SYNC_SETTLE_MS` 内，不做漂移校正（spike：seek 之后约 1 s 内位置有 ±0.15 s 抖动）；暂停、接管、结束等状态判断照常处理。
 - **`start('play')`**：
   - `held = true`，`startPos = carrier.currentTime`，发 `engine.play(song, startPos)`，启动 8 s 超时
-  - 收到同一 `mediaId` 的 `playing` 状态时：如果 `|est − startPos| > 1` 且还没补发过 seek，就发 `engine.seek(startPos)`，继续 hold；否则把载体对齐到 `est`（内部 seek），解除 hold 并调用 `onHoldReleased()`
+  - 「音乐」App 报 `playing` 之后还要缓冲约 1.5 s，位置才开始前进（spike）。所以只有在同一 `mediaId` 的 `playing` 状态里，位置比第一次看到的 `playing` 位置前进了至少 `SYNC_START_ADVANCE_SEC`，才算真正出声
+  - 真正出声后：如果 `|est − startPos| > 1` 且还没补发过 seek，就发 `engine.seek(startPos)`，继续 hold，并把「第一次看到的位置」清空重新计；否则把载体对齐到 `est`（内部 seek），解除 hold 并调用 `onHoldReleased()`
   - 超时 → `onIssue({ kind:'failure', error: new OnlineProviderError('not-playable', …, 'apple-music') })`
   - `play` 被 reject → `onIssue({ kind:'failure', error })`
 - **`start('idle')`**：不发任何命令。之后载体触发 `play` 时，如果最近一次状态是同一 `mediaId` 且 `paused` → `resume`；其他情况 → `play(song, carrier.currentTime)`。
@@ -837,7 +847,8 @@ export class ExternalPlaybackSync {
     - `0.08 ≤ |drift| ≤ 1` → `playbackRate = 1 + sign(drift) × 0.05`
     - `|drift| > 1` → 内部 seek 到 `est`，`playbackRate = 1`
   - 同曲、`paused`，而载体在播 → 视为外部暂停，内部 `pause()`
-  - 不同曲目、非 `stopped` → `takeover('track-changed')`：内部暂停，之后不再发任何命令，`dispose` 也不 `stop`
+  - 不同曲目、非 `stopped`，且载体已经 ended 或距离结尾不到 `SYNC_END_GRACE_SEC` → 这是「音乐」App 自己接着播了下一首（spike：`once` 无效），发 `engine.pause()`，不算接管
+  - 不同曲目、非 `stopped`，其他情况 → `takeover('track-changed')`：内部暂停，之后不再发任何命令，`dispose` 也不 `stop`
   - `stopped`，载体在播，距离结尾大于 1.5 s → `takeover('engine-stopped')`：内部暂停，但保持挂载，下次 `play` 事件会重新发 `play`
 - **`abortStart()`**：清除超时；如果已经发过 `play`，就发 `pause`；`held = false`，不调用 `onHoldReleased`。
 - **`dispose({ stopEngine })`**：退订，移除监听，清除计时器，`playbackRate = 1`；只有在 `stopEngine` 为真、本控制器发过命令、并且没有被 takeover 时才 `await engine.stop()`。
@@ -850,19 +861,32 @@ export class ExternalPlaybackSync {
 - 时间：`let clock = 1_000_000; now = () => clock`，计时器用 `vi.useFakeTimers()`
 
 ```ts
-it('holds the carrier until Music reports the track playing, then aligns and releases', () => {
+it('keeps holding while Music reports playing but has not started advancing', () => {
     sync.start('play');
     expect(engine.play).toHaveBeenCalledWith(song, 0);
-    engine.emit(state({ state: 'playing', positionSec: 0.4, sampledAtMs: clock }));
-    expect(carrier.currentTime).toBeCloseTo(0.4);
+    engine.emit(state({ state: 'playing', positionSec: 0, sampledAtMs: clock }));
+    clock += 250; engine.emit(state({ state: 'playing', positionSec: 0, sampledAtMs: clock }));
+    expect(onHoldReleased).not.toHaveBeenCalled();
+});
+it('releases the hold once the position advances and aligns the carrier to it', () => {
+    sync.start('play');
+    engine.emit(state({ state: 'playing', positionSec: 0, sampledAtMs: clock }));
+    clock += 250; engine.emit(state({ state: 'playing', positionSec: 0.13, sampledAtMs: clock }));
+    expect(carrier.currentTime).toBeCloseTo(0.13);
     expect(onHoldReleased).toHaveBeenCalledTimes(1);
 });
 it('re-seeks Music once when it starts far from the resume position', () => {
     carrier.currentTime = 120; sync.start('play');
-    engine.emit(state({ state: 'playing', positionSec: 0.2 }));
+    engine.emit(state({ state: 'playing', positionSec: 0, sampledAtMs: clock }));
+    clock += 250; engine.emit(state({ state: 'playing', positionSec: 0.2, sampledAtMs: clock }));
     expect(engine.seek).toHaveBeenCalledWith(120);
     expect(onHoldReleased).not.toHaveBeenCalled();
 });
+it('skips drift correction for one second after a command', () => {
+    /* 已释放 hold；userSeek(30) → engine.seek(30)；300 ms 后 emit 位置 30.2 的 playing（drift 0.2+）→ playbackRate 仍为 1；
+       1100 ms 后 emit 位置偏 0.3 的 playing → playbackRate 变为 1.05 */ });
+it('pauses Music when it auto-advances at the end of the track instead of reporting a takeover', () => {
+    /* duration 200，currentTime 199.5；emit playing 且 mediaId 为另一首 → engine.pause() 被调用，onIssue 未调用 */ });
 it('fails with not-playable when Music never starts within 8 s', () => { /* advanceTimersByTime(8000) → onIssue failure，error.code === 'not-playable' */ });
 it('sends nothing for an idle start', () => {
     sync.start('idle');
@@ -978,6 +1002,8 @@ export function useExternalPlaybackSync(params: {
 
 App 接线：
 - 在 `syncOutputGain` 之前声明 `const externalVolumeMirrorRef = useRef<(volume: number) => void>(() => {});`，在 `syncOutputGain` 钳制之后调用 `externalVolumeMirrorRef.current(clampedVolume);`
+- `syncOutputGain` 还没有音频图时的那条分支（现在写 `audioRef.current.muted = isMuted`）：当前歌曲是外部播放时改为 `muted = false`。静音已经通过镜像出去的音量 0 生效，而静音的载体在页面隐藏时时钟会变慢（spike）
+- hook 的位置：放在 `automix` 声明（约 1126 行）之后、`usePlaybackAudioBridge`（约 1342 行）之前（Ledger Ruling 2）
 - hook 放在 `skipAfterPlaybackFailure` 可用之后：`const externalPlayback = useExternalPlaybackSync({ audioRef, shouldAutoPlayRef: shouldAutoPlay, activeDeck: automix.activeDeck, onPlaybackFailure: skipAfterPlaybackFailure });` 并赋值 `externalVolumeMirrorRef.current = externalPlayback.mirrorVolume;`
 - `usePlaybackAudioBridge` 的参数改为 `isAutoplayHeld: automix.autoplayHeld || externalPlayback.autoplayHeld`
 

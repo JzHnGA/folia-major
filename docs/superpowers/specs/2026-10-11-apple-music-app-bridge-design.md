@@ -259,3 +259,21 @@ Folia 队列 ──▶ omni ──▶ apple-music provider ──▶ IPC ──�
 - 自动化权限未授予时用户选中 Apple Music 的交互：显示权限指引，不能落入 `providerLoginSession` 的扫码流程（它在缺少二维码能力时会失败）。
 - `syncOutputGain` 位于 `App.tsx`，音量同步的接线方式以最小改动为准（例如通过 hook 订阅目标音量）。
 - autoplay hold 与现有 Automix hold 的叠加方式（两者是「或」关系）。
+
+## Spike 结论（2026-10-12，真机：macOS，资料库 3,828 首）
+
+| 问题 | 结论 | 对设计的影响 |
+| --- | --- | --- |
+| 常驻 JXA 进程 | 可行。`getState` 往返中位数 25 ms，首条约 150–200 ms；pause / seek / resume 5–10 ms | 采用常驻进程 |
+| stdin 结束 | `NSData.length` 经桥接是字符串，`=== 0` 永不成立，会在 EOF 时 100% CPU 空转 | 用 `Number(chunk.length) === 0` 判断 |
+| `play(track, {once:true})` | **无效**，播完后「音乐」App 会接着播资料库的下一首 | 由 renderer 处理：载体结尾的 `pause` 事件会立即暂停「音乐」App；结尾附近发现引擎换到别的曲目时发 `pause`，不当作接管 |
+| 开播状态 | 发出 `play` 后约 0.3 s 就报 `playing`，但位置在 0 停留约 1.5 s（缓冲）才开始前进 | 开播 hold 要等到「位置开始前进」才释放；`play` 之后 8 s 内轮询间隔改为 250 ms |
+| 位置精度 | 毫秒级，稳定播放时每次采样均匀前进 | 漂移阈值可用 |
+| seek 之后 | 约 1 s 内位置有 ±0.15 s 的抖动 | 每次 play / resume / seek 之后 1 s 内不做漂移校正 |
+| 资料库读取 | `listPlaylists` 189 ms（14 个）；整个资料库 3,828 条 152 ms；搜索 268 ms；资料库里有 music video，需要按 `mediaKind === 'song'` 过滤 | 批量读属性可行 |
+| 封面 | `artworks[0].rawData()` 返回的是描述符文本 `'tdta'($<十六进制>$)`，不是二进制 | JXA 只返回十六进制串，主进程解码；不需要临时文件 |
+| 自动化授权 | 第一条真正的 Apple Event 会阻塞，直到用户在系统弹窗里点允许；`Application('Music').name()` 在本地回答，测不出权限 | `probe` 不发 Apple Event，权限只从真实请求的结果得知 |
+| 载体格式 | 8 kHz / 8-bit WAV 在 Chromium 正常播放，时长准确，结尾先触发 `pause` 再触发 `ended` | 保持 8-bit |
+| 载体静音 | 页面隐藏时，Chromium 把 `muted` 媒体的时钟降到约 0.25×；不静音则正常 | 载体元素不能设 `muted`，Folia 的静音改为把「音乐」App 音量设为 0。主窗口已设 `backgroundThrottling: false` |
+
+验证过的 JXA 脚本：`.superpowers/sdd/2026-10-11-apple-music-app-bridge/music-app-jxa.js`（Task 4 原样内嵌）。
