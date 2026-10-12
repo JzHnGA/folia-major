@@ -115,13 +115,23 @@ const state = (overrides: Partial<OmniExternalPlaybackState> = {}): OmniExternal
 
 const stopped = () => state({ state: 'stopped', mediaId: null, positionSec: 0, durationSec: null });
 
+// An engine command that settles only when the test says so.
+const deferred = () => {
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
+};
+
 const flushPromises = async () => {
     for (let index = 0; index < 10; index += 1) await Promise.resolve();
 };
 
-// Starts with play intent, lets Music's position advance, then plays the carrier as the audio bridge does on release.
-const startPlaying = () => {
+// Starts with play intent (Music answers the play at once), lets Music's position advance, then plays the carrier
+// as the audio bridge does on release.
+const startPlaying = async () => {
     sync.start('play');
+    await flushPromises();
     engine.emit(state({ positionSec: 0 }));
     clock += 250;
     engine.emit(state({ positionSec: 0.13 }));
@@ -236,7 +246,50 @@ describe('start hold', () => {
         expect(onHoldReleased).toHaveBeenCalledTimes(1);
     });
 
-    it('clamps positions sent to Music to finite, non-negative values', () => {
+    it('re-anchors the audible check when a reading jumps backwards', () => {
+        sync.start('play');
+        engine.emit(state({ positionSec: 100 }));
+        clock += 250; engine.emit(state({ positionSec: 0 }));
+        expect(onHoldReleased).not.toHaveBeenCalled();
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(onHoldReleased).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBeCloseTo(0.13);
+    });
+
+    it('re-anchors the audible check when a reading jumps further than time allows', () => {
+        carrier.currentTime = 120;
+        sync.start('play');
+        engine.emit(state({ positionSec: 10 }));
+        clock += 250; engine.emit(state({ positionSec: 120 }));
+        expect(onHoldReleased).not.toHaveBeenCalled();
+        clock += 250; engine.emit(state({ positionSec: 120 }));
+        expect(onHoldReleased).not.toHaveBeenCalled();
+        clock += 250; engine.emit(state({ positionSec: 120.1 }));
+        expect(onHoldReleased).toHaveBeenCalledTimes(1);
+        expect(engine.seek).not.toHaveBeenCalled();
+    });
+
+    it('honours a listener seek made after the one re-seek was used', () => {
+        carrier.currentTime = 120;
+        sync.start('play');
+        engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.2 }));
+        expect(engine.seek).toHaveBeenCalledWith(120);
+        clock += 250; engine.emit(stopped());
+        carrier.userSeek(50);
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        clock += 250; engine.emit(state({ positionSec: 120 }));
+        clock += 250; engine.emit(state({ positionSec: 120.2 }));
+        expect(engine.seek).toHaveBeenCalledTimes(2);
+        expect(engine.seek).toHaveBeenLastCalledWith(50);
+        expect(onHoldReleased).not.toHaveBeenCalled();
+        clock += 250; engine.emit(state({ positionSec: 50 }));
+        clock += 250; engine.emit(state({ positionSec: 50.2 }));
+        expect(onHoldReleased).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBeCloseTo(50.2);
+    });
+
+    it('clamps positions sent to Music to finite, non-negative values', async () => {
         carrier.currentTime = -1e-9;
         sync.start('play');
         expect(engine.play).toHaveBeenCalledWith(song, 0);
@@ -249,8 +302,8 @@ describe('start hold', () => {
 });
 
 describe('drift correction', () => {
-    beforeEach(() => {
-        startPlaying();
+    beforeEach(async () => {
+        await await startPlaying();
         carrier.currentTime = 50;
     });
 
@@ -301,8 +354,8 @@ describe('drift correction', () => {
 });
 
 describe('listener controls', () => {
-    it('mirrors listener pause, resume and seek to Music', () => {
-        startPlaying();
+    it('mirrors listener pause, resume and seek to Music', async () => {
+        await startPlaying();
         carrier.pause();
         expect(engine.pause).toHaveBeenCalledTimes(1);
         carrier.play();
@@ -339,7 +392,7 @@ describe('listener controls', () => {
     });
 
     it('reports a rejected command as a failure', async () => {
-        startPlaying();
+        await startPlaying();
         const error = new OnlineProviderError('network', 'bridge timed out', 'apple-music');
         engine.pause.mockRejectedValueOnce(error);
         carrier.pause();
@@ -349,8 +402,8 @@ describe('listener controls', () => {
 });
 
 describe('changes made in Music', () => {
-    it('follows a pause and resume made in Music', () => {
-        startPlaying();
+    it('follows a pause and resume made in Music', async () => {
+        await startPlaying();
         engine.emit(state({ state: 'paused', positionSec: 0.13 }));
         expect(carrier.paused).toBe(true);
         expect(engine.pause).not.toHaveBeenCalled();
@@ -362,7 +415,7 @@ describe('changes made in Music', () => {
     });
 
     it('stops syncing when the listener changes the track in Music', async () => {
-        startPlaying();
+        await startPlaying();
         engine.emit(state({ mediaId: OTHER_ID, positionSec: 12 }));
         expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
         expect(carrier.paused).toBe(true);
@@ -385,8 +438,8 @@ describe('changes made in Music', () => {
         expect(engine.play).toHaveBeenCalledWith(song, 42);
     });
 
-    it('treats an unexpected stop as engine-stopped and replays on the next play', () => {
-        startPlaying();
+    it('treats an unexpected stop as engine-stopped and replays on the next play', async () => {
+        await startPlaying();
         carrier.currentTime = 60;
         engine.emit(stopped());
         expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'engine-stopped' });
@@ -399,24 +452,72 @@ describe('changes made in Music', () => {
 });
 
 describe('end of track', () => {
-    it('pauses Music when it auto-advances at the end of the track instead of reporting a takeover', () => {
-        startPlaying();
+    it('pauses Music when it auto-advances at the end of the track instead of reporting a takeover', async () => {
+        await startPlaying();
         carrier.currentTime = 199.5;
         engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.2 }));
         expect(engine.pause).toHaveBeenCalledTimes(1);
         expect(onIssue).not.toHaveBeenCalled();
     });
 
-    it('lets the track run out quietly near its end', () => {
-        startPlaying();
+    it('pauses a repeated auto-advance only once', async () => {
+        await startPlaying();
+        carrier.currentTime = 199.5;
+        for (let poll = 0; poll < 3; poll += 1) {
+            clock += 250; engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.2 + poll * 0.25 }));
+        }
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('leaves a foreign paused reading near the end alone', async () => {
+        await startPlaying();
+        carrier.currentTime = 199.5;
+        engine.emit(state({ state: 'paused', mediaId: OTHER_ID, positionSec: 0 }));
+        expect(engine.pause).not.toHaveBeenCalled();
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('treats another track as a takeover when the listener paused just before the end', async () => {
+        await startPlaying();
+        carrier.currentTime = 199.5;
+        carrier.pause();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        clock += SYNC_SETTLE_MS + 100; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
+    });
+
+    it('pauses an auto-advance that arrives just after the carrier ended', async () => {
+        await startPlaying();
+        carrier.currentTime = carrier.duration;
+        carrier.pause();   // the media element running out fires pause (then ended)
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        clock += 500; engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.1 }));
+        expect(engine.pause).toHaveBeenCalledTimes(2);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('ignores foreign readings once the carrier ended longer ago than the grace', async () => {
+        await startPlaying();
+        carrier.currentTime = carrier.duration;
+        carrier.pause();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        clock += 2000; engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.1 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('lets the track run out quietly near its end', async () => {
+        await startPlaying();
         carrier.currentTime = 199;
         engine.emit(stopped());
         expect(onIssue).not.toHaveBeenCalled();
         expect(carrier.paused).toBe(false);
     });
 
-    it('replays Music when the carrier loops back to the start', () => {
-        startPlaying();
+    it('replays Music when the carrier loops back to the start', async () => {
+        await startPlaying();
         carrier.currentTime = 199;
         engine.emit(stopped());
         carrier.userSeek(0);
@@ -513,11 +614,35 @@ describe('rate hold', () => {
         vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS);
         expect(onIssue).toHaveBeenCalledTimes(1);
     });
+
+    it('reports a hung replay once when its rejection follows the timeout', async () => {
+        const play = deferred();
+        engine.play.mockReturnValueOnce(play.promise);
+        playFromIdle(42);
+        vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS);
+        expect(onIssue).toHaveBeenCalledTimes(1);
+        play.reject(new OnlineProviderError('network', 'Music app bridge timed out', 'apple-music'));
+        await flushPromises();
+        expect(onIssue).toHaveBeenCalledTimes(1);
+    });
+
+    it('swallows the rejection of a superseded replay', async () => {
+        const first = deferred();
+        engine.play.mockReturnValueOnce(first.promise);
+        playFromIdle(42);
+        clock += 250; engine.emit(stopped());
+        carrier.userSeek(10);
+        expect(engine.play).toHaveBeenLastCalledWith(song, 10);
+        first.reject(new OnlineProviderError('not-playable', 'Track not found', 'apple-music'));
+        await flushPromises();
+        expect(onIssue).not.toHaveBeenCalled();
+        expect(carrier.playbackRate).toBe(SYNC_HOLD_RATE);
+    });
 });
 
 describe('settle window', () => {
-    it('does not resume the carrier from a reading taken just after the listener paused', () => {
-        startPlaying();
+    it('does not resume the carrier from a reading taken just after the listener paused', async () => {
+        await startPlaying();
         carrier.pause();
         expect(engine.pause).toHaveBeenCalledTimes(1);
         clock += 300; engine.emit(state({ positionSec: 0.4 }));
@@ -530,15 +655,19 @@ describe('settle window', () => {
         sync.start('idle');
         carrier.play();
         expect(engine.play).toHaveBeenCalledWith(song, 42);
-        clock += 300; engine.emit(state({ mediaId: OTHER_ID, positionSec: 12 }));
+        // Release the rate hold first: while it holds, foreign readings are ignored outright.
+        engine.emit(state({ positionSec: 42 }));
+        clock += 100; engine.emit(state({ positionSec: 42.13 }));
+        expect(carrier.playbackRate).toBe(1);
+        clock += 200; engine.emit(state({ mediaId: OTHER_ID, positionSec: 12 }));
         expect(onIssue).not.toHaveBeenCalled();
         expect(carrier.paused).toBe(false);
         clock += SYNC_SETTLE_MS; engine.emit(state({ mediaId: OTHER_ID, positionSec: 13 }));
         expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
     });
 
-    it('does not report engine-stopped within one second of a command', () => {
-        startPlaying();
+    it('does not report engine-stopped within one second of a command', async () => {
+        await startPlaying();
         carrier.currentTime = 60;
         carrier.userSeek(60);
         clock += 300; engine.emit(stopped());
@@ -546,8 +675,8 @@ describe('settle window', () => {
         expect(carrier.paused).toBe(false);
     });
 
-    it('still follows a pause made in Music more than one second after the last command', () => {
-        startPlaying();
+    it('still follows a pause made in Music more than one second after the last command', async () => {
+        await startPlaying();
         carrier.userSeek(30);
         clock += 500; engine.emit(state({ state: 'paused', positionSec: 30.5 }));
         expect(carrier.paused).toBe(false);
@@ -556,12 +685,42 @@ describe('settle window', () => {
         expect(engine.pause).not.toHaveBeenCalled();
     });
 
-    it('still pauses Music auto-advancing at the end within one second of a command', () => {
-        startPlaying();
+    it('still pauses Music auto-advancing at the end within one second of a command', async () => {
+        await startPlaying();
         carrier.userSeek(199.5);
         clock += 300; engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.1 }));
         expect(engine.pause).toHaveBeenCalledTimes(1);
         expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('keeps a slow replay on hold through readings that predate it', async () => {
+        const play = deferred();
+        engine.play.mockReturnValueOnce(play.promise);
+        carrier.currentTime = 42;
+        sync.start('idle');
+        carrier.play();
+        clock += 1500; play.resolve(); await flushPromises();
+        engine.emit(state({ mediaId: OTHER_ID, positionSec: 12 }));
+        engine.emit(stopped());
+        expect(onIssue).not.toHaveBeenCalled();
+        expect(carrier.paused).toBe(false);
+        expect(carrier.playbackRate).toBe(SYNC_HOLD_RATE);
+        clock += 250; engine.emit(state({ positionSec: 42 }));
+        clock += 250; engine.emit(state({ positionSec: 42.13 }));
+        expect(carrier.playbackRate).toBe(1);
+        expect(carrier.currentTime).toBeCloseTo(42.13);
+    });
+
+    it('extends the settle window until a slow command has taken effect', async () => {
+        await startPlaying();
+        const pause = deferred();
+        engine.pause.mockReturnValueOnce(pause.promise);
+        carrier.pause();
+        clock += 1500; pause.resolve(); await flushPromises();
+        clock += 500; engine.emit(state({ positionSec: 2 }));
+        expect(carrier.paused).toBe(true);
+        clock += SYNC_SETTLE_MS; engine.emit(state({ positionSec: 3 }));
+        expect(carrier.paused).toBe(false);
     });
 });
 

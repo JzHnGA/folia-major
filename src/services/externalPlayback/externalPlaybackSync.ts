@@ -57,10 +57,14 @@ type KnownEngineState = Pick<OmniExternalPlaybackState, 'state' | 'mediaId'>;
 interface AudibleWait {
     mode: 'start' | 'rate';
     targetPos: number;
-    firstPlayingPos: number | null;
+    /** First playing reading of this track that the advance is measured from. */
+    anchor: { positionSec: number; sampledAtMs: number } | null;
     reseekSent: boolean;
     timer: unknown;
 }
+
+/** How far past the elapsed sample time a reading may run ahead of the anchor before the pair is not trusted. */
+const AUDIBLE_ANCHOR_SLACK_SEC = 0.3;
 
 // The bridge rejects anything but a finite position >= 0, float noise like -1e-9 included.
 const toEnginePosition = (positionSec: number): number => (
@@ -100,6 +104,10 @@ export class ExternalPlaybackSync {
     private trackChanged = false;
     /** takeover('engine-stopped'): cleared as soon as this controller plays Music again. */
     private engineStopped = false;
+    /** When the carrier last ran out (its end-of-media pause), for the auto-advance grace after it. */
+    private carrierEndedAtMs: number | null = null;
+    /** Foreign tracks already paused as an auto-advance since this controller last played Music. */
+    private readonly autoAdvancePaused = new Set<string>();
 
     /** Start hold: engine states only feed the audible check until the hold is released or aborted. */
     private held = false;
@@ -173,9 +181,7 @@ export class ExternalPlaybackSync {
         this.startPlayLive = true;
         this.sendPlay(wait.targetPos).catch((error: unknown) => {
             this.startPlayLive = false;
-            if (this.disposed || this.audible !== wait) return;
-            this.endAudibleWait();
-            this.onIssue({ kind: 'failure', error });
+            this.failAudibleWait(wait, error);
         });
     }
 
@@ -183,15 +189,21 @@ export class ExternalPlaybackSync {
     private playWithRateHold(positionSec: number): void {
         const wait = this.beginAudibleWait('rate', toEnginePosition(positionSec));
         this.carrier.playbackRate = SYNC_HOLD_RATE;
-        this.sendPlay(wait.targetPos).catch((error: unknown) => {
-            if (this.audible === wait) this.cancelRateHold();
-            this.reportFailure(error);
-        });
+        this.sendPlay(wait.targetPos).catch((error: unknown) => this.failAudibleWait(wait, error));
+    }
+
+    // A play rejection is reported only while its own wait is current. The timeout clears the wait when it reports,
+    // and a newer play replaces it, so a hung or superseded play never reaches the session a second time.
+    private failAudibleWait(wait: AudibleWait, error: unknown): void {
+        if (this.disposed || this.audible !== wait) return;
+        this.endAudibleWait();
+        if (wait.mode === 'rate') this.carrier.playbackRate = 1;
+        this.onIssue({ kind: 'failure', error });
     }
 
     private beginAudibleWait(mode: AudibleWait['mode'], targetPos: number): AudibleWait {
         this.endAudibleWait();
-        const wait: AudibleWait = { mode, targetPos, firstPlayingPos: null, reseekSent: false, timer: null };
+        const wait: AudibleWait = { mode, targetPos, anchor: null, reseekSent: false, timer: null };
         wait.timer = this.setTimer(() => this.handleAudibleTimeout(wait), SYNC_START_TIMEOUT_MS);
         this.audible = wait;
         return wait;
@@ -220,19 +232,24 @@ export class ExternalPlaybackSync {
     }
 
     // Music reports 'playing' about 1.5 s before its position moves, so only an advancing position counts as audible.
+    // A reading that went backwards from the anchor, or ran further ahead than the time between the two samples
+    // allows, means one of them predates the play: it becomes the new anchor instead of proving anything.
     // Audible but far from where it was asked to play: re-seek once and keep waiting; otherwise align and release.
     private advanceAudibleWait(state: OmniExternalPlaybackState): void {
         const wait = this.audible;
         if (!wait || state.state !== 'playing' || !this.isOurTrack(state.mediaId)) return;
-        if (wait.firstPlayingPos === null) {
-            wait.firstPlayingPos = state.positionSec;
+        const anchor = wait.anchor;
+        const advance = anchor ? state.positionSec - anchor.positionSec : 0;
+        const allowed = anchor ? (state.sampledAtMs - anchor.sampledAtMs) / 1000 + AUDIBLE_ANCHOR_SLACK_SEC : 0;
+        if (!anchor || advance < 0 || advance > allowed) {
+            wait.anchor = { positionSec: state.positionSec, sampledAtMs: state.sampledAtMs };
             return;
         }
-        if (state.positionSec - wait.firstPlayingPos < SYNC_START_ADVANCE_SEC) return;
+        if (advance < SYNC_START_ADVANCE_SEC) return;
         const estimate = this.estimate(state);
         if (Math.abs(estimate - wait.targetPos) > SYNC_DRIFT_SEEK_SEC && !wait.reseekSent) {
             wait.reseekSent = true;
-            wait.firstPlayingPos = null;
+            wait.anchor = null;
             this.sendSeek(wait.targetPos);
             return;
         }
@@ -253,25 +270,23 @@ export class ExternalPlaybackSync {
         if (this.disposed || this.trackChanged) return;
         if (state.sampledAtMs < this.lastCommandAtMs) return;
         this.known = { state: state.state, mediaId: state.mediaId };
-        if (this.held) {
+        // While Music is still becoming audible (start hold or rate hold) only the audible check runs; the hold
+        // timeout guards against Music never getting there.
+        if (this.held || this.audible) {
             this.advanceAudibleWait(state);
             return;
         }
         if (state.state === 'stopped') this.handleEngineStopped();
-        else if (!this.isOurTrack(state.mediaId)) this.handleOtherTrack();
+        else if (!this.isOurTrack(state.mediaId)) this.handleOtherTrack(state);
         else if (state.state === 'paused') this.handlePausedInMusic();
         else this.followPlaying(state);
     };
 
-    // Same track playing: follow a resume made in Music, finish a rate hold, or steer the carrier toward Music.
+    // Same track playing: follow a resume made in Music, then steer the carrier toward Music.
     private followPlaying(state: OmniExternalPlaybackState): void {
         if (this.carrier.paused) {
             if (this.isSettling() || this.isCarrierEnded()) return;
             this.playCarrier();
-        }
-        if (this.audible) {
-            this.advanceAudibleWait(state);   // the rate hold owns playbackRate until it releases
-            return;
         }
         if (this.isSettling()) return;   // positions jitter for about 1 s after a command
         this.correctDrift(this.estimate(state));
@@ -296,19 +311,33 @@ export class ExternalPlaybackSync {
         if (!this.carrier.paused && !this.isSettling()) this.pauseCarrier();
     }
 
-    // Another track in Music. At the carrier's end it is Music auto-advancing (it ignores "play once"), so pause it,
-    // even inside the settle window. Earlier, and outside the window, it is the listener taking over. Before this
-    // controller is engaged (no command sent, carrier paused) it is just the listener's own playback.
-    private handleOtherTrack(): void {
+    // Another track in Music. Before this controller is engaged (no command sent, carrier paused) it is the
+    // listener's own playback. Around the carrier's end it is Music auto-advancing (it ignores "play once"): see
+    // pauseAutoAdvance. Once the carrier ended longer ago than the grace, the listener may play anything: ignore it.
+    // Otherwise, outside the settle window, it is the listener taking over.
+    private handleOtherTrack(state: OmniExternalPlaybackState): void {
         if (!this.commanded && this.carrier.paused) return;
-        if (this.remainingSec() < SYNC_END_GRACE_SEC) {
-            this.sendPause();
+        if (this.isCarrierEnded()) {
+            const endedAt = this.carrierEndedAtMs;
+            if (endedAt !== null && this.now() - endedAt <= SYNC_END_GRACE_SEC * 1000) this.pauseAutoAdvance(state);
+            return;
+        }
+        if (!this.carrier.paused && this.remainingSec() < SYNC_END_GRACE_SEC) {
+            this.pauseAutoAdvance(state);
             return;
         }
         if (this.isSettling()) return;
         this.trackChanged = true;
         this.pauseCarrier();
         this.onIssue({ kind: 'takeover', reason: 'track-changed' });
+    }
+
+    // Pauses Music's auto-advance into a foreign track, even inside the settle window: only a playing reading, and
+    // each foreign track at most once per play of ours, so a listener who deliberately plays it is not fought.
+    private pauseAutoAdvance(state: OmniExternalPlaybackState): void {
+        if (state.state !== 'playing' || state.mediaId === null || this.autoAdvancePaused.has(state.mediaId)) return;
+        this.autoAdvancePaused.add(state.mediaId);
+        this.sendPause();
     }
 
     // Music stopped under a playing carrier: near the end the track simply ran out; earlier, and outside the settle
@@ -338,6 +367,7 @@ export class ExternalPlaybackSync {
     };
 
     private readonly handleCarrierPause = (): void => {
+        if (this.isCarrierEnded()) this.carrierEndedAtMs = this.now();
         if (this.internalPause) {
             this.internalPause = false;
             return;
@@ -358,7 +388,8 @@ export class ExternalPlaybackSync {
         const position = this.carrier.currentTime;
         if (this.audible) {
             this.audible.targetPos = toEnginePosition(position);
-            this.audible.firstPlayingPos = null;
+            this.audible.reseekSent = false;
+            this.audible.anchor = null;
         }
         const onOurTrack = this.known !== null && this.known.state !== 'stopped' && this.isOurTrack(this.known.mediaId);
         if (onOurTrack) this.sendSeek(position);
@@ -375,14 +406,27 @@ export class ExternalPlaybackSync {
         this.commanded = true;
     }
 
+    // Runs an engine command and, when it settles either way, keeps the settle window open a full second past that
+    // moment: a slow command (Music launching cold) takes effect long after it was sent.
+    private runCommand(command: () => Promise<void>): Promise<void> {
+        const extendSettle = () => {
+            this.settleUntilMs = Math.max(this.settleUntilMs, this.now() + SYNC_SETTLE_MS);
+        };
+        return invoke(command).then(extendSettle, (error: unknown) => {
+            extendSettle();
+            throw error;
+        });
+    }
+
     // Plays this song and assumes Music is now on it; a rejection drops that assumption so the next play retries.
     private sendPlay(positionSec: number): Promise<void> {
         const position = toEnginePosition(positionSec);
         this.markCommand();
         this.engineStopped = false;
+        this.autoAdvancePaused.clear();
         const assumed: KnownEngineState = { state: 'playing', mediaId: this.mediaId };
         this.known = assumed;
-        return invoke(() => this.engine.play(this.song, position)).catch((error: unknown) => {
+        return this.runCommand(() => this.engine.play(this.song, position)).catch((error: unknown) => {
             if (this.known === assumed) this.known = null;
             throw error;
         });
@@ -391,19 +435,19 @@ export class ExternalPlaybackSync {
     private sendPause(): void {
         this.markCommand();
         if (this.known?.state === 'playing') this.known = { ...this.known, state: 'paused' };
-        invoke(() => this.engine.pause()).catch(this.reportFailure);
+        this.runCommand(() => this.engine.pause()).catch(this.reportFailure);
     }
 
     private sendResume(): void {
         this.markCommand();
         if (this.known?.state === 'paused') this.known = { ...this.known, state: 'playing' };
-        invoke(() => this.engine.resume()).catch(this.reportFailure);
+        this.runCommand(() => this.engine.resume()).catch(this.reportFailure);
     }
 
     private sendSeek(positionSec: number): void {
         const position = toEnginePosition(positionSec);
         this.markCommand();
-        invoke(() => this.engine.seek(position)).catch(this.reportFailure);
+        this.runCommand(() => this.engine.seek(position)).catch(this.reportFailure);
     }
 
     private readonly reportFailure = (error: unknown): void => {
