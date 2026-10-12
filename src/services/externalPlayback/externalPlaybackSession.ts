@@ -23,6 +23,8 @@ export interface ExternalPlaybackSessionInput {
         removeEventListener(type: 'loadedmetadata', l: () => void): void }) | null;
     playerState: PlayerState;
     wantsAutoplay: boolean;
+    /** The same gate the audio bridge's autoplay waits on: Music is not started before the lyrics are in. */
+    isLyricsLoading: boolean;
 }
 
 export interface ExternalPlaybackSessionDeps {
@@ -30,6 +32,8 @@ export interface ExternalPlaybackSessionDeps {
     getEngine(song: SongResult): OmniExternalPlaybackEngine | null;
     createSync?(options: ExternalPlaybackSyncOptions): ExternalPlaybackSync;   // 测试注入点
     clearAutoplayIntent(): void;
+    /** Puts the playback store in PAUSED (a held start that failed never ran its carrier, so no pause event does it). */
+    setPaused(): void;
     onIssue(issue: ExternalPlaybackIssue): void;
     now?: () => number;
 }
@@ -45,8 +49,15 @@ interface Attachment {
     sync: ExternalPlaybackSync | null;
     /** What the next start asks for; a pause during the hold turns 'play' into 'idle' before a deferred start. */
     intent: 'play' | 'idle';
+    /** The current sync was started; a deferred start waits for the carrier's metadata and, for 'play', the lyrics. */
+    started: boolean;
+    metadataReady: boolean;
+    /** Whether the carrier was playing as of its last dispatched play / pause event. */
+    carrierPlaying: boolean;
     /** Removes a carrier listener still waiting to start or re-attach a controller. */
     cleanup: (() => void) | null;
+    /** Removes the session's own play / pause watch on the carrier. */
+    unwatch: () => void;
 }
 
 const toSessionKey = (song: SongResult | null, audioSrc: string | null): string | null => (
@@ -79,6 +90,7 @@ export class ExternalPlaybackSession {
     /** The key whose autoplay hold is over (released by Music becoming audible, an idle start, a pause or a failure). */
     private releasedKey: string | null = null;
     private lastPlayerState: PlayerState | null = null;
+    private lyricsLoading = false;
 
     /** The engine of the current external song, or null while the current song plays in Folia itself. */
     private monitoredEngine: OmniExternalPlaybackEngine | null = null;
@@ -96,6 +108,7 @@ export class ExternalPlaybackSession {
         const { song, audioSrc, carrier, playerState } = input;
         const key = toSessionKey(song, audioSrc);
         const external = this.deps.isExternal(song);
+        this.lyricsLoading = input.isLyricsLoading;
 
         if (key !== this.key || carrier !== this.carrier) {
             // The old controller lets go of the carrier first: its dispose resets playbackRate on it.
@@ -104,8 +117,10 @@ export class ExternalPlaybackSession {
             this.carrier = carrier;
             this.setMonitoredEngine(external && song ? this.deps.getEngine(song) : null);
             if (external && song && key && carrier) this.attach(song, carrier, key, input.wantsAutoplay ? 'play' : 'idle');
-        } else if (playerState === PlayerState.PAUSED && this.lastPlayerState !== PlayerState.PAUSED) {
-            this.abortHold();
+        } else {
+            if (playerState === PlayerState.PAUSED && this.lastPlayerState !== PlayerState.PAUSED) this.abortHold();
+            // The lyrics may have finished loading since the last update.
+            if (this.attachment) this.tryBegin(this.attachment);
         }
         this.lastPlayerState = playerState;
     }
@@ -147,7 +162,24 @@ export class ExternalPlaybackSession {
     private attach(song: SongResult, carrier: SessionCarrier, key: string, intent: 'play' | 'idle'): void {
         const engine = this.deps.getEngine(song);
         if (!engine) return;
-        const attachment: Attachment = { key, song, carrier, engine, sync: null, intent, cleanup: null };
+        const attachment: Attachment = {
+            key, song, carrier, engine, intent,
+            sync: null,
+            started: false,
+            metadataReady: false,
+            carrierPlaying: !carrier.paused,
+            cleanup: null,
+            unwatch: () => undefined,
+        };
+        // Tells whether a pause event is still on its way when a controller has to be replaced (see settleCarrierPause).
+        const onPlay = () => { attachment.carrierPlaying = true; };
+        const onPause = () => { attachment.carrierPlaying = false; };
+        carrier.addEventListener('play', onPlay);
+        carrier.addEventListener('pause', onPause);
+        attachment.unwatch = () => {
+            carrier.removeEventListener('play', onPlay);
+            carrier.removeEventListener('pause', onPause);
+        };
         this.attachment = attachment;
         // Nothing to hold when nobody asked to play: the listener's own play starts Music later.
         if (intent === 'idle') this.release(key);
@@ -164,62 +196,73 @@ export class ExternalPlaybackSession {
             onHoldReleased: () => {
                 if (this.isCurrent(attachment, sync)) this.release(attachment.key);
             },
-            // Routed first, while the playback store still describes the moment of the issue.
+            // Routed first, while the playback store still describes the moment of the issue. A failed controller is
+            // inert and one whose song the listener changed in Music never commands it again, so both are replaced; an
+            // engine-stopped one stays, it plays Music again on the listener's next play.
             onIssue: (issue) => {
                 if (!this.isCurrent(attachment, sync)) return;
                 this.deps.onIssue(issue);
-                if (issue.kind === 'failure' && this.isCurrent(attachment, sync)) this.replaceFailedSync(attachment, sync);
+                if (!this.isCurrent(attachment, sync)) return;
+                if (issue.kind === 'failure') this.replaceFailedSync(attachment, sync);
+                else if (issue.reason === 'track-changed') this.replaceSync(attachment, sync, false);
             },
         });
         attachment.sync = sync;
+        attachment.started = false;
         const { carrier } = attachment;
-        if (carrier.readyState >= 1) {
-            this.begin(attachment, sync);
-            return;
+        attachment.metadataReady = carrier.readyState >= 1;
+        if (!attachment.metadataReady) {
+            const onReady = () => {
+                carrier.removeEventListener('loadedmetadata', onReady);
+                attachment.cleanup = null;
+                if (!this.isCurrent(attachment, sync)) return;
+                attachment.metadataReady = true;
+                this.tryBegin(attachment);
+            };
+            carrier.addEventListener('loadedmetadata', onReady);
+            attachment.cleanup = () => carrier.removeEventListener('loadedmetadata', onReady);
         }
-        const onReady = () => {
-            carrier.removeEventListener('loadedmetadata', onReady);
-            attachment.cleanup = null;
-            if (this.isCurrent(attachment, sync)) this.begin(attachment, sync);
-        };
-        carrier.addEventListener('loadedmetadata', onReady);
-        attachment.cleanup = () => carrier.removeEventListener('loadedmetadata', onReady);
+        this.tryBegin(attachment);
     }
 
-    // The volume goes out right behind a start's play, so Music has it (a muted Folia included) before it is audible
-    // rather than only once the hold lifts. An idle start sends nothing: Music may be playing the listener's own music.
-    private begin(attachment: Attachment, sync: ExternalPlaybackSync): void {
+    // Starts the current controller once the carrier has metadata and, for a play start, the lyrics have loaded (the
+    // audio bridge's own autoplay gate). The volume goes out right behind a start's play, so Music has it (a muted
+    // Folia included) before it is audible rather than only once the hold lifts. An idle start sends nothing: Music
+    // may be playing the listener's own music.
+    private tryBegin(attachment: Attachment): void {
+        const { sync } = attachment;
+        if (!sync || attachment.started || !attachment.metadataReady) return;
+        if (attachment.intent === 'play' && this.lyricsLoading) return;
+        attachment.started = true;
         sync.start(attachment.intent);
         if (attachment.intent === 'play' && this.lastVolume !== null) sendVolume(attachment.engine, this.lastVolume);
     }
 
     // A failed controller is inert (a failed start never leaves its hold), so it is replaced by an idle one that lets
-    // the listener's next play retry. The failed one stops what it started in Music, a running carrier is paused, and a
-    // held autoplay is handed back so the bridge neither plays the carrier nor shows it as playing. The fresh controller
-    // attaches only after Music was told to stop and the carrier's own pause event has passed, so neither a reading from
-    // before the stop nor that pause is taken for something the listener did.
+    // the listener's next play retry; the failed one stops what it started in Music. A held autoplay is handed back so
+    // the bridge neither plays the carrier nor keeps showing it as playing, and the store goes to PAUSED: that carrier
+    // never ran, so no pause event will put it there, whichever way the issue was routed.
     private replaceFailedSync(attachment: Attachment, failed: ExternalPlaybackSync): void {
+        const held = attachment.key !== this.releasedKey;
+        this.replaceSync(attachment, failed, true);
+        if (!held) return;
+        this.deps.clearAutoplayIntent();
+        this.release(attachment.key);
+        this.deps.setPaused();
+    }
+
+    // Swaps a controller for a fresh idle one on the same song and carrier. A running carrier is paused, and the fresh
+    // controller attaches only after the old one's dispose settled (a stop included) and any pause event still on its
+    // way has passed, so neither a reading from before the stop nor that pause is taken for something the listener did.
+    private replaceSync(attachment: Attachment, old: ExternalPlaybackSync, stopEngine: boolean): void {
         attachment.sync = null;
+        attachment.started = false;
         attachment.intent = 'idle';
         attachment.cleanup?.();
         attachment.cleanup = null;
-        const settled: Promise<unknown>[] = [Promise.resolve(failed.dispose({ stopEngine: true }))];
-        const { carrier } = attachment;
-        if (!carrier.paused) {
-            settled.push(new Promise<void>((resolve) => {
-                const onPaused = () => {
-                    carrier.removeEventListener('pause', onPaused);
-                    resolve();
-                };
-                carrier.addEventListener('pause', onPaused);
-                attachment.cleanup = () => carrier.removeEventListener('pause', onPaused);
-            }));
-            carrier.pause();
-        }
-        if (attachment.key !== this.releasedKey) {
-            this.deps.clearAutoplayIntent();
-            this.release(attachment.key);
-        }
+        const settled: Promise<unknown>[] = [Promise.resolve(old.dispose({ stopEngine }))];
+        const paused = this.settleCarrierPause(attachment);
+        if (paused) settled.push(paused);
         void Promise.all(settled).then(() => {
             if (this.attachment !== attachment || attachment.sync !== null) return;
             attachment.cleanup = null;
@@ -227,20 +270,41 @@ export class ExternalPlaybackSession {
         });
     }
 
-    // The listener paused while Music was still becoming audible: pause what was started and give up the autoplay.
+    // Pauses a running carrier and resolves on its pause event. A carrier already paused while its last dispatched
+    // event was 'play' (the controller paused it a moment ago) still has that event coming, so it is waited for too.
+    // Null when no pause event is on its way.
+    private settleCarrierPause(attachment: Attachment): Promise<void> | null {
+        const { carrier } = attachment;
+        if (carrier.paused && !attachment.carrierPlaying) return null;
+        const settled = new Promise<void>((resolve) => {
+            const onPaused = () => {
+                carrier.removeEventListener('pause', onPaused);
+                resolve();
+            };
+            carrier.addEventListener('pause', onPaused);
+            attachment.cleanup = () => carrier.removeEventListener('pause', onPaused);
+        });
+        if (!carrier.paused) carrier.pause();
+        return settled;
+    }
+
+    // The listener paused while Music was still becoming audible (or before it was asked to play, while the lyrics
+    // loaded): pause what was started, give up the autoplay, and let a deferred start go out as idle.
     private abortHold(): void {
         const attachment = this.attachment;
         if (!attachment || attachment.key === this.releasedKey) return;
         attachment.intent = 'idle';
-        attachment.sync?.abortStart();
+        if (attachment.started) attachment.sync?.abortStart();
         this.deps.clearAutoplayIntent();
         this.release(attachment.key);
+        this.tryBegin(attachment);
     }
 
     private detach(stopEngine: boolean): void {
         const attachment = this.attachment;
         if (!attachment) return;
         this.attachment = null;
+        attachment.unwatch();
         attachment.cleanup?.();
         attachment.cleanup = null;
         const { sync } = attachment;

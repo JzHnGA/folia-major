@@ -1359,6 +1359,7 @@ export default function App() {
         audioRef,
         shouldAutoPlayRef: shouldAutoPlay,
         activeDeck: automix.activeDeck,
+        isLyricsLoading,
         onPlaybackFailure: skipAfterPlaybackFailure,
     });
     externalVolumeMirrorRef.current = externalPlayback.mirrorVolume;

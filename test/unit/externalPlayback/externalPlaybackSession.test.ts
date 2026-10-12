@@ -92,6 +92,7 @@ let engine: { setMonitoring: Mock<(active: boolean) => void>; setVolume: Mock<(v
 let created: Array<{ options: ExternalPlaybackSyncOptions; sync: FakeSync }>;
 let createSync: Mock<(options: ExternalPlaybackSyncOptions) => ExternalPlaybackSync>;
 let clearAutoplayIntent: Mock<() => void>;
+let setPaused: Mock<() => void>;
 let onIssue: Mock<(issue: ExternalPlaybackIssue) => void>;
 let session: ExternalPlaybackSession;
 
@@ -105,6 +106,7 @@ const input = (overrides: Partial<ExternalPlaybackSessionInput> = {}): ExternalP
     carrier,
     playerState: PlayerState.IDLE,
     wantsAutoplay: true,
+    isLyricsLoading: false,
     ...overrides,
 });
 
@@ -124,15 +126,39 @@ beforeEach(() => {
         return sync as unknown as ExternalPlaybackSync;
     });
     clearAutoplayIntent = vi.fn();
+    setPaused = vi.fn();
     onIssue = vi.fn();
     session = new ExternalPlaybackSession({
         isExternal,
         getEngine: song => (isExternal(song) ? engine as unknown as OmniExternalPlaybackEngine : null),
         createSync,
         clearAutoplayIntent,
+        setPaused,
         onIssue,
     });
 });
+
+// A session whose issues go through the real routing into a stand-in playback store, as the hook wires it.
+const createRoutedSession = (playerState: PlayerState) => {
+    const store = { playerState };
+    const onPlaybackFailure = vi.fn();
+    const showStatus = vi.fn();
+    const pause = () => { store.playerState = PlayerState.PAUSED; };
+    const routed = new ExternalPlaybackSession({
+        isExternal,
+        getEngine: song => (isExternal(song) ? engine as unknown as OmniExternalPlaybackEngine : null),
+        createSync,
+        clearAutoplayIntent,
+        setPaused: pause,
+        onIssue: issue => routeExternalPlaybackIssue(issue, {
+            playerState: store.playerState,
+            setPaused: pause,
+            showStatus,
+            onPlaybackFailure,
+        }),
+    });
+    return { session: routed, store, onPlaybackFailure, showStatus };
+};
 
 afterEach(() => {
     vi.useRealTimers();
@@ -178,6 +204,54 @@ describe('ExternalPlaybackSession', () => {
         session.update(input({ wantsAutoplay: false }));
 
         expect(latest().sync.start).toHaveBeenCalledWith('idle');
+        expect(session.isAutoplayHeld(APPLE, SRC)).toBe(false);
+    });
+
+    it('keeps holding and defers the play start until the lyrics have loaded', () => {
+        carrier.readyState = 1;
+        session.update(input({ isLyricsLoading: true, playerState: PlayerState.IDLE }));
+
+        expect(createSync).toHaveBeenCalledTimes(1);
+        expect(latest().sync.start).not.toHaveBeenCalled();
+        expect(session.isAutoplayHeld(APPLE, SRC)).toBe(true);
+
+        session.update(input({ isLyricsLoading: false, playerState: PlayerState.IDLE }));
+
+        expect(latest().sync.start).toHaveBeenCalledWith('play');
+        expect(latest().sync.start).toHaveBeenCalledTimes(1);
+        expect(createSync).toHaveBeenCalledTimes(1);
+        expect(session.isAutoplayHeld(APPLE, SRC)).toBe(true);
+
+        session.update(input({ isLyricsLoading: false, playerState: PlayerState.PLAYING }));
+        expect(latest().sync.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('still waits for the carrier metadata once the lyrics have loaded', () => {
+        session.update(input({ isLyricsLoading: true }));
+        session.update(input({ isLyricsLoading: false }));
+        expect(latest().sync.start).not.toHaveBeenCalled();
+
+        carrier.readyState = 1;
+        carrier.dispatch('loadedmetadata');
+
+        expect(latest().sync.start).toHaveBeenCalledWith('play');
+    });
+
+    it('starts an idle controller without waiting for the lyrics', () => {
+        carrier.readyState = 1;
+        session.update(input({ wantsAutoplay: false, isLyricsLoading: true }));
+
+        expect(latest().sync.start).toHaveBeenCalledWith('idle');
+    });
+
+    it('starts idle when the listener pauses while the lyrics are still loading', () => {
+        carrier.readyState = 1;
+        session.update(input({ isLyricsLoading: true, playerState: PlayerState.IDLE }));
+        session.update(input({ isLyricsLoading: true, playerState: PlayerState.PAUSED }));
+
+        expect(latest().sync.start).toHaveBeenCalledWith('idle');
+        expect(latest().sync.abortStart).not.toHaveBeenCalled();
+        expect(clearAutoplayIntent).toHaveBeenCalledTimes(1);
         expect(session.isAutoplayHeld(APPLE, SRC)).toBe(false);
     });
 
@@ -308,15 +382,43 @@ describe('ExternalPlaybackSession', () => {
         expect(engine.setVolume).toHaveBeenCalledWith(0.4);
     });
 
-    it('forwards sync issues to the dependency', () => {
+    it('forwards sync issues to the dependency and keeps the controller after Music stopped', async () => {
         carrier.readyState = 1;
         session.update(input());
-        const issue: ExternalPlaybackIssue = { kind: 'takeover', reason: 'track-changed' };
+        const issue: ExternalPlaybackIssue = { kind: 'takeover', reason: 'engine-stopped' };
 
         latest().options.onIssue(issue);
+        await flushPromises();
 
         expect(onIssue).toHaveBeenCalledWith(issue);
         expect(latest().sync.dispose).not.toHaveBeenCalled();
+        expect(createSync).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands Music back to a fresh idle controller after the listener changed the song in Music', async () => {
+        const routed = createRoutedSession(PlayerState.PLAYING);
+        carrier.readyState = 1;
+        routed.session.update(input({ wantsAutoplay: false, playerState: PlayerState.PLAYING }));
+        const old = latest();
+        await carrier.play();
+        // The controller paused the carrier on the takeover; its pause event is still on its way.
+        carrier.paused = true;
+
+        old.options.onIssue({ kind: 'takeover', reason: 'track-changed' });
+
+        expect(routed.showStatus).toHaveBeenCalledWith('info', 'appleMusic.takeover');
+        expect(old.sync.dispose).toHaveBeenCalledWith({ stopEngine: false });
+        await flushPromises();
+        expect(createSync).toHaveBeenCalledTimes(1);
+
+        carrier.dispatch('pause');
+        await flushPromises();
+
+        expect(createSync).toHaveBeenCalledTimes(2);
+        expect(latest().options.song).toBe(APPLE);
+        expect(latest().sync.start).toHaveBeenCalledWith('idle');
+        expect(routed.onPlaybackFailure).not.toHaveBeenCalled();
+        expect(carrier.listenerCount('pause')).toBe(1);   // only the session's own carrier watch is left
     });
 
     it('replaces a failed controller with an idle one and hands back a held autoplay', async () => {
@@ -335,6 +437,7 @@ describe('ExternalPlaybackSession', () => {
         expect(onIssue.mock.invocationCallOrder[0]).toBeLessThan(failed.sync.dispose.mock.invocationCallOrder[0]);
         expect(failed.sync.dispose).toHaveBeenCalledWith({ stopEngine: true });
         expect(clearAutoplayIntent).toHaveBeenCalledTimes(1);
+        expect(setPaused).toHaveBeenCalledTimes(1);
         expect(session.isAutoplayHeld(APPLE, SRC)).toBe(false);
 
         await flushPromises();
@@ -358,6 +461,7 @@ describe('ExternalPlaybackSession', () => {
 
         expect(carrier.pause).toHaveBeenCalledTimes(1);
         expect(clearAutoplayIntent).not.toHaveBeenCalled();
+        expect(setPaused).not.toHaveBeenCalled();
         await flushPromises();
         expect(createSync).toHaveBeenCalledTimes(1);
 
@@ -366,7 +470,24 @@ describe('ExternalPlaybackSession', () => {
 
         expect(createSync).toHaveBeenCalledTimes(2);
         expect(latest().sync.start).toHaveBeenCalledWith('idle');
-        expect(carrier.listenerCount('pause')).toBe(0);
+        expect(carrier.listenerCount('pause')).toBe(1);   // only the session's own carrier watch is left
+    });
+
+    it('ends paused when a held start fails and the queue skips', () => {
+        const routed = createRoutedSession(PlayerState.PLAYING);
+        carrier.readyState = 1;
+        routed.session.update(input({ playerState: PlayerState.PLAYING }));
+        expect(latest().sync.start).toHaveBeenCalledWith('play');
+
+        latest().options.onIssue({
+            kind: 'failure',
+            error: new OnlineProviderError('not-playable', 'Music did not become audible within 8 s', 'apple-music'),
+        });
+
+        expect(routed.onPlaybackFailure).toHaveBeenCalledTimes(1);
+        expect(routed.showStatus).toHaveBeenCalledWith('error', 'appleMusic.playFailed');
+        expect(routed.store.playerState).toBe(PlayerState.PAUSED);
+        expect(carrier.pause).not.toHaveBeenCalled();
     });
 
     it('does not attach a fresh controller after the song moved on', async () => {

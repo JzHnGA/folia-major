@@ -16,6 +16,8 @@ type UseExternalPlaybackSyncParams = {
     shouldAutoPlayRef: MutableRefObject<boolean>;
     /** Re-reads `audioRef` when automix makes the other deck the active one. */
     activeDeck: string;
+    /** The audio bridge's autoplay gate: an autoplayed Apple song does not start Music before its lyrics are in. */
+    isLyricsLoading: boolean;
     /** The queue's failure skip (skipAfterPlaybackFailure). */
     onPlaybackFailure: () => void;
 };
@@ -24,6 +26,7 @@ export function useExternalPlaybackSync({
     audioRef,
     shouldAutoPlayRef,
     activeDeck,
+    isLyricsLoading,
     onPlaybackFailure,
 }: UseExternalPlaybackSyncParams): { autoplayHeld: boolean; mirrorVolume: (volume: number) => void } {
     const currentSong = usePlaybackStore(state => state.currentSong);
@@ -38,6 +41,7 @@ export function useExternalPlaybackSync({
         isExternal: song => omni.isExternalPlaybackSong(song),
         getEngine: song => omni.getExternalPlaybackEngine(song),
         clearAutoplayIntent: () => { shouldAutoPlayRef.current = false; },
+        setPaused: () => setPlayerState(PlayerState.PAUSED),
         onIssue: issue => routeExternalPlaybackIssue(issue, {
             playerState: usePlaybackStore.getState().playerState,
             setPaused: () => setPlayerState(PlayerState.PAUSED),
@@ -56,8 +60,9 @@ export function useExternalPlaybackSync({
             carrier: audioRef.current,
             playerState,
             wantsAutoplay: shouldAutoPlayRef.current,
+            isLyricsLoading,
         });
-    }, [currentSong, audioSrc, playerState, activeDeck, audioRef, session, shouldAutoPlayRef]);
+    }, [currentSong, audioSrc, playerState, activeDeck, isLyricsLoading, audioRef, session, shouldAutoPlayRef]);
 
     useEffect(() => () => session.dispose(), [session]);
 
