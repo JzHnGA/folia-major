@@ -90,6 +90,7 @@ import { useElectronWindowPlaybackHandoff } from './hooks/useElectronWindowPlayb
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
 import { usePlaybackAudioBridge } from './hooks/usePlaybackAudioBridge';
+import { useExternalPlaybackSync } from './hooks/useExternalPlaybackSync';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
 import { useAutomixDecks, type AutomixDeckId } from './services/automix/useAutomixDecks';
 import { usePlaybackInteractionBridge } from './hooks/usePlaybackInteractionBridge';
@@ -518,8 +519,13 @@ export default function App() {
 
     const persistLastPlaybackCache = useCallback(persistPlaybackCache, []);
 
+    // Mirrors the output volume to Music.app for Apple Music songs. Pointed at the external playback session
+    // further down, once useExternalPlaybackSync exists; a ref so syncOutputGain keeps its identity.
+    const externalVolumeMirrorRef = useRef<(volume: number) => void>(() => {});
+
     const syncOutputGain = useCallback((targetVolume: number, smoothing = 0.015) => {
         const clampedVolume = clampMediaVolume(targetVolume);
+        externalVolumeMirrorRef.current(clampedVolume);
 
         if (gainNodeRef.current && audioContextRef.current) {
             // Volume only. ReplayGain lives on each deck now, because during a blend the two
@@ -546,7 +552,10 @@ export default function App() {
 
         if (audioRef.current) {
             audioRef.current.volume = clampedVolume;
-            audioRef.current.muted = isMuted;
+            // An Apple Music carrier is never muted: mute already reaches Music.app as the mirrored volume 0, and
+            // Chromium slows a muted element's clock while the page is hidden. Read from the store so this callback
+            // keeps its identity across songs.
+            audioRef.current.muted = isMuted && !omni.isExternalPlaybackSong(usePlaybackStore.getState().currentSong);
         }
     }, [isMuted]);
 
@@ -1343,6 +1352,17 @@ export default function App() {
         }
     }, [audioSrc, audioRef, setDuration]);
 
+    // Apple Music songs: Music.app plays, the deck holds a silent carrier kept in step with it. Declared before the
+    // audio bridge so its hold is computed in the same render the bridge first sees the carrier's source, and its
+    // effect runs before the bridge's.
+    const externalPlayback = useExternalPlaybackSync({
+        audioRef,
+        shouldAutoPlayRef: shouldAutoPlay,
+        activeDeck: automix.activeDeck,
+        onPlaybackFailure: skipAfterPlaybackFailure,
+    });
+    externalVolumeMirrorRef.current = externalPlayback.mirrorVolume;
+
     const { setupAudioAnalyzer, cacheSongAssets, cacheSongAssetsFor, adoptActiveDeckSource } = usePlaybackAudioBridge({
         audioRef,
         localSongs,
@@ -1354,7 +1374,7 @@ export default function App() {
         connectDecks: automix.connectDecks,
         getActiveChain: automix.getActiveChain,
         suppressAutoplayRef: automix.suppressAutoplayRef,
-        isAutoplayHeld: automix.autoplayHeld,
+        isAutoplayHeld: automix.autoplayHeld || externalPlayback.autoplayHeld,
         syncOutputGain,
         getTargetPlaybackVolume,
         getCoverUrl,
