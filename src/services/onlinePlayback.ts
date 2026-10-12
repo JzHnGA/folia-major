@@ -60,6 +60,11 @@ export async function loadOnlineSongAudioSource(
     }
 
     const replayGain = applyOnlineAudioSourceMetadata(song, source?.replayGain).replayGain;
+    // An external song's URL is a silent carrier blob made for this one playback: it is handed back as
+    // blobUrl so the caller revokes it, and kept out of the prefetch cache where it would outlive that.
+    if (omni.isExternalPlaybackSong(song)) {
+        return { kind: 'ok', audioSrc: url, blobUrl: url, replayGain };
+    }
     updatePrefetchedAudioUrl(song, url, audioQuality, replayGain);
     return { kind: 'ok', audioSrc: url, replayGain };
 }

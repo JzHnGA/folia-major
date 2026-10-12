@@ -6,6 +6,7 @@ import type { AudioQualityPreference } from '../../types/onlineMusic';
 import type { PlaybackRecoveryTarget } from '../../types/playbackRecovery';
 import { getPlaybackSongKey, isNavidromePlaybackSong, resolveNavidromePlaybackCarrier } from '../../utils/appPlaybackGuards';
 import { getPrefetchedData } from '../prefetchService';
+import { involvesExternalPlayback } from '../externalPlayback/externalPlaybackGuards';
 import { getTrackProfile, recordPlayedTail } from './profileService';
 import { refreshModelAvailability } from './modelAvailability';
 import { canSeparateStems, ensureStems, getStemsByKey, setWantedStems, stemWindowKey } from './stems';
@@ -295,6 +296,8 @@ export function useAutomixDecks({
         const song = deckSongRef.current[deck];
         const history = chainsRef.current[deck]?.analyser.levelHistory();
         if (!element || !song || !history) return;
+        // The silent carrier of an external song would file a tail of pure silence under that song.
+        if (involvesExternalPlayback(song)) return;
         recordPlayedTail(song, history.db, history.hopSec, element.duration);
     }, []);
     // The session's ports are built once, before this exists, and must not close over a stale copy.
@@ -570,6 +573,9 @@ export function useAutomixDecks({
 
         const nextSong = resolveNextQueueSong(playQueue, currentSong, loopMode);
         if (!nextSong) return report(`${audioSrc}:queue-end`, 'nothing queued after this track');
+        // Music.app plays the external song, so there is no second deck to blend and no audio to warm one with
+        // (the <audio> only carries silence). Checked before the warm step below so no deck is ever repointed.
+        if (involvesExternalPlayback(currentSong, nextSong)) return report(`${audioSrc}:external`, 'external playback engine, hard cut');
 
         // Nothing below applies while a transition is already in flight - `requestTransition` returns null
         // on sight - and the write underneath it is not free. This function runs on every timeupdate, the
@@ -720,6 +726,8 @@ export function useAutomixDecks({
         if (!canSeparateStems()) return;
 
         const next = resolveNextQueueSong(playQueue, currentSong, loopMode);
+        // Stems are separated from the audio the deck plays; for an external song that is a silent carrier.
+        if (involvesExternalPlayback(currentSong, next)) return;
         stemSongsRef.current = { from: currentSong, to: next };
         // The same pair, told to the cache: it decides what to throw away when it runs out of room,
         // and without this it can only go by age - which is how it came to evict the window a

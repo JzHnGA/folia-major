@@ -7,6 +7,8 @@ import type { AudioBands, LyricData } from '../types';
 import { setCurrentLineIndex, setPlayerState } from '../stores/usePlaybackStore';
 import { selectDisplayLyrics, usePlaybackStore } from '../stores/usePlaybackStore';
 import { audioBands, audioPower, currentTime, lyricCurrentTime } from '../stores/motionSignals';
+import { omni } from '../services/onlineMusic/omni';
+import { resolveHasAnalyserSignal } from '../utils/visualizerSignal';
 
 // src/hooks/usePlaybackVisualizerBridge.ts
 
@@ -69,6 +71,9 @@ export function usePlaybackVisualizerBridge({
     const activePlaybackContext = usePlaybackStore(state => state.activePlaybackContext);
     const playerState = usePlaybackStore(state => state.playerState);
     const duration = usePlaybackStore(state => state.duration);
+    const currentSong = usePlaybackStore(state => state.currentSong);
+    // The utils layer cannot ask omni, so the answer is computed here and handed down as a boolean.
+    const isExternalPlayback = omni.isExternalPlaybackSong(currentSong);
     // The lyrics on screen, matching the deck getDisplayElement points at.
     const lyrics = usePlaybackStore(selectDisplayLyrics);
 
@@ -82,7 +87,15 @@ export function usePlaybackVisualizerBridge({
         // Mid-handover a deck can be loading while the other one is still sounding. The analyser
         // is downstream of both, so it has real signal: dropping to the idle breath here would put
         // a visible stutter at exactly the moment meant to be seamless.
-        const hasAudibleSignal = isActuallyPlaying || isTransitionAudible();
+        //
+        // An external song is the exception: its carrier <audio> is silent, so the analyser reads
+        // nothing. Only the bands fall back to the breath - the clock below still follows
+        // isActuallyPlaying, since the carrier is what keeps the lyrics moving.
+        const hasAudibleSignal = resolveHasAnalyserSignal({
+            isActuallyPlaying,
+            isTransitionAudible: isTransitionAudible(),
+            isExternalPlayback,
+        });
 
         if (hasAudibleSignal && analyserRef.current) {
             const bufferLength = analyserRef.current.frequencyBinCount;
@@ -256,6 +269,7 @@ export function usePlaybackVisualizerBridge({
         lyricCurrentTime,
         isTransitionAudible,
         getDisplayElement,
+        isExternalPlayback,
     ]);
 
     useEffect(() => {

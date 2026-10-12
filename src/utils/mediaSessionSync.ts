@@ -51,8 +51,20 @@ export const isMediaSessionSourceReady = (
     return normalizeSourceUrl(audio.currentSrc, baseUrl) === normalizeSourceUrl(expectedSource, baseUrl);
 };
 
+export type MediaSessionPositionOptions = {
+    /**
+     * Report a playback rate of 1 whatever the element's real rate is.
+     *
+     * The silent carrier of an external (Music.app) song is nudged to 0.95 / 1.05 to chase the real
+     * player, and the system panel would extrapolate its progress bar at that rate. The listener
+     * hears Music.app, which runs at 1x.
+     */
+    reportUnitRate?: boolean;
+};
+
 export const createMediaSessionPositionState = (
-    audio: Pick<HTMLAudioElement, 'currentTime' | 'duration' | 'playbackRate'>
+    audio: Pick<HTMLAudioElement, 'currentTime' | 'duration' | 'playbackRate'>,
+    options: MediaSessionPositionOptions = {}
 ): MediaPositionState | null => {
     if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
         return null;
@@ -61,7 +73,7 @@ export const createMediaSessionPositionState = (
     const position = Number.isFinite(audio.currentTime)
         ? Math.min(Math.max(audio.currentTime, 0), audio.duration)
         : 0;
-    const playbackRate = Number.isFinite(audio.playbackRate) && audio.playbackRate > 0
+    const playbackRate = !options.reportUnitRate && Number.isFinite(audio.playbackRate) && audio.playbackRate > 0
         ? audio.playbackRate
         : 1;
 
@@ -77,9 +89,10 @@ export const publishMediaSessionTrack = (
     mediaSession: MediaSession,
     audio: Pick<HTMLAudioElement, 'currentTime' | 'duration' | 'playbackRate'>,
     track: MediaSessionTrackMetadata,
-    createMetadata: MediaSessionMetadataFactory = init => new MediaMetadata(init)
+    createMetadata: MediaSessionMetadataFactory = init => new MediaMetadata(init),
+    options: MediaSessionPositionOptions = {}
 ) => {
-    const positionState = createMediaSessionPositionState(audio);
+    const positionState = createMediaSessionPositionState(audio, options);
     if (!positionState) {
         return false;
     }

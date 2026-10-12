@@ -9,6 +9,7 @@ const loadLyricsStateMock = vi.hoisted(() => vi.fn());
 const saveLyricsStateMock = vi.hoisted(() => vi.fn());
 const isUrlValidMock = vi.hoisted(() => vi.fn(() => true));
 const updatePrefetchedAudioUrlMock = vi.hoisted(() => vi.fn());
+const isExternalMock = vi.hoisted(() => vi.fn((_song?: unknown) => false));
 
 vi.mock('@/services/onlineMusic/resourceCache', () => ({
     getCachedSongAudioBlob: cachedAudioMock,
@@ -19,6 +20,7 @@ vi.mock('@/services/onlineMusic/omni', () => ({
     omni: {
         getAudioSource: sourceMock,
         getLyrics: lyricsMock,
+        isExternalPlaybackSong: isExternalMock,
     },
 }));
 
@@ -75,6 +77,7 @@ describe('online audio ReplayGain plumbing', () => {
         vi.clearAllMocks();
         cachedAudioMock.mockResolvedValue(null);
         isUrlValidMock.mockReturnValue(true);
+        isExternalMock.mockReturnValue(false);
     });
 
     it.each(['preview-only', 'region-restricted', 'auth-required'] as const)('preserves %s for the queue and does not cache audio', async reason => {
@@ -138,6 +141,16 @@ describe('online audio ReplayGain plumbing', () => {
             expect(result.replayGain).toBeUndefined();
         }
         expect(updatePrefetchedAudioUrlMock).toHaveBeenCalledWith(song, 'https://audio.test/song.mp3', 'high', undefined);
+    });
+
+    it('hands an external carrier back as a blob to revoke and never stores it as a prefetched URL', async () => {
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockResolvedValue({ url: 'blob:carrier', fetchedAt: 1, quality: 'high' });
+
+        const result = await loadOnlineSongAudioSource(song, 'high', null);
+
+        expect(result).toEqual({ kind: 'ok', audioSrc: 'blob:carrier', blobUrl: 'blob:carrier', replayGain: undefined });
+        expect(updatePrefetchedAudioUrlMock).not.toHaveBeenCalled();
     });
 });
 

@@ -19,6 +19,7 @@ import { toSafePlaybackUrl } from '../utils/appPlaybackHelpers';
 import { getProviderSongMetadata } from './onlineMusic/songMetadata';
 import { ensureTrackProfile, setAnalysisScope } from './automix/profileService';
 import { modeNeedsBeatGrid } from './automix/transitionStrategy';
+import { involvesExternalPlayback } from './externalPlayback/externalPlaybackGuards';
 import { useLyricSettingsStore } from '../stores/useLyricSettingsStore';
 import { useAutomixSettingsStore } from '../stores/useAutomixSettingsStore';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
@@ -47,6 +48,8 @@ const MAX_PREFETCH_CACHE_SIZE = 200; // Evict least recently used entries beyond
  * try to fetch. Never awaited: a slow decode must not hold up the song after this one.
  */
 const analyseForAutomix = (song: SongResult, audioUrl: string | null | undefined) => {
+  // An external song never reaches Automix and its audio is only a silent carrier, so there is nothing to analyse.
+  if (involvesExternalPlayback(song)) return;
   const settingsAudioSettings = useAudioSettingsStore.getState();
   const settingsAutomixSettings = useAutomixSettingsStore.getState();
   const settingsLyricSettings = useLyricSettingsStore.getState();
@@ -212,7 +215,9 @@ const prefetchSong = async (
     };
 
     // Prefetch audio URL (if not cached or expired)
-    if (!data.audioUrl) {
+    // Skipped for an external song: its "audio" is a silent carrier minted at playback time, and
+    // resolving one here would only leave a stale blob URL behind.
+    if (!data.audioUrl && !involvesExternalPlayback(song)) {
         try {
             const audioExists = await hasCachedSongAudio(song);
             if (audioExists) {

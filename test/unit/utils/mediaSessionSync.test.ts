@@ -104,4 +104,26 @@ describe('mediaSessionSync', () => {
 
         expect(metadata?.artwork).toEqual([]);
     });
+
+    it('reports a unit rate while the carrier is being nudged', () => {
+        expect(createMediaSessionPositionState({ currentTime: 10, duration: 100, playbackRate: 1.05 }, { reportUnitRate: true })?.playbackRate).toBe(1);
+        expect(createMediaSessionPositionState({ currentTime: 10, duration: 100, playbackRate: 1.05 })?.playbackRate).toBe(1.05);
+    });
+
+    it('forwards the unit-rate option when publishing a track', () => {
+        const mediaSession = {
+            setPositionState: vi.fn(),
+            set metadata(_value: MediaMetadata | null) { },
+        } as unknown as MediaSession;
+
+        publishMediaSessionTrack(
+            mediaSession,
+            { currentTime: 10, duration: 100, playbackRate: 0.95 },
+            { title: 'apple track', artist: 'artist', album: 'album', artworkUrl: '' },
+            init => init as unknown as MediaMetadata,
+            { reportUnitRate: true }
+        );
+
+        expect(mediaSession.setPositionState).toHaveBeenCalledWith({ duration: 100, playbackRate: 1, position: 10 });
+    });
 });

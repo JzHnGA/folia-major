@@ -17,6 +17,7 @@ import {
     stopMediaStream,
     wait,
 } from '../services/electronVideoExport';
+import { omni } from '../services/onlineMusic/omni';
 import { useTranslation } from 'react-i18next';
 import { usePlaybackStore } from '../stores/usePlaybackStore';
 import { useAppChromeStore } from '../stores/useAppChromeStore';
@@ -75,6 +76,18 @@ export const useElectronVideoExportController = ({
                 status: 'error',
                 presetId: preset.id,
                 error: t('export.noRecordableContent'),
+            });
+            return;
+        }
+
+        // The recorder captures the <audio> element, which for an external song is a silent carrier: the
+        // real sound comes from Music.app, so the file would be a picture with no music.
+        if (omni.isExternalPlaybackSong(currentSong)) {
+            setExportState({
+                ...idleVideoExportState(),
+                status: 'error',
+                presetId: preset.id,
+                error: t('appleMusic.exportUnsupported'),
             });
             return;
         }
