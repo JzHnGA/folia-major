@@ -168,7 +168,9 @@ export async function loadOnlineSongLyrics(
     let finalState = onlineLyricsState;
 
   const settingsLyricSettings = useLyricSettingsStore.getState();
-    const shouldAutoMatch = settingsLyricSettings.autoUseBestLyric && !onlineLyricsState?.hasOnlineOverride;
+    // An external-playback song (Music.app) has no lyrics of its own, so it is matched whatever the setting says.
+    const shouldAutoMatch = (settingsLyricSettings.autoUseBestLyric || omni.isExternalPlaybackSong(song))
+        && !onlineLyricsState?.hasOnlineOverride;
 
     if (shouldAutoMatch) {
         // The lyrics in hand are already displayable, so hand them over and report done BEFORE the

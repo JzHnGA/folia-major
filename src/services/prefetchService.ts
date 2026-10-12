@@ -284,7 +284,8 @@ const prefetchSong = async (
   const settingsLyricSettings = useLyricSettingsStore.getState();
                 const autoUseBest = settingsLyricSettings.autoUseBestLyric;
                 const preferredSource = settingsLyricSettings.preferredAlternativeLyricSource;
-                const shouldAutoMatch = autoUseBest && !onlineLyricsState?.hasOnlineOverride;
+                // An external-playback song (Music.app) has no lyrics of its own, so it is matched whatever the setting says.
+                const shouldAutoMatch = (autoUseBest || omni.isExternalPlaybackSong(song)) && !onlineLyricsState?.hasOnlineOverride;
 
                 if (shouldAutoMatch) {
                     try {

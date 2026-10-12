@@ -10,6 +10,8 @@ const saveLyricsStateMock = vi.hoisted(() => vi.fn());
 const isUrlValidMock = vi.hoisted(() => vi.fn(() => true));
 const updatePrefetchedAudioUrlMock = vi.hoisted(() => vi.fn());
 const isExternalMock = vi.hoisted(() => vi.fn((_song?: unknown) => false));
+// The settings store mock reads this object, so a test flips one field instead of re-mocking the store.
+const lyricSettings = vi.hoisted(() => ({ autoUseBestLyric: true, preferredAlternativeLyricSource: 'qq' }));
 
 vi.mock('@/services/onlineMusic/resourceCache', () => ({
     getCachedSongAudioBlob: cachedAudioMock,
@@ -26,7 +28,7 @@ vi.mock('@/services/onlineMusic/omni', () => ({
 
 vi.mock('@/stores/useLyricSettingsStore', () => ({
     useLyricSettingsStore: {
-        getState: () => ({ autoUseBestLyric: true, preferredAlternativeLyricSource: 'qq' }),
+        getState: () => lyricSettings,
     },
 }));
 
@@ -62,6 +64,15 @@ import type { SongResult } from '@/types';
 import { OnlineProviderError } from '@/types/onlineMusic';
 
 // test/unit/onlinePlayback.test.ts
+
+// Runs before every describe's own beforeEach, so neither the external-song flag nor the lyric
+// settings can leak from one describe into the next (mockClear alone keeps a mockReturnValue).
+beforeEach(() => {
+    isExternalMock.mockReset();
+    isExternalMock.mockReturnValue(false);
+    lyricSettings.autoUseBestLyric = true;
+    lyricSettings.preferredAlternativeLyricSource = 'qq';
+});
 
 const song: SongResult = {
     id: 'online-song',
@@ -326,5 +337,72 @@ describe('instrumental tracks, once auto-match has settled them', () => {
         expect(merged.lyricsSource).toBe('imported');
         expect(merged.importedLyrics).toBe(imported);
         expect(merged.matchedIsPureMusic).toBe(true);
+    });
+});
+
+describe('lyric auto-match for external-playback songs', () => {
+    const appleSong: SongResult = {
+        id: 'apple-song',
+        name: 'Apple Song',
+        artists: [{ id: 1, name: 'Artist' }],
+        album: { id: 2, name: 'Album' },
+        durationMs: 215000,
+        sourceRef: { kind: 'online', providerId: 'apple-music', mediaId: '0123456789ABCDEF' },
+    };
+    const neteaseSong: SongResult = {
+        ...song,
+        id: 'netease-song',
+        sourceRef: { kind: 'online', providerId: 'netease', mediaId: 'netease-song' },
+    };
+    const parsedFixture = {
+        lines: [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }],
+        isWordByWord: false,
+    };
+    const callbacks = {
+        isCurrent: () => true,
+        onLyrics: vi.fn(),
+        onDone: vi.fn(),
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        songCacheMock.mockResolvedValue(null);
+        loadLyricsStateMock.mockResolvedValue(null);
+        // An ordinary provider song brings its own lyrics, so the "setting off" case has something to show.
+        lyricsMock.mockResolvedValue({
+            lyrics: parsedFixture,
+            mainText: '[00:00.00]line',
+            wordByWordText: null,
+            translationText: null,
+            isPureMusic: false,
+            chorusRanges: [],
+        });
+    });
+
+    it('auto-matches an external-playback song even when auto-use-best-lyric is off', async () => {
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(true);
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false });
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledWith(appleSong.name, 'Artist', appleSong.durationMs, expect.objectContaining({ album: 'Album', providerCandidate: undefined }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('still respects the setting for ordinary provider songs', async () => {
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(false);
+        await loadOnlineSongLyrics(neteaseSong, null, null, callbacks);
+        expect(autoMatchMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps previously matched lyrics authoritative for an external song', async () => {
+        // The cache early-return is untouched: a stored match is shown as-is, with no second search.
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(true);
+        songCacheMock.mockResolvedValue(parsedFixture);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).not.toHaveBeenCalled();
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
     });
 });
