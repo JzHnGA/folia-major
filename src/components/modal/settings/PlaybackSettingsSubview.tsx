@@ -14,6 +14,8 @@ import SettingsSectionHeading from './navigation/SettingsSectionHeading';
 import { useLyricSettingsStore } from '../../../stores/useLyricSettingsStore';
 import { useAudioSettingsStore } from '../../../stores/useAudioSettingsStore';
 import { useOnlineProviderAccountStore } from '../../../stores/useOnlineProviderAccountStore';
+import { usePlaybackStore } from '../../../stores/usePlaybackStore';
+import { omni } from '../../../services/onlineMusic/omni';
 import { isNeteaseScrobbleReady } from '../../../services/onlineMusic/playbackReportGate';
 
 // src/components/modal/settings/PlaybackSettingsSubview.tsx
@@ -73,6 +75,8 @@ const PlaybackSettingsSubview: React.FC<PlaybackSettingsSubviewProps> = ({
     // two can never disagree about whether the toggle may be flipped.
     useOnlineProviderAccountStore(state => state.accounts.netease?.status);
     const canReportNeteasePlayback = isNeteaseScrobbleReady();
+    // The Music app renders these songs, so the output device picker below does not apply to them.
+    const isExternalPlayback = usePlaybackStore(state => omni.isExternalPlaybackSong(state.currentSong));
     const {
         autoUseBestLyric,
         preferredAlternativeLyricSource,
@@ -457,6 +461,12 @@ const PlaybackSettingsSubview: React.FC<PlaybackSettingsSubviewProps> = ({
                             <span>{t('options.audioOutputRefresh')}</span>
                         </button>
                     </div>
+
+                    {isExternalPlayback && (
+                        <div className="text-[11px] opacity-50 max-w-[420px]" style={{ color: 'var(--text-secondary)' }}>
+                            {t('appleMusic.audioSettingsHint')}
+                        </div>
+                    )}
 
                     {!supportsAudioOutputSelection ? (
                         <div className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
