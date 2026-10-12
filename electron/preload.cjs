@@ -143,6 +143,15 @@ contextBridge.exposeInMainWorld('electron', {
     getKugouApiStatus: () => ipcRenderer.invoke('kugou-api-status'),
     kugouRequest: (operation, params) => ipcRenderer.invoke('kugou-api-request', operation, params),
     bodianRequest: (operation, params) => ipcRenderer.invoke('bodian-api-request', operation, params),
+    appleMusic: {
+        request: (op, args) => ipcRenderer.invoke('apple-music-request', op, args),
+        setMonitoring: (active) => ipcRenderer.invoke('apple-music-set-monitoring', active),
+        onState: (callback) => {
+            const listener = (_event, state) => callback(state);
+            ipcRenderer.on('apple-music-state', listener);
+            return () => ipcRenderer.removeListener('apple-music-state', listener);
+        },
+    },
     getQqPort: () => ipcRenderer.invoke('get-qq-port'),
     getQqApiStatus: () => ipcRenderer.invoke('get-qq-api-status'),
     onQqApiStatusChanged: (callback) => {

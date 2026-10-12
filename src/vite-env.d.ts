@@ -900,6 +900,15 @@ declare global {
         operation: import('./services/onlineMusic/bodianTransport').BodianOperation,
         params?: import('./services/onlineMusic/bodianTransport').BodianParams,
       ) => Promise<import('./services/onlineMusic/bodianTransport').BodianBridgeResult>;
+      /** macOS only: drives the system Music app through the main-process osascript bridge. */
+      appleMusic?: {
+        request: (
+          op: import('./services/onlineMusic/appleMusicTransport').AppleMusicOperation,
+          args?: Record<string, unknown>,
+        ) => Promise<import('./services/onlineMusic/appleMusicTransport').AppleMusicBridgeResult>;
+        setMonitoring: (active: boolean) => Promise<void>;
+        onState: (callback: (state: import('./types/onlineMusic').ExternalPlaybackState) => void) => () => void;
+      };
       kugouRequest: (
         operation: ElectronKugouOperation,
         params?: Record<string, string | number | boolean | undefined>,

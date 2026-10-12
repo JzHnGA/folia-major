@@ -31,6 +31,7 @@ const { createVoiceInputPauseMonitor } = require('./voiceInputPause.cjs');
 const { createDisplaySleepBlocker } = require('./displaySleepBlocker.cjs');
 const { createLyricApi } = require('./lyricApi.cjs');
 const { createLocalCoverAssetStore, getLocalCoverAssetDirectory } = require('./localCoverAssets.cjs');
+const { createMusicAppBridge } = require('./appleMusic/musicAppBridge.cjs');
 const {
   compareVersions,
   getReleaseUrl,
@@ -2342,6 +2343,71 @@ const localCoverAssetStore = createLocalCoverAssetStore({
     return { data: resized.toJPEG(84), mimeType: 'image/jpeg' };
   },
 });
+
+// --- Apple Music (macOS Music.app bridge) ---
+// Persists which cover asset belongs to which Music track so covers survive restarts. Entries are kept in
+// insertion order in memory (electron-store would re-read the whole file on every get) and the oldest are
+// dropped once the cap is exceeded.
+const APPLE_MUSIC_ARTWORK_INDEX_KEY = 'apple_music_artwork_index';
+const APPLE_MUSIC_ARTWORK_INDEX_LIMIT = 5000;
+let appleMusicBridgeInstance = null;
+let appleMusicArtworkIndexEntries = null;
+
+function loadAppleMusicArtworkIndex() {
+  if (!appleMusicArtworkIndexEntries) {
+    const stored = store.get(APPLE_MUSIC_ARTWORK_INDEX_KEY);
+    appleMusicArtworkIndexEntries = new Map(
+      stored && typeof stored === 'object' && !Array.isArray(stored)
+        ? Object.entries(stored).filter(([, assetId]) => typeof assetId === 'string')
+        : [],
+    );
+  }
+  return appleMusicArtworkIndexEntries;
+}
+
+const appleMusicArtworkIndex = {
+  get: (trackId) => loadAppleMusicArtworkIndex().get(trackId),
+  set: (trackId, assetId) => {
+    const entries = loadAppleMusicArtworkIndex();
+    if (entries.get(trackId) === assetId) {
+      return;
+    }
+    entries.set(trackId, assetId);
+    while (entries.size > APPLE_MUSIC_ARTWORK_INDEX_LIMIT) {
+      entries.delete(entries.keys().next().value);
+    }
+    try {
+      store.set(APPLE_MUSIC_ARTWORK_INDEX_KEY, Object.fromEntries(entries));
+    } catch (error) {
+      // The cover itself is already stored; a failed index write only costs a re-fetch after the next restart.
+      console.warn('[AppleMusic] artwork index write failed:', error && error.message);
+    }
+  },
+};
+
+// Created on first use (not at startup) so the Music bridge costs nothing until Apple Music is used;
+// null off macOS, where the Music app does not exist.
+function getAppleMusicBridge() {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
+  if (!appleMusicBridgeInstance) {
+    appleMusicBridgeInstance = createMusicAppBridge({
+      spawn,
+      onState: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('apple-music-state', state);
+        }
+      },
+      artwork: {
+        has: (assetId) => localCoverAssetStore.has(assetId),
+        write: (assetId, bytes, mime) => localCoverAssetStore.write(assetId, bytes, mime),
+      },
+      artworkIndex: appleMusicArtworkIndex,
+    });
+  }
+  return appleMusicBridgeInstance;
+}
 
 function getAudioCacheBaseName(cacheKey) {
   return crypto.createHash('sha256').update(cacheKey).digest('hex');
@@ -5439,6 +5505,12 @@ app.on('before-quit', () => {
     }
   }
   void discordPresence.destroy();
+  // Apple Music: stop the Music app only if Folia started the current track. Not awaited so quitting is never
+  // delayed; dispose() kills the osascript child that has to carry the stop command out, so it waits for the stop.
+  const appleMusicBridge = getAppleMusicBridge();
+  if (appleMusicBridge) {
+    void appleMusicBridge.stopIfOwned().finally(() => appleMusicBridge.dispose());
+  }
   void qqBackend.stop();
   void lyricApi.stop();
 });
@@ -5948,6 +6020,26 @@ ipcMain.handle('bodian-api-request', (event, operation, params) => {
     return { ok: false, error: { code: 'unavailable', message: 'Untrusted Bodian request' } };
   }
   return bodianApiBridge.request(operation, params);
+});
+
+ipcMain.handle('apple-music-request', (event, op, args) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to control the Music app.');
+  }
+
+  const bridge = getAppleMusicBridge();
+  if (!bridge) {
+    return { ok: false, error: { code: 'unavailable', message: 'Apple Music requires macOS' } };
+  }
+  return bridge.request(op, args);
+});
+
+ipcMain.handle('apple-music-set-monitoring', (event, active) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to change Music app state monitoring.');
+  }
+
+  getAppleMusicBridge()?.setMonitoring(Boolean(active));
 });
 
 ipcMain.handle('window-minimize', () => {

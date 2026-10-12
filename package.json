@@ -154,6 +154,9 @@
         }
       ],
       "icon": "build/icon.png",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Folia 需要控制「音乐」App 来播放你的 Apple Music 资料库。"
+      },
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
