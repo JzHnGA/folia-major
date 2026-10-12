@@ -32,6 +32,7 @@ const { createDisplaySleepBlocker } = require('./displaySleepBlocker.cjs');
 const { createLyricApi } = require('./lyricApi.cjs');
 const { createLocalCoverAssetStore, getLocalCoverAssetDirectory } = require('./localCoverAssets.cjs');
 const { createMusicAppBridge } = require('./appleMusic/musicAppBridge.cjs');
+const { createArtworkIndex } = require('./appleMusic/artworkIndex.cjs');
 const {
   compareVersions,
   getReleaseUrl,
@@ -2345,45 +2346,27 @@ const localCoverAssetStore = createLocalCoverAssetStore({
 });
 
 // --- Apple Music (macOS Music.app bridge) ---
-// Persists which cover asset belongs to which Music track so covers survive restarts. Entries are kept in
-// insertion order in memory (electron-store would re-read the whole file on every get) and the oldest are
-// dropped once the cap is exceeded.
-const APPLE_MUSIC_ARTWORK_INDEX_KEY = 'apple_music_artwork_index';
-const APPLE_MUSIC_ARTWORK_INDEX_LIMIT = 5000;
 let appleMusicBridgeInstance = null;
-let appleMusicArtworkIndexEntries = null;
+let appleMusicArtworkIndexInstance = null;
 
-function loadAppleMusicArtworkIndex() {
-  if (!appleMusicArtworkIndexEntries) {
-    const stored = store.get(APPLE_MUSIC_ARTWORK_INDEX_KEY);
-    appleMusicArtworkIndexEntries = new Map(
-      stored && typeof stored === 'object' && !Array.isArray(stored)
-        ? Object.entries(stored).filter(([, assetId]) => typeof assetId === 'string')
-        : [],
-    );
+// Track -> cover asset index in its own file (not the settings store, which is cloned to the renderer).
+// Created on first use because app.getPath('userData') is only valid after app ready.
+function getAppleMusicArtworkIndex() {
+  if (!appleMusicArtworkIndexInstance) {
+    const getIndexPath = () => path.join(app.getPath('userData'), 'apple-music-artwork-index.json');
+    appleMusicArtworkIndexInstance = createArtworkIndex({
+      read: () => JSON.parse(fs.readFileSync(getIndexPath(), 'utf8')),
+      // Written through a temp file so a crash mid-write cannot leave a truncated index behind.
+      write: (entries) => {
+        const target = getIndexPath();
+        const temp = `${target}.tmp`;
+        fs.writeFileSync(temp, JSON.stringify(entries));
+        fs.renameSync(temp, target);
+      },
+    });
   }
-  return appleMusicArtworkIndexEntries;
+  return appleMusicArtworkIndexInstance;
 }
-
-const appleMusicArtworkIndex = {
-  get: (trackId) => loadAppleMusicArtworkIndex().get(trackId),
-  set: (trackId, assetId) => {
-    const entries = loadAppleMusicArtworkIndex();
-    if (entries.get(trackId) === assetId) {
-      return;
-    }
-    entries.set(trackId, assetId);
-    while (entries.size > APPLE_MUSIC_ARTWORK_INDEX_LIMIT) {
-      entries.delete(entries.keys().next().value);
-    }
-    try {
-      store.set(APPLE_MUSIC_ARTWORK_INDEX_KEY, Object.fromEntries(entries));
-    } catch (error) {
-      // The cover itself is already stored; a failed index write only costs a re-fetch after the next restart.
-      console.warn('[AppleMusic] artwork index write failed:', error && error.message);
-    }
-  },
-};
 
 // Created on first use (not at startup) so the Music bridge costs nothing until Apple Music is used;
 // null off macOS, where the Music app does not exist.
@@ -2403,7 +2386,7 @@ function getAppleMusicBridge() {
         has: (assetId) => localCoverAssetStore.has(assetId),
         write: (assetId, bytes, mime) => localCoverAssetStore.write(assetId, bytes, mime),
       },
-      artworkIndex: appleMusicArtworkIndex,
+      artworkIndex: getAppleMusicArtworkIndex(),
     });
   }
   return appleMusicBridgeInstance;
@@ -5511,6 +5494,10 @@ app.on('before-quit', () => {
   if (appleMusicBridge) {
     void appleMusicBridge.stopIfOwned().finally(() => appleMusicBridge.dispose());
   }
+  // Persist any covers recorded since the last debounced write.
+  if (appleMusicArtworkIndexInstance) {
+    appleMusicArtworkIndexInstance.flush();
+  }
   void qqBackend.stop();
   void lyricApi.stop();
 });
@@ -6000,7 +5987,13 @@ ipcMain.handle('remove-local-cover-asset', async (_event, assetId) => {
 });
 
 ipcMain.handle('clear-local-cover-assets', async () => {
-  return localCoverAssetStore.clear();
+  const result = await localCoverAssetStore.clear();
+  // The Apple Music cover index must not outlive the cover files it points at. It is created here when
+  // missing so an index file left by an earlier session is emptied too (it only exists on macOS).
+  if (process.platform === 'darwin') {
+    getAppleMusicArtworkIndex().clear();
+  }
+  return result;
 });
 
 // 内嵌后端的端口、状态、重启、诊断快照与主动自检（electron/loginBackendIpc.cjs）。
