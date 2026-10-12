@@ -3474,6 +3474,14 @@ export default {
     "cloudDrive": "云盘",
     "cloudDriveDesc": "网易云音乐云盘",
   },
+  "appleMusic": {
+    "permissionDenied": "Folia 没有控制「音乐」App 的权限。请在「系统设置 → 隐私与安全性 → 自动化」中允许 Folia 控制「音乐」。",
+    "takeover": "你在「音乐」App 里切了歌，Folia 已暂停同步。",
+    "engineStopped": "「音乐」App 停止了播放，Folia 已暂停。",
+    "playFailed": "「音乐」App 无法播放这首歌。",
+    "exportUnsupported": "Apple Music 歌曲由「音乐」App 发声，无法导出带声音的视频。",
+    "audioSettingsHint": "Apple Music 歌曲由「音乐」App 输出，不受这里的设置影响。",
+  },
   "unifiedPanel": {
     "nowPlayingStageDescription": "Now Playing 正由外部播放器控制，Folia 只负责展示歌词和视觉效果。",
     "stageLocalInputDescription": "Stage 现在是本地单项输入模式。外部可以推送一份完整歌词对象或一段媒体，播放与展示仍由 Folia 自己控制。",

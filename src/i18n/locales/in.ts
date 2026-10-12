@@ -3360,6 +3360,14 @@ export default {
     "cloudDrive": "Cloud Drive",
     "cloudDriveDesc": "NetEase Cloud Music Drive"
   },
+  "appleMusic": {
+    "permissionDenied": "Folia belum diizinkan mengontrol Music. Izinkan di Pengaturan Sistem → Privasi & Keamanan → Otomatisasi.",
+    "takeover": "Anda mengganti lagu di Music, jadi Folia berhenti menyinkronkan.",
+    "engineStopped": "Music berhenti memutar, jadi Folia dijeda.",
+    "playFailed": "Music tidak dapat memutar lagu ini.",
+    "exportUnsupported": "Lagu Apple Music diputar lewat aplikasi Music, jadi tidak bisa diekspor beserta suaranya.",
+    "audioSettingsHint": "Lagu Apple Music diputar lewat aplikasi Music dan tidak terpengaruh pengaturan ini."
+  },
   "unifiedPanel": {
     "nowPlayingStageDescription": "Now Playing dikendalikan oleh pemutar eksternal. Folia hanya bertanggung jawab menampilkan lirik dan efek visual.",
     "stageLocalInputDescription": "Stage dalam mode input tunggal lokal. Perangkat eksternal dapat mengirim lirik atau media, tetapi pemutaran dan tampilan dikendalikan oleh Folia itu sendiri."

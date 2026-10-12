@@ -3475,6 +3475,14 @@ export default {
     "cloudDrive": "Cloud Drive",
     "cloudDriveDesc": "NetEase Cloud Music Drive",
   },
+  "appleMusic": {
+    "permissionDenied": "Folia isn't allowed to control Music. Allow it in System Settings → Privacy & Security → Automation.",
+    "takeover": "You changed the song in Music, so Folia stopped syncing.",
+    "engineStopped": "Music stopped playing, so Folia paused.",
+    "playFailed": "Music couldn't play this song.",
+    "exportUnsupported": "Apple Music songs play through the Music app, so they can't be exported with sound.",
+    "audioSettingsHint": "Apple Music songs play through the Music app and aren't affected by these settings.",
+  },
   "unifiedPanel": {
     "nowPlayingStageDescription": "Now Playing is being controlled by an external player. Folia is only responsible for displaying lyrics and visual effects.",
     "stageLocalInputDescription": "Stage is in local single-input mode. External devices can push lyrics or media, but playback and display are controlled by Folia itself.",
