@@ -179,65 +179,125 @@ describe('Apple Music app bridge', () => {
 
     it('fails in-flight requests with network when the process exits and restarts with backoff', async () => {
         const { bridge, spawn, children, setRespond } = setup();
-        const inFlight = bridge.request('pause', {});
-        children[0].emit('exit', 1, null);
-        expect(await inFlight).toMatchObject({ ok: false, error: { code: 'network' } });
+        setRespond(message => (message.op === 'getState' ? getStateReply : undefined));
 
-        setRespond(() => ok(null));
-        const next = bridge.request('pause', {});
+        // First exit: the request is re-sent once, on the restarted process, and takes that process's reply.
+        const retried = bridge.request('pause', {});
+        const [original] = writtenMessages(children[0]);
+        children[0].emit('exit', 1, null);
         expect(spawn).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(499);
         expect(spawn).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1);
         expect(spawn).toHaveBeenCalledTimes(2);
-        expect(await next).toEqual({ ok: true, data: null });
+        expect(writtenMessages(children[1])).toEqual([original]);
+        emitReply(children[1], original.id, null);
+        expect(await retried).toEqual({ ok: true, data: null });
+
+        // A request that was already answered is not sent again, and a second exit before the answer fails the retry.
+        const doomed = bridge.request('resume', {});
+        children[1].emit('exit', 1, null);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(spawn).toHaveBeenCalledTimes(3);
+        expect(writtenOps(children[2])).toEqual(['resume']);
+        children[2].emit('exit', 1, null);
+        expect(await doomed).toMatchObject({ ok: false, error: { code: 'network' } });
+    });
+
+    it('keeps the original timeout on a request that waits for the restart', async () => {
+        const { bridge, spawn, children } = setup();
+        const inFlight = bridge.request('pause', {});
+        children[0].emit('exit', 1, null);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(spawn).toHaveBeenCalledTimes(2);
+        // Re-sent at 500 ms but still due 8 s after the original call.
+        await vi.advanceTimersByTimeAsync(7499);
+        let settled = false;
+        void inFlight.then(() => { settled = true; });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await inFlight).toMatchObject({ ok: false, error: { code: 'network' } });
     });
 
     it('backs off 500, 2000 and 10000 ms while the process keeps dying and resets after a reply', async () => {
         const { bridge, spawn, children, setRespond } = setup();
         // Each delay is measured from the previous exit: ask 100 ms before it is over, expect the spawn exactly then.
-        const crash = async (index: number, delayMs: number) => {
+        const spawnAfter = async (delayMs: number, spawns: number) => {
             await vi.advanceTimersByTimeAsync(delayMs - 100);
             const pending = bridge.request('pause', {});
             await vi.advanceTimersByTimeAsync(99);
-            expect(spawn).toHaveBeenCalledTimes(index);
+            expect(spawn).toHaveBeenCalledTimes(spawns - 1);
             await vi.advanceTimersByTimeAsync(1);
-            expect(spawn).toHaveBeenCalledTimes(index + 1);
-            children[index].emit('exit', 1, null);
-            expect(await pending).toMatchObject({ ok: false, error: { code: 'network' } });
+            expect(spawn).toHaveBeenCalledTimes(spawns);
+            return { pending };
         };
         const first = bridge.request('pause', {});
         children[0].emit('exit', 1, null);
-        await first;
-        await crash(1, 500);
-        await crash(2, 2000);
-        await crash(3, 10000);
-        await crash(4, 10000);
+        await vi.advanceTimersByTimeAsync(499);
+        expect(spawn).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(spawn).toHaveBeenCalledTimes(2);
+        children[1].emit('exit', 1, null);
+        expect(await first).toMatchObject({ ok: false, error: { code: 'network' } });
+
+        const { pending: second } = await spawnAfter(2000, 3);
+        children[2].emit('exit', 1, null);
+        // The retry would have to wait 10 s for the restart, longer than the 8 s timeout.
+        const { pending: third } = await spawnAfter(10000, 4);
+        expect(await second).toMatchObject({ ok: false, error: { code: 'network' } });
+        children[3].emit('exit', 1, null);
 
         setRespond(() => ok(null));
-        await vi.advanceTimersByTimeAsync(9900);
-        const recovered = bridge.request('pause', {});
-        await vi.advanceTimersByTimeAsync(100);
-        expect(await recovered).toEqual({ ok: true, data: null });
-        expect(spawn).toHaveBeenCalledTimes(6);
+        const { pending: fourth } = await spawnAfter(10000, 5);
+        expect(await third).toMatchObject({ ok: false, error: { code: 'network' } });
+        expect(await fourth).toEqual({ ok: true, data: null });
 
         // A reply proves the process worked, so the next crash starts again from 500 ms.
-        children[5].emit('exit', 1, null);
-        await vi.advanceTimersByTimeAsync(400);
-        const afterReset = bridge.request('pause', {});
-        await vi.advanceTimersByTimeAsync(99);
-        expect(spawn).toHaveBeenCalledTimes(6);
-        await vi.advanceTimersByTimeAsync(1);
-        expect(spawn).toHaveBeenCalledTimes(7);
-        expect(await afterReset).toEqual({ ok: true, data: null });
+        children[4].emit('exit', 1, null);
+        expect(await (await spawnAfter(500, 6)).pending).toEqual({ ok: true, data: null });
     });
 
     it('treats a failed spawn as an exit', async () => {
         const { bridge, spawn, children } = setup();
         const pending = bridge.request('pause', {});
         children[0].emit('error', new Error('spawn osascript ENOENT'));
+        await vi.advanceTimersByTimeAsync(500);
+        expect(spawn).toHaveBeenCalledTimes(2);
+        children[1].emit('error', new Error('spawn osascript ENOENT'));
         expect(await pending).toMatchObject({ ok: false, error: { code: 'network' } });
-        expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('samples the position at the midpoint of when the script started the request and the reply', async () => {
+        vi.setSystemTime(1_000_000);
+        const { bridge, children } = setup();
+        // A slow list call occupies the single-threaded script; the state read queued behind it only starts once it is done.
+        const slow = bridge.request('searchLibrary', { query: 'x', limit: 10 });
+        await vi.advanceTimersByTimeAsync(100);
+        const state = bridge.request('getState', {});
+        const [slowMessage, stateMessage] = writtenMessages(children[0]);
+        await vi.advanceTimersByTimeAsync(1400);
+        emitReply(children[0], slowMessage.id, []);
+        await vi.advanceTimersByTimeAsync(30);
+        emitReply(children[0], stateMessage.id, { state: 'playing', persistentId: PERSISTENT_ID, position: 7, duration: 100 });
+        expect(await slow).toEqual({ ok: true, data: [] });
+        expect(await state).toMatchObject({ ok: true, data: { sampledAtMs: 1_000_000 + 1500 + 15 } });
+    });
+
+    it('counts a reply to an already timed-out request as the moment the next one started', async () => {
+        vi.setSystemTime(1_000_000);
+        const { bridge, children } = setup();
+        const timedOut = bridge.request('pause', {});
+        await vi.advanceTimersByTimeAsync(100);
+        const state = bridge.request('getState', {});
+        const [pauseMessage, stateMessage] = writtenMessages(children[0]);
+        // pause times out at 8000 ms, getState would at 8100 ms; the late reply to pause still ends the script's busy time.
+        await vi.advanceTimersByTimeAsync(7950);
+        expect(await timedOut).toMatchObject({ ok: false, error: { code: 'network' } });
+        emitReply(children[0], pauseMessage.id, null);
+        await vi.advanceTimersByTimeAsync(30);
+        emitReply(children[0], stateMessage.id, { state: 'paused', persistentId: null, position: 0, duration: null });
+        expect(await state).toMatchObject({ ok: true, data: { sampledAtMs: 1_000_000 + 8050 + 15 } });
     });
 
     it('polls getState only while monitoring and pushes normalized state', async () => {
@@ -425,6 +485,8 @@ describe('Apple Music app bridge', () => {
         const pending = bridge.request('pause', {});
         expect(() => children[0].stdin.emit('error', new Error('write EPIPE'))).not.toThrow();
         children[0].emit('exit', 1, null);
+        await vi.advanceTimersByTimeAsync(500);
+        children[1].emit('exit', 1, null);
         expect(await pending).toMatchObject({ ok: false, error: { code: 'network' } });
     });
 

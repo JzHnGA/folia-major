@@ -4,7 +4,8 @@ const { MUSIC_APP_JXA_SOURCE } = require('./musicAppScript.cjs');
 
 // electron/appleMusic/musicAppBridge.cjs
 // Drives macOS Music.app through one long-lived `osascript -l JavaScript` child: stdin/stdout carry one JSON
-// object per line, every request has an id and a timeout, and a dead child is restarted lazily with backoff.
+// object per line, every request has an id and a timeout, and a dead child is restarted lazily with backoff
+// (requests that were in flight are re-sent once on the new child).
 // The module imports nothing from Electron and takes every dependency by injection, so it is unit-testable
 // with a fake spawn. It never throws and request() never rejects: failures come back as provider error codes.
 
@@ -95,6 +96,7 @@ function createMusicAppBridge({
   let nextId = 1;
   let consecutiveFailures = 0;
   let spawnNotBefore = 0;
+  let lastReplyAt = 0;
   let restartTimer = null;
   let disposed = false;
   let monitoring = false;
@@ -138,12 +140,17 @@ function createMusicAppBridge({
     } catch {
       return;
     }
-    if (!isRecord(message)) return;
+    if (!isRecord(message) || message.id === undefined) return;
+    const receivedAt = now();
+    // The script answers strictly in order, so the previous reply (even one for a request that already timed out)
+    // marks when this request actually began executing, not when it was written into a busy pipe.
+    const previousReplyAt = lastReplyAt;
+    lastReplyAt = receivedAt;
     const entry = pending.get(message.id);
     if (!entry) return;
     consecutiveFailures = 0;
-    const receivedAt = now();
-    if (message.ok === true) settle(entry, { ok: true, data: message.data === undefined ? null : message.data, sentAt: entry.sentAt, receivedAt });
+    const startedAt = Math.max(entry.sentAt, previousReplyAt);
+    if (message.ok === true) settle(entry, { ok: true, data: message.data === undefined ? null : message.data, startedAt, receivedAt });
     else settle(entry, scriptFailure(message.error));
   }
 
@@ -168,16 +175,26 @@ function createMusicAppBridge({
     spawnNotBefore = now() + delay;
   }
 
-  // The child is gone (exit or spawn error): fail what was in flight and start the backoff.
+  // The child is gone (exit or spawn error): start the backoff. Requests that were in flight are queued for one
+  // re-send on the restarted child (still bound by their original timer); the ones already re-sent once fail.
   function handleGone(proc) {
     if (proc !== child) return;
     child = null;
     decoder = null;
     partialLine = '';
     recordFailure();
+    let requeued = false;
     for (const entry of [...pending.values()]) {
-      if (entry.written) settle(entry, failure('network', 'Music app bridge process exited'));
+      if (!entry.written) continue;
+      if (entry.retried) {
+        settle(entry, failure('network', 'Music app bridge process exited'));
+      } else {
+        entry.retried = true;
+        entry.written = false;
+        requeued = true;
+      }
     }
+    if (requeued) ensureChild();
   }
 
   function startChild() {
@@ -225,7 +242,7 @@ function createMusicAppBridge({
     return new Promise((resolve) => {
       const id = nextId;
       nextId += 1;
-      const entry = { id, resolve, line: JSON.stringify({ id, op, args }) + '\n', timer: null, written: false, sentAt: 0 };
+      const entry = { id, resolve, line: JSON.stringify({ id, op, args }) + '\n', timer: null, written: false, retried: false, sentAt: 0 };
       pending.set(id, entry);
       entry.timer = setTimer(() => settle(entry, failure('network', 'Music app bridge timed out')), timeoutMs);
       if (child) writePending(entry);
@@ -256,7 +273,7 @@ function createMusicAppBridge({
     return { ok: true, data: playlists };
   }
 
-  function shapeState(raw, sentAt, receivedAt) {
+  function shapeState(raw, startedAt, receivedAt) {
     if (!isRecord(raw)) return failure('invalid-response', 'Music app returned an unexpected player state');
     const position = typeof raw.position === 'number' && Number.isFinite(raw.position) ? raw.position : 0;
     const duration = typeof raw.duration === 'number' && Number.isFinite(raw.duration) ? raw.duration : null;
@@ -267,8 +284,8 @@ function createMusicAppBridge({
         mediaId: typeof raw.persistentId === 'string' ? raw.persistentId : null,
         positionSec: position,
         durationSec: duration,
-        // The position was read somewhere between sending and receiving; the midpoint is the best estimate.
-        sampledAtMs: (sentAt + receivedAt) / 2,
+        // The position was read somewhere between the script starting the request and the reply arriving.
+        sampledAtMs: (startedAt + receivedAt) / 2,
       },
     };
   }
@@ -301,7 +318,7 @@ function createMusicAppBridge({
       case 'getArtwork':
         return storeArtwork(prepared.id, raw.data);
       case 'getState':
-        return shapeState(raw.data, raw.sentAt, raw.receivedAt);
+        return shapeState(raw.data, raw.startedAt, raw.receivedAt);
       default:
         return { ok: true, data: raw.data };
     }
