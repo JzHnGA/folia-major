@@ -122,7 +122,7 @@ const search: OnlineSearchProvider = {
         const records = await requestAppleMusic<AppleMusicTrackRecord[]>('searchLibrary', { query: text, limit: requested });
         if (!Array.isArray(records)) throw new OnlineProviderError('invalid-response', 'Apple Music search list is missing', APPLE_MUSIC_PROVIDER_ID);
         const items = records.slice(offset, offset + limit).map(normalizeAppleMusicSong);
-        // A full answer may be cut off by the request limit; a short one is the whole result.
+        // The bridge returns up to the requested number of songs (music videos are skipped), so a short answer is the whole result.
         const exhausted = records.length < requested;
         return pageOf(items, exhausted ? records.length : undefined, offset, !exhausted && requested < MAX_SEARCH_LIMIT);
     },
@@ -181,8 +181,17 @@ const lyrics: OnlineLyricsProvider = {
 
 const auth: OnlineAuthProvider = {
     // The probe only proves the bridge is there; Automation permission shows up on the first real request.
+    // After a refusal, one listPlaylists re-tests it while Music is already running (so it is not launched): access may have been granted since.
     async getLoginStatus() {
-        await requestAppleMusic('probe');
+        const state = await requestAppleMusic<{ running?: boolean } | null>('probe');
+        if (getAppleMusicPermission() === 'denied') {
+            if (!state?.running) return null;
+            try {
+                await requestAppleMusic('listPlaylists');
+            } catch {
+                return null;
+            }
+        }
         return getAppleMusicPermission() === 'denied' ? null : { ...LOCAL_USER };
     },
     async logout() {

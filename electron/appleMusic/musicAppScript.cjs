@@ -54,9 +54,15 @@ const handlers = {
     if (!list) fail(-1728, 'Playlist not found');
     return bulk(list.tracks).filter(track => track.mediaKind === 'song');
   },
+  // Collects songs until the limit is reached; slicing before the song filter let music videos shorten a full reply.
   searchLibrary({ query, limit }) {
     const hits = music().search(music().libraryPlaylists[0], { for: query, only: 'all' }) || [];
-    return hits.slice(0, limit).map(record).filter(track => track.mediaKind === 'song');
+    const songs = [];
+    for (let i = 0; i < hits.length && songs.length < limit; i += 1) {
+      const track = record(hits[i]);
+      if (track.mediaKind === 'song') songs.push(track);
+    }
+    return songs;
   },
   getTrack({ id }) { return record(findTrack(id)); },
   // rawData() arrives as the descriptor text 'tdta'($<HEX>$); hand back only the hex.

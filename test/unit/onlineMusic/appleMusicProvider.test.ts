@@ -357,13 +357,60 @@ describe('Apple Music account and availability', () => {
         expect(provider.getAvailability!()).toEqual({ configured: true });
     });
 
-    it('does not read a successful probe as granted access', async () => {
-        const { transport } = await load();
+    it.each(['probe', 'getState', 'stop'] as const)('does not read a successful %s as granted access', async op => {
+        const { provider, transport } = await load();
         handlers.getTrack = () => fail('auth-required');
-        handlers.probe = () => ok({ running: true, permission: 'unknown' });
+        handlers[op] = () => ok(op === 'probe' ? { running: false, permission: 'unknown' } : null);
         await expect(transport.requestAppleMusic('getTrack', { id: track.id })).rejects.toBeDefined();
-        await transport.requestAppleMusic('probe');
+        await transport.requestAppleMusic(op);
         expect(transport.getAppleMusicPermission()).toBe('denied');
+        expect(provider.getAvailability!()).toEqual({ configured: false, reason: 'not-configured' });
+    });
+
+    describe('after the permission was refused', () => {
+        const refuse = async () => {
+            const loaded = await load();
+            handlers.listPlaylists = () => fail('auth-required');
+            await expect(loaded.provider.library!.getUserPlaylists('local', 10, 0)).rejects.toMatchObject({ code: 'auth-required' });
+            expect(loaded.transport.getAppleMusicPermission()).toBe('denied');
+            request.mockClear();
+            return loaded;
+        };
+
+        it('signs in again once a running Music app accepts a real request', async () => {
+            const { provider, transport } = await refuse();
+            handlers.probe = () => ok({ running: true, permission: 'unknown' });
+            handlers.listPlaylists = () => ok([]);
+            expect(await provider.auth!.getLoginStatus()).toEqual({ id: 'local', nickname: '音乐资料库' });
+            expect(transport.getAppleMusicPermission()).toBe('granted');
+            expect(provider.getAvailability!()).toEqual({ configured: true });
+            expect(request.mock.calls.map(([op]) => op)).toEqual(['probe', 'listPlaylists']);
+        });
+
+        it('stays signed out without another request while Music is not running', async () => {
+            const { provider } = await refuse();
+            handlers.probe = () => ok({ running: false, permission: 'unknown' });
+            handlers.listPlaylists = () => ok([]);
+            expect(await provider.auth!.getLoginStatus()).toBeNull();
+            expect(provider.getAvailability!()).toEqual({ configured: false, reason: 'not-configured' });
+            expect(request.mock.calls.map(([op]) => op)).toEqual(['probe']);
+        });
+
+        it('stays signed out when the running Music app still refuses', async () => {
+            const { provider } = await refuse();
+            handlers.probe = () => ok({ running: true, permission: 'unknown' });
+            expect(await provider.auth!.getLoginStatus()).toBeNull();
+            expect(provider.getAvailability!()).toEqual({ configured: false, reason: 'not-configured' });
+            expect(request.mock.calls.map(([op]) => op)).toEqual(['probe', 'listPlaylists']);
+        });
+
+        it('stays signed out when the re-test fails for another reason', async () => {
+            const { provider, transport } = await refuse();
+            handlers.probe = () => ok({ running: true, permission: 'unknown' });
+            handlers.listPlaylists = () => fail('network');
+            expect(await provider.auth!.getLoginStatus()).toBeNull();
+            expect(transport.getAppleMusicPermission()).toBe('denied');
+        });
     });
 
     it('is runtime-unavailable without the desktop bridge', async () => {

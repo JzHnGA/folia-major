@@ -11,8 +11,10 @@ export type AppleMusicPermission = 'granted' | 'denied' | 'unknown';
 
 const PROVIDER_ID = 'apple-music';
 
-// The probe sends no Apple Event, so only real requests can tell whether Automation access was granted.
+// Only an answer that needed an Apple Event can tell whether Automation access was granted.
 let permission: AppleMusicPermission = 'unknown';
+// These succeed without contacting Music.app when it is closed (the probe never does), so their success proves nothing.
+const OPERATIONS_WITHOUT_APPLE_EVENT: ReadonlySet<AppleMusicOperation> = new Set<AppleMusicOperation>(['probe', 'getState', 'stop']);
 
 export const isAppleMusicBridgeAvailable = (): boolean => (
     typeof window !== 'undefined'
@@ -37,7 +39,7 @@ export async function requestAppleMusic<T = unknown>(op: AppleMusicOperation, ar
         if (result.error.code === 'auth-required') permission = 'denied';
         throw new OnlineProviderError(result.error.code, result.error.message, PROVIDER_ID);
     }
-    if (op !== 'probe') permission = 'granted';
+    if (!OPERATIONS_WITHOUT_APPLE_EVENT.has(op)) permission = 'granted';
     return result.data as T;
 }
 
