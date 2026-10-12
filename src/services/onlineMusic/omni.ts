@@ -5,6 +5,7 @@ import type {
     OmniAudioSource,
     OmniChorusRange,
     OmniCollection,
+    OmniExternalPlaybackEngine,
     OmniHistoryEntry,
     OmniLyricsResult,
     OmniPage,
@@ -57,6 +58,14 @@ const providerForSong = (song: SongResult) => {
     const provider = getOnlineMusicProviderForSong(song);
     if (!provider) throw new OnlineProviderError('unsupported', 'Song is not owned by an online provider');
     return provider;
+};
+
+// The engine is only exposed when the provider both declares the capability and supplies it, so a
+// half-wired provider reads as an ordinary song. Like canReportPlayback, never throws: local,
+// Navidrome and unregistered songs are simply not external.
+const externalPlaybackEngineFor = (song: SongResult): OmniExternalPlaybackEngine | null => {
+    const provider = getOnlineMusicProviderForSong(song);
+    return providerSupports(provider, 'externalPlayback') ? provider?.externalPlayback ?? null : null;
 };
 
 const providerForCollection = (collection: OmniCollection) => requireOnlineMusicProvider(collection.providerId);
@@ -479,6 +488,14 @@ export const omni = {
 
     canPlaySong(song: SongResult): boolean {
         return Boolean(getOnlineMusicProviderForSong(song)?.playback);
+    },
+
+    getExternalPlaybackEngine(song: SongResult): OmniExternalPlaybackEngine | null {
+        return externalPlaybackEngineFor(song);
+    },
+
+    isExternalPlaybackSong(song: SongResult | null | undefined): boolean {
+        return Boolean(song && externalPlaybackEngineFor(song));
     },
 
     async getAudioSource(song: SongResult, quality: AudioQualityPreference): Promise<OmniAudioSource | null> {

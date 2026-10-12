@@ -48,6 +48,8 @@ export interface ProviderCapabilities {
     playlistTrackMutations?: boolean;
     likes?: boolean;
     userAlbums?: boolean;
+    /** The provider's songs are played by an external app, not by Folia's audio pipeline; see OnlineExternalPlaybackProvider. */
+    externalPlayback?: boolean;
     /** The provider accepts a listening report for a track the user actually played. */
     playbackReports?: boolean;
 }
@@ -275,6 +277,33 @@ export interface OnlinePlaybackReportProvider {
     reportPlayback(song: SongResult, report: ProviderPlaybackReport): Promise<void>;
 }
 
+/** One reading of an external player; `positionSec` was true at `sampledAtMs`, not at the moment it is consumed. */
+export interface ExternalPlaybackState {
+    state: 'playing' | 'paused' | 'stopped';
+    mediaId: string | null;
+    positionSec: number;
+    durationSec: number | null;
+    /** `Date.now()` timestamp of the reading. */
+    sampledAtMs: number;
+}
+
+/**
+ * Engine for a provider whose audio is rendered by an app outside Folia, so there is no URL to hand
+ * to an `<audio>` element. The caller drives it with these commands and follows its state stream.
+ */
+export interface OnlineExternalPlaybackProvider {
+    play(song: SongResult, positionSec: number): Promise<void>;
+    pause(): Promise<void>;
+    resume(): Promise<void>;
+    seek(positionSec: number): Promise<void>;
+    stop(): Promise<void>;
+    /** 0..1 */
+    setVolume(volume: number): Promise<void>;
+    /** Lets the engine poll faster or stop polling while nothing is listening. */
+    setMonitoring(active: boolean): void;
+    subscribeState(listener: (state: ExternalPlaybackState) => void): () => void;
+}
+
 export interface OnlineLyricsProvider {
     getLyrics(song: SongResult, context?: { userId?: MediaId | null }): Promise<ProviderLyricsResult>;
     getChorusRanges?(songId: MediaId): Promise<ChorusRange[]>;
@@ -447,6 +476,7 @@ export interface OnlineMusicProvider {
     search?: OnlineSearchProvider;
     playback?: OnlinePlaybackProvider;
     playbackReports?: OnlinePlaybackReportProvider;
+    externalPlayback?: OnlineExternalPlaybackProvider;
     lyrics?: OnlineLyricsProvider;
     auth?: OnlineAuthProvider;
     library?: OnlineLibraryProvider;
@@ -469,6 +499,8 @@ export type OmniSongAvailability = ProviderSongAvailability;
 export type OmniSongReplacement = ProviderSongReplacement;
 export type OmniLyricsResult = ProviderLyricsResult;
 export type OmniPlaybackReport = ProviderPlaybackReport;
+export type OmniExternalPlaybackEngine = OnlineExternalPlaybackProvider;
+export type OmniExternalPlaybackState = ExternalPlaybackState;
 export type OmniChorusRange = ChorusRange;
 export type OmniAlbum = ProviderAlbumSummary;
 export type OmniArtist = ProviderArtistSummary;
