@@ -191,23 +191,68 @@ describe('Apple Music library and catalog', () => {
         expect(request).not.toHaveBeenCalled();
     });
 
-    it('searches with an offset-covering limit capped at 100 and slices the page', async () => {
-        const { provider } = await load();
-        const found = Array.from({ length: 6 }, (_, index) => ({ ...track, id: `000000000000000${index}` }));
-        handlers.searchLibrary = () => ok(found);
-        const page = await provider.search!.searchSongs('测试', 3, 3);
-        expect(calls('searchLibrary')).toEqual([['searchLibrary', { query: '测试', limit: 6 }]]);
-        expect(page.items.map(song => song.id)).toEqual(['0000000000000003', '0000000000000004', '0000000000000005']);
-        expect(page).toMatchObject({ hasMore: true, nextOffset: 6 });
-        await provider.search!.searchSongs('测试', 50, 80);
-        expect(calls('searchLibrary')[1]).toEqual(['searchLibrary', { query: '测试', limit: 100 }]);
-    });
+    describe('searching the library', () => {
+        const withId = (index: number, patch: Partial<AppleMusicTrackRecord> = {}): AppleMusicTrackRecord => ({
+            ...track, name: '无关', artist: '无关', albumArtist: '无关', album: '无关', ...patch, id: String(index).padStart(16, '0'),
+        });
+        const idsOf = (page: { items: UnifiedSong[] }) => page.items.map(song => Number(song.id));
 
-    it('ends the search when the library returns fewer tracks than requested', async () => {
-        const { provider } = await load();
-        handlers.searchLibrary = () => ok([track]);
-        const page = await provider.search!.searchSongs('测试', 20, 0);
-        expect(page).toMatchObject({ total: 1, hasMore: false, nextOffset: 1 });
+        it.each(['name', 'artist', 'albumArtist', 'album'] as const)('matches on the %s field', async field => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => ok([withId(1), withId(2, { [field]: 'a Zebra b' }), withId(3)]);
+            expect(idsOf(await provider.search!.searchSongs('zebra', 20, 0))).toEqual([2]);
+        });
+
+        it('ignores case on both sides and trims the query', async () => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => ok([withId(1, { name: 'ÉCOLE Song' }), withId(2, { artist: 'abc def' }), withId(3)]);
+            expect(idsOf(await provider.search!.searchSongs('  école ', 20, 0))).toEqual([1]);
+            expect(idsOf(await provider.search!.searchSongs('ABC DEF', 20, 0))).toEqual([2]);
+        });
+
+        it('keeps library order and pages across the match list with an exact total', async () => {
+            const { provider } = await load();
+            const hits = [1, 3, 4, 6, 8, 9];
+            handlers.getPlaylistTracks = () => ok(Array.from({ length: 10 }, (_, index) => withId(index, hits.includes(index) ? { name: '命中歌曲' } : {})));
+            const first = await provider.search!.searchSongs('命中', 4, 0);
+            const second = await provider.search!.searchSongs('命中', 4, 4);
+            const past = await provider.search!.searchSongs('命中', 4, 6);
+            expect(idsOf(first)).toEqual([1, 3, 4, 6]);
+            expect(first).toMatchObject({ total: 6, hasMore: true, nextOffset: 4 });
+            expect(idsOf(second)).toEqual([8, 9]);
+            expect(second).toMatchObject({ total: 6, hasMore: false, nextOffset: 6 });
+            expect(past).toEqual({ items: [], total: 6, hasMore: false, nextOffset: 6 });
+        });
+
+        it('is not capped at 100 results', async () => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => ok(Array.from({ length: 250 }, (_, index) => withId(index, { name: '命中歌曲' })));
+            const page = await provider.search!.searchSongs('命中', 100, 120);
+            expect(page.items).toHaveLength(100);
+            expect(page).toMatchObject({ total: 250, hasMore: true, nextOffset: 220 });
+        });
+
+        it('returns an empty result when nothing matches', async () => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => ok([withId(1)]);
+            expect(await provider.search!.searchSongs('不存在', 20, 0)).toEqual({ items: [], total: 0, hasMore: false, nextOffset: 0 });
+        });
+
+        it('reads the library once for repeated searches and shares it with the playlist view, never using searchLibrary', async () => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => ok([withId(1, { name: '命中歌曲' })]);
+            await Promise.all([provider.search!.searchSongs('命中', 20, 0), provider.search!.searchSongs('歌曲', 20, 0)]);
+            await provider.search!.searchSongs('命中', 20, 0);
+            await provider.catalog!.getPlaylistTracks!('library', 20, 0);
+            expect(calls('getPlaylistTracks')).toEqual([['getPlaylistTracks', { playlistId: 'library' }]]);
+            expect(calls('searchLibrary')).toHaveLength(0);
+        });
+
+        it('surfaces a failed library read', async () => {
+            const { provider } = await load();
+            handlers.getPlaylistTracks = () => fail('auth-required');
+            await expect(provider.search!.searchSongs('命中', 20, 0)).rejects.toMatchObject({ code: 'auth-required', providerId: 'apple-music' });
+        });
     });
 
     it('reads one track for the song detail', async () => {

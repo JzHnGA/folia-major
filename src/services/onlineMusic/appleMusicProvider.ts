@@ -23,9 +23,6 @@ const LOCAL_USER = { id: 'local', nickname: '音乐资料库' };
 const PLAYLIST_CACHE_MS = 60_000;
 const ARTWORK_TIMEOUT_MS = 1500;
 const COVER_SIZE = 1024;
-// The bridge rejects searches above these bounds.
-const MAX_SEARCH_LIMIT = 100;
-const MAX_QUERY_LENGTH = 200;
 
 interface CachedPlaylist {
     at: number;
@@ -115,16 +112,17 @@ function loadPlaylistTracks(id: MediaId): Promise<AppleMusicTrackRecord[]> {
 }
 
 const search: OnlineSearchProvider = {
+    // Filters the cached library listing instead of asking Music.app: its own search reads every hit one Apple Event at a time (seconds), the bulk listing takes ~150 ms.
+    // Matches keep library order and are paged with an exact total.
     async searchSongs(query, limit, offset) {
-        const text = query.trim().slice(0, MAX_QUERY_LENGTH);
-        if (!text) return pageOf<UnifiedSong>([], 0, offset, false);
-        const requested = Math.max(1, Math.min(offset + limit, MAX_SEARCH_LIMIT));
-        const records = await requestAppleMusic<AppleMusicTrackRecord[]>('searchLibrary', { query: text, limit: requested });
-        if (!Array.isArray(records)) throw new OnlineProviderError('invalid-response', 'Apple Music search list is missing', APPLE_MUSIC_PROVIDER_ID);
-        const items = records.slice(offset, offset + limit).map(normalizeAppleMusicSong);
-        // The bridge returns up to the requested number of songs (music videos are skipped), so a short answer is the whole result.
-        const exhausted = records.length < requested;
-        return pageOf(items, exhausted ? records.length : undefined, offset, !exhausted && requested < MAX_SEARCH_LIMIT);
+        const needle = query.trim().toLocaleLowerCase();
+        if (!needle) return pageOf<UnifiedSong>([], 0, offset, false);
+        const library = await loadPlaylistTracks(LIBRARY_PLAYLIST_ID);
+        const matches = library.filter(record => (
+            [record.name, record.artist, record.albumArtist, record.album].some(field => String(field ?? '').toLocaleLowerCase().includes(needle))
+        ));
+        const items = matches.slice(offset, offset + limit).map(normalizeAppleMusicSong);
+        return pageOf(items, matches.length, offset, offset + items.length < matches.length);
     },
 };
 
