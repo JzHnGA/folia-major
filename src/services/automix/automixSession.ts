@@ -100,6 +100,11 @@ export const EXTERNAL_PREROLL_SEC = 2.5;
 /** Which side of a song change an external engine plays, when exactly one does. */
 export type AutomixExternalSide = 'from' | 'to';
 
+/** How far ahead of its `outStart` a blend is armed: the ordinary lead, plus the preroll into an external song. */
+const armLeadFor = (external: AutomixExternalSide | null): number => (
+    AUTOMIX_ARM_LEAD_SEC + (external === 'to' ? EXTERNAL_PREROLL_SEC : 0)
+);
+
 /**
  * How early the hold is lifted, to pay for the round trip between letting go and hearing it.
  *
@@ -858,8 +863,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         // Early by the lead, not on the dot: everything between here and `outStart` is what the
         // next track gets to load in, instead of taking it out of the blend. An arriving external
         // song is armed a preroll earlier still, so the Music app is already sounding when it is due.
-        const lead = AUTOMIX_ARM_LEAD_SEC + (external === 'to' ? EXTERNAL_PREROLL_SEC : 0);
-        if (nextPlan.kind !== 'fade' || request.time < nextPlan.outStart - lead) {
+        if (nextPlan.kind !== 'fade' || request.time < nextPlan.outStart - armLeadFor(external)) {
             return nextPlan;
         }
 
@@ -1001,7 +1005,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
                 `[Automix] blend clipped to ${overlap}s of the planned ${plan.overlap}s: `
                 + (lateBy > 0.05
                     ? `the handover point went by ${lateBy.toFixed(2)}s before this deck spoke`
-                    + ` (its ${AUTOMIX_ARM_LEAD_SEC}s of lead started later than that)`
+                    + ` (its ${armLeadFor(plannedExternal)}s of lead started later than that)`
                     : `the outgoing track stops ${(plan.outStart + plan.overlap - tailElement.duration).toFixed(2)}s`
                     + ' earlier than the plan was built for'),
             );
@@ -1287,11 +1291,12 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
      *
      * Armed, nothing has sounded yet, so the cut waits for the incoming deck's first sound and is refused
      * there exactly like a queue that moved. Fading, both fades are cut now - the same 50ms ramps a refusal
-     * uses - and the transition settles once they have landed. Idle, there is nothing to cut.
+     * uses - and the transition settles once they have landed. Idle, there is nothing to cut, but the line
+     * is still printed: a preroll failure that arrives after the blend settled leaves its trace that way.
      */
     const cutTransition = (reason: string): void => {
+        console.log(`[Automix] cutting the blend, ${reason}${phase === 'idle' ? ' (nothing to cut)' : ''}`);
         if (phase === 'idle') return;
-        console.log(`[Automix] cutting the blend, ${reason}`);
         if (phase === 'armed') {
             pendingRefusal = reason;
             return;

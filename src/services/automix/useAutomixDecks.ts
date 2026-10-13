@@ -7,7 +7,7 @@ import type { PlaybackRecoveryTarget } from '../../types/playbackRecovery';
 import { getPlaybackSongKey, isNavidromePlaybackSong, resolveNavidromePlaybackCarrier } from '../../utils/appPlaybackGuards';
 import { getPrefetchedData } from '../prefetchService';
 import { externalSideOf, involvesExternalPlayback } from '../externalPlayback/externalPlaybackGuards';
-import { carrierRegistry, createCarrierSlot } from '../externalPlayback/carrierRegistry';
+import { carrierRegistry, createCarrierSlot, type CarrierSlot } from '../externalPlayback/carrierRegistry';
 import { getTrackProfile, recordPlayedTail } from './profileService';
 import { refreshModelAvailability } from './modelAvailability';
 import { canSeparateStems, ensureStems, getStemsByKey, setWantedStems, stemWindowKey } from './stems';
@@ -388,7 +388,10 @@ export function useAutomixDecks({
      * handover from touching the warmed deck's src - see `resolveDeckSrc`. Let go at every settle and on
      * unmount, so the slot never pins a carrier past the transition it was taken for.
      */
-    const warmSlotRef = useRef(createCarrierSlot(carrierRegistry));
+    // Built once, like the session below: a slot made on every render would only be thrown away.
+    const warmSlotRef = useRef<CarrierSlot | null>(null);
+    if (!warmSlotRef.current) warmSlotRef.current = createCarrierSlot(carrierRegistry);
+    const warmSlot = warmSlotRef.current;
 
     const sessionRef = useRef<AutomixSession | null>(null);
     if (!sessionRef.current) {
@@ -434,7 +437,7 @@ export function useAutomixDecks({
                     // the OTHER deck is now playing. Dropping it here stops that deck from loading
                     // the current track a second time.
                     setWarmSrc(null);
-                    warmSlotRef.current.want(null);
+                    warmSlot.want(null);
                     scheduleStallCheck();
                 }
             },
@@ -627,7 +630,7 @@ export function useAutomixDecks({
             : null;
         // An arriving external song has no audio to prefetch; its deck is warmed with its shared carrier
         // instead, null until the carrier has been minted. Anything else lets the slot go.
-        const carrier = warmSlotRef.current.want(side === 'to' ? nextSong : null);
+        const carrier = warmSlot.want(side === 'to' ? nextSong : null);
         const nextWarmSrc = side === 'to' ? carrier : recoveredWarmSrc || (prefetched?.audioUrl && prefetched.audioUrl !== 'CACHED_IN_DB'
             ? prefetched.audioUrl
             : null);
@@ -661,7 +664,7 @@ export function useAutomixDecks({
         } else if (time >= plan.outStart) {
             report(`${audioSrc}:${modeTag}unwired`, `wanted a ${plan.overlap}s blend but the decks are not on the audio graph`);
         }
-    }, [activeDeck, audioQuality, audioSrc, currentSong, duration, isEnabled, loopMode, lyrics, playQueue, report, session, transition]);
+    }, [activeDeck, audioQuality, audioSrc, currentSong, duration, isEnabled, loopMode, lyrics, playQueue, report, session, transition, warmSlot]);
 
     /**
      * Reads the ref rather than the `currentSong` prop, and that is the whole correctness of it.
@@ -837,8 +840,8 @@ export function useAutomixDecks({
     useEffect(() => () => {
         if (stallTimerRef.current !== null) window.clearTimeout(stallTimerRef.current);
         session.dispose();
-        warmSlotRef.current.want(null);
-    }, [session]);
+        warmSlot.want(null);
+    }, [session, warmSlot]);
 
     return {
         activeDeck,

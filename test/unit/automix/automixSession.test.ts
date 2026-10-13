@@ -1033,6 +1033,21 @@ describe('automix session, one side played by an external engine', () => {
         expect(h.stemAsks).toHaveLength(0);
     });
 
+    it('keeps the profile of the side Folia plays', () => {
+        // The arriving track is Folia's: its measured two second lead-in still moves the entry.
+        const plan = createHarness().arm({ time: 95, external: 'from', settings: MIXED, to: withIntro({ leadIn: 2 }) });
+        expect(plan).toMatchObject({ kind: 'fade', style: 'plainBlend', overlap: 4, outStart: 96, inStart: 1.9 });
+
+        // The leaving track is Folia's: five seconds of trailing silence move the blend in front of it.
+        const padded = createHarness().arm({
+            time: 85,
+            external: 'to',
+            settings: MIXED,
+            from: { ...BLENDABLE_FROM, profile: makeProfile({ duration: 100, leadOut: 5 }) },
+        });
+        expect(padded).toMatchObject({ kind: 'fade', overlap: 4, outStart: 91 });
+    });
+
     it('arms an arriving external song the preroll ahead and holds the autoplay over it', () => {
         const h = createHarness();
 
@@ -1093,6 +1108,11 @@ describe('automix session, one side played by an external engine', () => {
         expect(lastCurve(h.chains.B.fadeNode)).toBeNull();
         expect(finalTarget(h.chains.A.fadeNode)).toBe(0);
         expect(finalTarget(h.chains.B.fadeNode)).toBe(1);
+        // Announced too, so the Music app's volume follows the cut rather than a blend that never ran.
+        expect(last(h, 'A')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'A')!.points.at(-1)).toBe(0);
+        expect(last(h, 'B')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'B')!.points.at(-1)).toBe(1);
 
         vi.advanceTimersByTime(200);
         expect(h.session.getPhase()).toBe('idle');
@@ -1129,6 +1149,33 @@ describe('automix session, one side played by an external engine', () => {
         expect(h.chains.A.fadeNode.events).toHaveLength(0);
         expect(h.chains.B.fadeNode.events).toHaveLength(0);
         expect(h.envelopes).toHaveLength(0);
+        // Still a trace: a preroll failure that lands after the blend settled is this case.
+        expect(console.log).toHaveBeenCalledWith('[Automix] cutting the blend, Music did not start (nothing to cut)');
+    });
+
+    it('names the lead a clipped blend actually had', () => {
+        const clippedLine = () => vi.mocked(console.log).mock.calls
+            .map(([message]) => String(message))
+            .find(message => message.startsWith('[Automix] blend clipped'));
+
+        // Into an external song the lead includes the preroll.
+        const mixed = createHarness();
+        mixed.arm({ time: 92.5, external: 'to', settings: MIXED });
+        mixed.elements.A.currentTime = 97;
+        mixed.session.handleActiveDeckPlaying('local:next-song');
+        expect(clippedLine()).toContain('(its 3.5s of lead started later than that)');
+
+        vi.mocked(console.log).mockClear();
+
+        // Anywhere else it is the ordinary lead, worded exactly as before.
+        const ordinary = createHarness();
+        ordinary.arm();
+        ordinary.elements.A.currentTime = 96;
+        ordinary.session.handleActiveDeckPlaying('local:next-song');
+        expect(clippedLine()).toBe(
+            `[Automix] blend clipped to 4s of the planned 5s: the handover point went by 1.00s before this deck spoke`
+            + ` (its ${AUTOMIX_ARM_LEAD_SEC}s of lead started later than that)`,
+        );
     });
 
     it('does not carry a cut over to the next transition', () => {
