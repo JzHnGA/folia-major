@@ -9,7 +9,7 @@ vi.mock('@/services/onlineMusic/omni', () => ({
     },
 }));
 
-import { involvesExternalPlayback } from '@/services/externalPlayback/externalPlaybackGuards';
+import { externalSideOf, involvesExternalPlayback } from '@/services/externalPlayback/externalPlaybackGuards';
 
 // test/unit/externalPlayback/externalPlaybackGuards.test.ts
 // involvesExternalPlayback: the one question Automix, prefetch and export ask before touching a song's audio.
@@ -36,5 +36,20 @@ describe('involvesExternalPlayback', () => {
     it('is false for no songs at all', () => {
         expect(involvesExternalPlayback()).toBe(false);
         expect(involvesExternalPlayback(null, undefined)).toBe(false);
+    });
+});
+
+describe('externalSideOf', () => {
+    it('names the external side of a song change', () => {
+        expect(externalSideOf(neteaseSong, appleSong)).toBe('to');
+        expect(externalSideOf(appleSong, neteaseSong)).toBe('from');
+        expect(externalSideOf(appleSong, appleSong)).toBe('both');
+        expect(externalSideOf(neteaseSong, neteaseSong)).toBeNull();
+    });
+
+    it('treats a missing song as not external', () => {
+        expect(externalSideOf(null, appleSong)).toBe('to');
+        expect(externalSideOf(appleSong, undefined)).toBe('from');
+        expect(externalSideOf(null, undefined)).toBeNull();
     });
 });

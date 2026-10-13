@@ -1,6 +1,7 @@
 import { CROSSFADE_DEFAULT_SEC, clampCrossfadeSeconds, planCrossfade } from './crossfadePlanner';
 import { chooseExpansionIntensity } from './expansionGesture';
 import { planTransition, type TransitionPlan, type TransitionTrack } from './transitionPlanner';
+import type { AutomixExternalSide } from './automixSession';
 
 // src/services/automix/transitionStrategy.ts
 // Which of the two strategies gets this song change. Nothing else lives here.
@@ -144,4 +145,31 @@ export const planForMode = (
     // track" fallback - that one is about picking a STYLE and reads identically in the log. These two
     // failures are different sizes and want telling apart at a glance.
     return { ...plan, reason: `automix has no evidence here, ${plan.reason} instead` };
+};
+
+/**
+ * Plans a song change where exactly one side is played by an external engine (the Music app).
+ *
+ * Always the plain crossfade of the crossfade setting, whatever the mode and performance switches say:
+ * Folia cannot hear or process the external side's audio, so nothing automix measures or does - a tempo,
+ * a band, a stem, a build - can be applied to it. Its deck only plays a silent carrier, so its profile
+ * and lyrics are treated as missing rather than read off a file that is not the music. The other side
+ * keeps its profile for where its music really starts and stops, but never its separated window.
+ */
+export const planForExternalPair = (
+    settings: TransitionSettings,
+    from: TransitionTrack,
+    to: TransitionTrack,
+    external: AutomixExternalSide,
+    at = 0,
+): TransitionPlan => {
+    const unheard = (track: TransitionTrack): TransitionTrack => ({ duration: track.duration, lines: null, profile: null });
+    const heard = (track: TransitionTrack): TransitionTrack => ({ ...track, separated: null });
+    const plan = planCrossfade(
+        external === 'from' ? unheard(from) : heard(from),
+        external === 'to' ? unheard(to) : heard(to),
+        clampCrossfadeSeconds(settings.crossfadeMaxSec),
+        at,
+    );
+    return { ...plan, reason: `external engine on one side, ${plan.reason}` };
 };

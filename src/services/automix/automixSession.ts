@@ -42,7 +42,7 @@ import {
     type TransitionPlan,
     type TransitionTrack,
 } from './transitionPlanner';
-import { planForMode, type TransitionSettings } from './transitionStrategy';
+import { planForExternalPair, planForMode, type TransitionSettings } from './transitionStrategy';
 import { announceTransition } from './transitionCue';
 import type { TrackProfile } from './trackProfile';
 
@@ -86,6 +86,19 @@ const otherDeck = (deck: AutomixDeckId): AutomixDeckId => (deck === 'A' ? 'B' : 
  * protecting.
  */
 export const AUTOMIX_ARM_LEAD_SEC = 1;
+
+/**
+ * Extra lead for a blend INTO a song an external engine plays.
+ *
+ * The Music app takes about a second and a half to start a song, and nothing it does can be hurried
+ * from here. So the arriving external song is armed this much earlier still, which gives the app time
+ * to be sounding (held at zero volume) by the moment the blend is due. A blend out of an external song
+ * needs none: that song is already playing.
+ */
+export const EXTERNAL_PREROLL_SEC = 2.5;
+
+/** Which side of a song change an external engine plays, when exactly one does. */
+export type AutomixExternalSide = 'from' | 'to';
 
 /**
  * How early the hold is lifted, to pay for the round trip between letting go and hearing it.
@@ -176,6 +189,13 @@ export interface AutomixTransitionRequest {
     nextKey: string;
     /** Playback key of the track the outgoing deck is playing. */
     fromKey: string;
+    /**
+     * Which side an external engine plays, when exactly one does; absent or null when neither does.
+     *
+     * Set, the change is planned by `planForExternalPair` - a plain crossfade with nothing measured
+     * moving it - and an arriving external song is armed `EXTERNAL_PREROLL_SEC` earlier.
+     */
+    external?: AutomixExternalSide | null;
 }
 
 export const createAutomixSession = (ports: AutomixSessionPorts) => {
@@ -188,6 +208,13 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
     /** Both offline profiles, kept from planning until the blend is actually scheduled. */
     let plannedFrom: TrackProfile | null = null;
     let plannedTo: TrackProfile | null = null;
+    /**
+     * Which side of the armed change an external engine plays, or null. Set, every measured move is off:
+     * no balance, no beat snap, no tempo bend, no stems - Folia cannot hear or touch that side's audio.
+     */
+    let plannedExternal: AutomixExternalSide | null = null;
+    /** Why an armed blend was cut before it could sound; refused at the incoming deck's first sound. */
+    let pendingRefusal: string | null = null;
     let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
     let balanceTimer: ReturnType<typeof setInterval> | null = null;
     let releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -352,6 +379,16 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
      * INCLUDING the ones where it could not fit.
      */
     let expansionNote: string | null = null;
+
+    /** Stops everything the stem gesture and its build put on the clock. Shared by settle and a cut. */
+    const stopStemGesture = () => {
+        expansionStop?.();
+        expansionStop = null;
+        stemChains.forEach(chain => chain.stop());
+        stemChains = [];
+        stemBus?.stop();
+        stemBus = null;
+    };
 
     /** One bar of a track, in seconds. Null unless both halves of the answer were measured. */
     const barSecOf = (profile: TrackProfile | null | undefined): number | null =>
@@ -706,12 +743,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         clearTimers();
         // Before the gains are put back, because the changeover node is one of them: a stem chain
         // left connected would keep its window playing under the next track.
-        expansionStop?.();
-        expansionStop = null;
-        stemChains.forEach(chain => chain.stop());
-        stemChains = [];
-        stemBus?.stop();
-        stemBus = null;
+        stopStemGesture();
         // Before anything else: a transition that ends while still holding the autoplay would
         // leave the app with a loaded deck nothing is ever going to press play on.
         setAutoplayHold(false);
@@ -752,6 +784,8 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         plannedFromKey = null;
         plannedFrom = null;
         plannedTo = null;
+        plannedExternal = null;
+        pendingRefusal = null;
         ports.onTailSrcChange(null, { harvest: options.harvest ?? true });
         // Last, and unconditional: this is the only settle, so it is the only place that
         // can tell the screen a blend is over when the blend was cut short rather than
@@ -768,6 +802,9 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
      */
     const requestTransition = (request: AutomixTransitionRequest): TransitionPlan | null => {
         if (phase !== 'idle') return null;
+        // A cut asked for against an earlier transition never carries over to this one.
+        pendingRefusal = null;
+        const external = request.external ?? null;
 
         // The deck still playing is the one whose tempo sets the length: at this point it is the
         // active one, and the only track with any audio behind it to measure.
@@ -781,9 +818,12 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         //
         // Absent on the web build, and on the first transition after a cold start when the model has not
         // finished. Both fall back to the lyric file, which every build before this used unconditionally.
-        const outgoingStems = ports.getStems?.(request.fromKey, 'tail') ?? null;
+        //
+        // Never asked for a mixed pair: its plan is a plain crossfade that reads no stems, and the external
+        // side's deck only carries silence.
+        const outgoingStems = external ? null : (ports.getStems?.(request.fromKey, 'tail') ?? null);
         // The incoming track's head stems, by the key pinned at arm.
-        const incomingStems = ports.getStems?.(request.nextKey, 'head') ?? null;
+        const incomingStems = external ? null : (ports.getStems?.(request.nextKey, 'head') ?? null);
         // An extent each, and only when BOTH ends have one - the `&&` is the point rather than a tidiness.
         // `scheduleStemGesture` refuses unless it has the pair, so a plan that lifted the vocal ceiling on
         // the strength of one window would hand a master crossfade a length only the gesture could carry.
@@ -801,7 +841,9 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
                 ? {}
                 : { vocalEnd: outgoingStems.from + outgoingStems.vocalEnd }),
         };
-        const nextPlan = planForMode(
+        const nextPlan = external ? planForExternalPair(
+            request.settings, request.from, request.to, external, request.time,
+        ) : planForMode(
             request.settings,
             outgoing,
             { ...request.to, separated: extent(incomingStems) },
@@ -814,8 +856,10 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
             request.time,
         );
         // Early by the lead, not on the dot: everything between here and `outStart` is what the
-        // next track gets to load in, instead of taking it out of the blend.
-        if (nextPlan.kind !== 'fade' || request.time < nextPlan.outStart - AUTOMIX_ARM_LEAD_SEC) {
+        // next track gets to load in, instead of taking it out of the blend. An arriving external
+        // song is armed a preroll earlier still, so the Music app is already sounding when it is due.
+        const lead = AUTOMIX_ARM_LEAD_SEC + (external === 'to' ? EXTERNAL_PREROLL_SEC : 0);
+        if (nextPlan.kind !== 'fade' || request.time < nextPlan.outStart - lead) {
             return nextPlan;
         }
 
@@ -843,6 +887,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         plannedFromKey = request.fromKey;
         plannedFrom = request.from.profile ?? null;
         plannedTo = request.to.profile ?? null;
+        plannedExternal = external;
 
         // The order matters: pin the outgoing source to the deck it is already playing on before
         // the roles change, so that deck's src string never changes and its playback is never
@@ -937,9 +982,10 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         // The queue can move under us between planning and playing: a manual skip, or a track
         // that turned out to be unavailable and auto-skipped. Blending into a song we never
         // measured is precisely the bad transition this feature exists to refuse.
-        const refusal = currentKey !== plannedNextKey
+        // A cut asked for while armed comes first: whoever asked knows the blend cannot be heard.
+        const refusal = pendingRefusal ?? (currentKey !== plannedNextKey
             ? 'the queue moved after planning'
-            : overlap <= 0 ? 'the outgoing track ran out first' : null;
+            : overlap <= 0 ? 'the outgoing track ran out first' : null);
 
         phase = 'fading';
         diagMark('fading');
@@ -980,13 +1026,17 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
 
         // Everything measured about the outgoing track, spent here: its level decides how fast the
         // two swap places, and its beat grid decides where that swap lands.
+        //
+        // Neither is spent on a mixed pair. One of its two tracks is played where Folia cannot hear it, so
+        // there is no pair to balance and no shared beat to land on: its level, beat period and next beat
+        // are all null, which leaves a plain crossfade at the middle crossover with no beat snap.
         const tempo = tailChain.analyser.tempo();
-        const outgoingDb = tailChain.analyser.loudnessDb();
+        const outgoingDb = plannedExternal ? null : tailChain.analyser.loudnessDb();
         // The tail's own tempo where the track's two readings of it agree - a track that slows into
         // its last chorus has two tempos, and one whose readings are a third apart has none. Null
         // falls through to the live tap, which is the only thing that actually heard the tail.
         const outgoingBpm = settledBpm(plannedFrom?.bpm, plannedFrom?.outroBpm);
-        const periodSec = outgoingBpm ? 60 / outgoingBpm : tempo?.periodSec ?? null;
+        const periodSec = plannedExternal ? null : (outgoingBpm ? 60 / outgoingBpm : tempo?.periodSec ?? null);
 
         // Whether this song change is handed over stem by stem rather than as two masters.
         //
@@ -997,7 +1047,9 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         // Named by the keys pinned at arm, not by whatever the app now calls the current song.
         const fromStems = ports.getStems?.(plannedFromKey, 'tail') ?? null;
         const toStems = ports.getStems?.(plannedNextKey, 'head') ?? null;
-        const useStems = Boolean(fromStems && toStems)
+        // Never on a mixed pair, whose external side has no audio on the graph to separate.
+        const useStems = plannedExternal === null
+            && Boolean(fromStems && toStems)
             && plan.style !== 'beatCut'
             && overlap >= AUTOMIX_MIN_OVERLAP_SEC;
 
@@ -1010,7 +1062,9 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         const stretch = plan.style === 'beatCut' || overlap < AUTOMIX_MIN_OVERLAP_SEC || useStems
             ? 1
             : plan.stretch;
-        const applied = applyTempoBend(tailElement, stretch);
+        // Not touched at all on a mixed pair, not even to reset it: an external song's carrier runs at
+        // whatever rate the sync controller nudged it to, and a reset to 1 would undo that.
+        const applied = plannedExternal ? 1 : applyTempoBend(tailElement, stretch);
         const alignHold = Math.max(0, (startMedia - position) / (tailRate * applied));
 
         // Where the beats are, from the file rather than from the last few seconds of it.
@@ -1030,8 +1084,8 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         const beatGrid = steady && plannedFrom?.bpm
             ? { offset: plannedFrom.beatOffset % (60 / plannedFrom.bpm), period: 60 / plannedFrom.bpm }
             : null;
-        const nextBeatIn = waitToGrid(beatGrid, startMedia, tailRate * applied)
-            ?? tailChain.analyser.nextBeatIn(now + alignHold);
+        const nextBeatIn = plannedExternal ? null : (waitToGrid(beatGrid, startMedia, tailRate * applied)
+            ?? tailChain.analyser.nextBeatIn(now + alignHold));
         const fade = planBlendShape({
             overlap,
             outgoingDb,
@@ -1124,7 +1178,9 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         const splitGrid = gridBpm !== null && snapBpm !== null
             && Math.abs(gridBpm - snapBpm) / snapBpm > RAW_RATE_LIMIT;
 
-        const rendering = stemmed ? ', four stems'
+        // A mixed pair says so instead of blaming the separation for stems it was never going to use.
+        const rendering = plannedExternal ? `, the ${plannedExternal === 'from' ? 'outgoing' : 'incoming'} track on an external engine`
+            : stemmed ? ', four stems'
             : fromStems && toStems ? `${shape.shapeBands ? ', three bands' : ''}`
                 : `, no stems (${!fromStems && !toStems ? 'neither end' : fromStems ? 'the incoming end' : 'the outgoing end'}`
                     + ` is not separated yet)${shape.shapeBands ? ', three bands' : ''}`;
@@ -1212,7 +1268,8 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         scheduled.incoming.forEach(envelope => ports.onDeckEnvelope?.(activeDeck, envelope));
         // Only where there is an overlap to balance. Across a splice or a cut the two tracks are
         // never both audible, so pulling one down would just be a level step nobody asked for.
-        if (shape.overlap >= AUTOMIX_MIN_OVERLAP_SEC) {
+        // Never on a mixed pair: one of its two levels is a silent carrier, not the music.
+        if (plannedExternal === null && shape.overlap >= AUTOMIX_MIN_OVERLAP_SEC) {
             startBalanceCorrection(
                 context, tailChain, activeChain, referenceDb(plannedTo, activeChain),
             );
@@ -1221,6 +1278,37 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         cleanupTimer = setTimeout(
             () => settle({ pauseTail: true }),
             (hold + wall) * 1000 + FADE_CLEANUP_MARGIN_MS,
+        );
+    };
+
+    /**
+     * Turns the transition in flight into a hard cut, for a reason only the caller can see - the Music
+     * app never started the arriving song, say.
+     *
+     * Armed, nothing has sounded yet, so the cut waits for the incoming deck's first sound and is refused
+     * there exactly like a queue that moved. Fading, both fades are cut now - the same 50ms ramps a refusal
+     * uses - and the transition settles once they have landed. Idle, there is nothing to cut.
+     */
+    const cutTransition = (reason: string): void => {
+        if (phase === 'idle') return;
+        console.log(`[Automix] cutting the blend, ${reason}`);
+        if (phase === 'armed') {
+            pendingRefusal = reason;
+            return;
+        }
+
+        // The blend's own cleanup and balance timers go first, so nothing scheduled for the full
+        // length can land after the cut and settle a second time.
+        clearTimers();
+        stopStemGesture();
+        const context = ports.getContext();
+        if (context) {
+            rampFade(context, otherDeck(activeDeck), 0, CUT_SECONDS);
+            rampFade(context, activeDeck, 1, CUT_SECONDS);
+        }
+        cleanupTimer = setTimeout(
+            () => settle({ pauseTail: true }),
+            CUT_SECONDS * 1000 + 70,
         );
     };
 
@@ -1309,6 +1397,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         handleTailEnded,
         handleSongChanged,
         abort,
+        cutTransition,
         /**
          * Tear the session down to a defined state. More than the timers: a transition in flight holds
          * stem chains, a stem bus, an expansion stopper, an autoplay hold and two attenuated decks, and

@@ -6,7 +6,8 @@ import type { AudioQualityPreference } from '../../types/onlineMusic';
 import type { PlaybackRecoveryTarget } from '../../types/playbackRecovery';
 import { getPlaybackSongKey, isNavidromePlaybackSong, resolveNavidromePlaybackCarrier } from '../../utils/appPlaybackGuards';
 import { getPrefetchedData } from '../prefetchService';
-import { involvesExternalPlayback } from '../externalPlayback/externalPlaybackGuards';
+import { externalSideOf, involvesExternalPlayback } from '../externalPlayback/externalPlaybackGuards';
+import { carrierRegistry, createCarrierSlot } from '../externalPlayback/carrierRegistry';
 import { getTrackProfile, recordPlayedTail } from './profileService';
 import { refreshModelAvailability } from './modelAvailability';
 import { canSeparateStems, ensureStems, getStemsByKey, setWantedStems, stemWindowKey } from './stems';
@@ -14,6 +15,7 @@ import { connectAutomixDeck, type AutomixDeckChain } from './crossfadeGraph';
 import {
     createAutomixSession,
     AUTOMIX_ARM_LEAD_SEC,
+    EXTERNAL_PREROLL_SEC,
     type AutomixDeckId,
     type AutomixSession,
 } from './automixSession';
@@ -379,6 +381,15 @@ export function useAutomixDecks({
      */
     const stemSongsRef = useRef<{ from: SongResult | null; to: SongResult | null }>({ from: null, to: null });
 
+    /**
+     * Holds the shared carrier of an arriving external song while the idle deck is warmed with it.
+     *
+     * The carrier is the same URL `playSong` will put in `audioSrc` at the arm, which is what keeps the
+     * handover from touching the warmed deck's src - see `resolveDeckSrc`. Let go at every settle and on
+     * unmount, so the slot never pins a carrier past the transition it was taken for.
+     */
+    const warmSlotRef = useRef(createCarrierSlot(carrierRegistry));
+
     const sessionRef = useRef<AutomixSession | null>(null);
     if (!sessionRef.current) {
         sessionRef.current = createAutomixSession({
@@ -423,6 +434,7 @@ export function useAutomixDecks({
                     // the OTHER deck is now playing. Dropping it here stops that deck from loading
                     // the current track a second time.
                     setWarmSrc(null);
+                    warmSlotRef.current.want(null);
                     scheduleStallCheck();
                 }
             },
@@ -563,7 +575,10 @@ export function useAutomixDecks({
         // The longest blend, plus the lead it is armed ahead of. Everything this function does
         // happens inside that window, warming included - which gives the idle deck the better part
         // of ten seconds to buffer before anything is asked of it.
-        if (duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC) return;
+        //
+        // Wider by the preroll, which only an arriving external song uses; every other change is held to the
+        // narrower window again below, once it is known which side is external.
+        if (duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC + EXTERNAL_PREROLL_SEC) return;
 
         if (!isEnabled) return report('disabled', 'off - the Blend icon at the end of the volume row switches it on');
         // The report keys carry the mode: switching strategy mid-track otherwise reads as the same
@@ -575,7 +590,13 @@ export function useAutomixDecks({
         if (!nextSong) return report(`${audioSrc}:queue-end`, 'nothing queued after this track');
         // Music.app plays the external song, so there is no second deck to blend and no audio to warm one with
         // (the <audio> only carries silence). Checked before the warm step below so no deck is ever repointed.
-        if (involvesExternalPlayback(currentSong, nextSong)) return report(`${audioSrc}:external`, 'external playback engine, hard cut');
+        // Only when BOTH sides are external: the Music app plays one song at a time, so two of them cannot
+        // overlap. With exactly one, Folia's deck fades the other track and the Music app's volume follows the
+        // carrier deck's envelope - a plain crossfade, see planForExternalPair.
+        const side = externalSideOf(currentSong, nextSong);
+        if (side === 'both') return report(`${audioSrc}:external`, 'external playback engine on both sides, hard cut');
+        // Anything but an arriving external song warms and arms exactly when it always did.
+        if (side !== 'to' && duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC) return;
 
         // Nothing below applies while a transition is already in flight - `requestTransition` returns null
         // on sight - and the write underneath it is not free. This function runs on every timeupdate, the
@@ -604,7 +625,10 @@ export function useAutomixDecks({
             )
             ? recoveredRepresentation.url
             : null;
-        const nextWarmSrc = recoveredWarmSrc || (prefetched?.audioUrl && prefetched.audioUrl !== 'CACHED_IN_DB'
+        // An arriving external song has no audio to prefetch; its deck is warmed with its shared carrier
+        // instead, null until the carrier has been minted. Anything else lets the slot go.
+        const carrier = warmSlotRef.current.want(side === 'to' ? nextSong : null);
+        const nextWarmSrc = side === 'to' ? carrier : recoveredWarmSrc || (prefetched?.audioUrl && prefetched.audioUrl !== 'CACHED_IN_DB'
             ? prefetched.audioUrl
             : null);
         const idleDeck = activeDeck === 'A' ? 'B' : 'A';
@@ -626,6 +650,7 @@ export function useAutomixDecks({
             settings: transition,
             nextKey: getPlaybackSongKey(nextSong),
             fromKey: getPlaybackSongKey(currentSong),
+            external: side,
         });
         if (!plan) return;
 
@@ -812,6 +837,7 @@ export function useAutomixDecks({
     useEffect(() => () => {
         if (stallTimerRef.current !== null) window.clearTimeout(stallTimerRef.current);
         session.dispose();
+        warmSlotRef.current.want(null);
     }, [session]);
 
     return {
