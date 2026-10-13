@@ -60,9 +60,10 @@ type KnownEngineState = Pick<OmniExternalPlaybackState, 'state' | 'mediaId'>;
  * Waiting for Music to become audible after a play. 'start' is the start hold (the session keeps the carrier
  * paused); 'rate' is the rate hold (the carrier keeps playing at SYNC_HOLD_RATE).
  * 'preroll' is Automix's early start: Automix holds the carrier itself, so nothing here holds or releases it.
+ * 'lead' is a replay while the carrier leads a transition: the carrier keeps its own rate, and Music is aligned to it.
  */
 interface AudibleWait {
-    mode: 'start' | 'rate' | 'preroll';
+    mode: 'start' | 'rate' | 'preroll' | 'lead';
     targetPos: number;
     /** First playing reading of this track that the advance is measured from. */
     anchor: { positionSec: number; sampledAtMs: number } | null;
@@ -194,8 +195,6 @@ export class ExternalPlaybackSync {
         this.carrierMaster = false;
     }
 
-    // The wait ends however it ends: audible, abortStart, a failure, the carrier's pause or dispose. Meanwhile Music's
-    // play is already on its way, so a carrier play or seek during it must not send another.
     /** True while a 'preroll' start is still waiting for Music to become audible. */
     isPrerollPending(): boolean {
         return this.audible?.mode === 'preroll';
@@ -247,9 +246,11 @@ export class ExternalPlaybackSync {
     }
 
     // A play from a listener action while the carrier already runs: it crawls at the hold rate until Music is audible.
+    // While the carrier leads a transition it is not held at all ('lead'): it plays on at its own rate.
     private playWithRateHold(positionSec: number): void {
-        const wait = this.beginAudibleWait('rate', toEnginePosition(positionSec));
-        this.carrier.playbackRate = SYNC_HOLD_RATE;
+        const leads = this.carrierMaster;
+        const wait = this.beginAudibleWait(leads ? 'lead' : 'rate', toEnginePosition(positionSec));
+        if (!leads) this.carrier.playbackRate = SYNC_HOLD_RATE;
         this.sendPlay(wait.targetPos).catch((error: unknown) => this.failAudibleWait(wait, error));
     }
 
@@ -277,9 +278,10 @@ export class ExternalPlaybackSync {
     }
 
     private cancelRateHold(): void {
-        if (this.audible?.mode !== 'rate') return;
+        const mode = this.audible?.mode;
+        if (mode !== 'rate' && mode !== 'lead') return;
         this.endAudibleWait();
-        this.carrier.playbackRate = 1;
+        if (mode === 'rate') this.carrier.playbackRate = 1;
     }
 
     private handleAudibleTimeout(wait: AudibleWait): void {
@@ -308,13 +310,14 @@ export class ExternalPlaybackSync {
         }
         if (advance < SYNC_START_ADVANCE_SEC) return;
         const estimate = this.estimate(state);
-        if (Math.abs(estimate - wait.targetPos) > SYNC_DRIFT_SEEK_SEC && !wait.reseekSent) {
+        const target = this.reseekTarget(wait);
+        if (Math.abs(estimate - target) > SYNC_DRIFT_SEEK_SEC && !wait.reseekSent) {
             wait.reseekSent = true;
             wait.anchor = null;
-            this.sendSeek(wait.targetPos);
+            this.sendSeek(target);
             return;
         }
-        if (wait.mode === 'preroll') {
+        if (wait.mode === 'preroll' || wait.mode === 'lead') {
             this.endAudibleWait();
             this.alignAfterPreroll(estimate);
             return;
@@ -329,8 +332,18 @@ export class ExternalPlaybackSync {
         this.onHoldReleased();
     }
 
+    // A preroll or lead wait under a carrier that already runs and still leads aims its one re-seek at where the
+    // carrier is now: the position asked for has gone by, and Music then sounds in step instead of needing a second
+    // seek once audible. After endTransition Music leads again, so the wait keeps its target and the carrier follows.
+    private reseekTarget(wait: AudibleWait): number {
+        const leadWait = wait.mode === 'preroll' || wait.mode === 'lead';
+        const carrierLeads = leadWait && this.carrierMaster && !this.carrier.paused;
+        return carrierLeads ? toEnginePosition(this.carrier.currentTime) : wait.targetPos;
+    }
+
     // Music became audible on a preroll. A carrier Automix still holds is left to the transition; a running one leads
     // while the transition lasts (Music is seeked to it beyond a second), and after endTransition it follows Music.
+    // A lead wait (a replay under a leading carrier) ends the same way.
     private alignAfterPreroll(estimate: number): void {
         if (this.carrier.paused) return;
         if (this.carrierMaster) this.seekMusicToCarrier(estimate);
@@ -479,6 +492,8 @@ export class ExternalPlaybackSync {
             return;
         }
         if (!this.canCommand()) return;
+        // The wait ends however it ends: audible, abortStart, a failure, the carrier's pause or dispose. Meanwhile
+        // Music's play is already on its way, so a carrier play or seek during it must not send another.
         if (this.isPrerollPending()) return;
         if (this.knownOnOurTrack('playing')) return;
         if (this.knownOnOurTrack('paused')) {

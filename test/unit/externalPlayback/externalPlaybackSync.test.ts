@@ -1081,6 +1081,93 @@ describe('preroll', () => {
         expect(carrier.currentTime).toBeCloseTo(0.13);
         expect(onHoldReleased).not.toHaveBeenCalled();
     });
+
+    // Automix starting the carrier while Music still prerolls is the hard-cut path: the carrier already runs.
+    it('aims the preroll re-seek at a carrier that already plays', async () => {
+        carrier.currentTime = 30;
+        sync.start('preroll');
+        await carrier.play();
+        carrier.currentTime = 31.5;   // the carrier ran on while Music loaded
+        engine.emit(state({ positionSec: 0 }));   // Music started from the top
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        expect(engine.seek).toHaveBeenLastCalledWith(31.5);
+        expect(sync.isPrerollPending()).toBe(true);
+        carrier.currentTime = 32;
+        clock += 250; engine.emit(state({ positionSec: 31.8 }));
+        clock += 250; engine.emit(state({ positionSec: 32 }));
+        expect(engine.seek).toHaveBeenCalledTimes(1);   // Music already sounds where the carrier is: no second seek
+        expect(sync.isPrerollPending()).toBe(false);
+        expect(carrier.currentTime).toBe(32);
+    });
+
+    it('replays Music at the carrier\'s own rate when Music stopped while the carrier leads', async () => {
+        await startPreroll();
+        clock += 500; engine.emit(stopped());   // Music stopped while Automix still holds the carrier
+        clock += 1000; await carrier.play();    // Automix lifts its hold
+        expect(engine.play).toHaveBeenCalledTimes(2);
+        expect(engine.play).toHaveBeenLastCalledWith(song, 0);
+        expect(carrier.playbackRate).toBe(1);
+        carrier.currentTime = 1.5;   // the carrier runs on at its own rate while Music loads
+        clock += 250; engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        expect(engine.seek).toHaveBeenLastCalledWith(1.5);   // Music goes to the carrier, not the other way round
+        clock += 250; engine.emit(state({ positionSec: 1.5 }));
+        clock += 250; engine.emit(state({ positionSec: 1.7 }));
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(1.5);
+        expect(carrier.playbackRate).toBe(1);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('replays Music at the carrier\'s own rate when the listener seeks off-track while the carrier leads', async () => {
+        await startPreroll();
+        await carrier.play();   // Automix lifts its hold
+        carrier.userSeek(5);
+        expect(engine.seek).toHaveBeenCalledWith(5);
+        // Inside the settle window another track is no takeover, but Music is no longer known to be on ours.
+        clock += 100; engine.emit(state({ mediaId: OTHER_ID, positionSec: 1 }));
+        carrier.userSeek(30);
+        expect(engine.play).toHaveBeenCalledTimes(2);
+        expect(engine.play).toHaveBeenLastCalledWith(song, 30);
+        expect(carrier.playbackRate).toBe(1);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('leaves a drift over a second alone inside the settle window while the carrier leads', async () => {
+        await startPreroll();
+        await carrier.play();   // Automix lifts its hold
+        carrier.userSeek(10);
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        clock += 500; engine.emit(state({ positionSec: 3 }));   // 7 s off, but within a second of the seek
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        clock += SYNC_SETTLE_MS; engine.emit(state({ positionSec: 3.5 }));
+        expect(engine.seek).toHaveBeenCalledTimes(2);
+        expect(engine.seek).toHaveBeenLastCalledWith(10);
+        expect(carrier.playbackRate).toBe(1);
+    });
+
+    it('does nothing on abort once Automix has started the carrier', async () => {
+        await startPreroll();
+        await carrier.play();
+        sync.abortStart();
+        expect(engine.pause).not.toHaveBeenCalled();
+        clock += SYNC_SETTLE_MS; carrier.currentTime = 5; engine.emit(state({ positionSec: 1.3 }));
+        expect(engine.seek).toHaveBeenLastCalledWith(5);   // the carrier still leads
+        expect(carrier.playbackRate).toBe(1);
+    });
+
+    it('leaves Music in the lead when endTransition is called outside a transition', async () => {
+        await startPlaying();
+        sync.endTransition();
+        sync.endTransition();
+        carrier.currentTime = 50; engine.emit(state({ positionSec: 50.3 }));
+        expect(carrier.playbackRate).toBeCloseTo(1.05);
+        engine.emit(state({ positionSec: 52 }));
+        expect(carrier.currentTime).toBeCloseTo(52);
+        expect(engine.seek).not.toHaveBeenCalled();
+    });
 });
 
 // Music's last reading of ours is what tells that ours ended under a crossfade; it must be current and meaningful.
@@ -1113,5 +1200,27 @@ describe("Music's last reading of ours", () => {
         expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
         expect(carrier.currentTime).toBe(30);
         expect(engine.pause).not.toHaveBeenCalled();
+    });
+
+    it('does not age the last reading when a reading carries no sample time', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6; engine.emit(state({ positionSec: 194.5, durationSec: 197.72 }));   // 3.22 s left
+        clock += 1000;
+        engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5, sampledAtMs: undefined as unknown as number }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('never ages the last reading backwards for a foreign reading sampled before it', async () => {
+        await startPlaying();
+        const ourSampleAt = clock;
+        carrier.currentTime = 186; engine.emit(state({ positionSec: 186, durationSec: 197.72 }));   // 11.72 s left
+        clock += 1000;
+        // Still after the last command (not stale), but 1 s before ours: aged backwards it would leave 12.72 s.
+        engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5, sampledAtMs: ourSampleAt - 1000 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
     });
 });
