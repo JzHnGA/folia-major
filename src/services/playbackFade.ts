@@ -1,4 +1,5 @@
-import { rampGain } from './automix/crossfadeGraph';
+import { rampGainEnvelope } from './automix/crossfadeGraph';
+import type { DeckGainEnvelope } from './gainEnvelope';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 
 // src/services/playbackFade.ts
@@ -45,6 +46,8 @@ export type PlaybackFadeDeps = {
     setTimer?: (callback: () => void, ms: number) => unknown;
     clearTimer?: (handle: unknown) => void;
     durationSec?: number;
+    /** Told about every gain move the controller writes to the fade node, as data. Never on a fade that cannot run. */
+    onEnvelope?: (envelope: DeckGainEnvelope) => void;
 };
 
 /** Why a pending pause is running: the fade finished, or something flushed it early. */
@@ -97,6 +100,7 @@ export const createPlaybackFadeController = ({
     setTimer = (callback, ms) => setTimeout(callback, ms),
     clearTimer = handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
     durationSec = PLAYBACK_FADE_SECONDS,
+    onEnvelope,
 }: PlaybackFadeDeps): PlaybackFadeController => {
     let generation = 0;
     let timer: unknown = null;
@@ -128,10 +132,15 @@ export const createPlaybackFadeController = ({
         return graph;
     };
 
+    // Every write to the fade node goes through here, so each one is announced exactly as scheduled.
+    const rampAnnounced = (graph: PlaybackFadeGraph, value: number, seconds: number) => {
+        onEnvelope?.(rampGainEnvelope(graph.context, graph.gain, value, seconds));
+    };
+
     const snapToUnity = () => {
         clearRestoreTimer();
         const graph = getGraph();
-        if (graph) rampGain(graph.context, graph.gain, 1, 0);
+        if (graph) rampAnnounced(graph, 1, 0);
     };
 
     // Unity again once the paused element has stopped feeding the graph, not the moment pause() returns.
@@ -140,7 +149,7 @@ export const createPlaybackFadeController = ({
         restoreTimer = setTimer(() => {
             restoreTimer = null;
             const graph = getGraph();
-            if (graph) rampGain(graph.context, graph.gain, 1, RESTORE_RAMP_SECONDS);
+            if (graph) rampAnnounced(graph, 1, RESTORE_RAMP_SECONDS);
         }, PAUSE_DRAIN_MS);
     };
 
@@ -179,7 +188,7 @@ export const createPlaybackFadeController = ({
         pendingOut = true;
         pendingAction = action;
         // Reads the current gain, so a pause landing mid fade-in turns around from where it is.
-        rampGain(graph.context, graph.gain, 0, durationSec);
+        rampAnnounced(graph, 0, durationSec);
         timer = setTimer(() => {
             if (token !== generation) return;
             takePending();
@@ -193,7 +202,7 @@ export const createPlaybackFadeController = ({
         takePending();
         clearRestoreTimer();
         const graph = getGraph();
-        if (graph) rampGain(graph.context, graph.gain, 1, durationSec);
+        if (graph) rampAnnounced(graph, 1, durationSec);
         return true;
     };
 
@@ -204,14 +213,14 @@ export const createPlaybackFadeController = ({
         takePending();
         clearRestoreTimer();
         const token = generation;
-        rampGain(graph.context, graph.gain, 0, 0);
+        rampAnnounced(graph, 0, 0);
         return token;
     };
 
     const runFadeIn = (token: number | null) => {
         if (token === null || token !== generation) return;
         const graph = getGraph();
-        if (graph) rampGain(graph.context, graph.gain, 1, durationSec);
+        if (graph) rampAnnounced(graph, 1, durationSec);
     };
 
     const abortFadeIn = (token: number | null) => {
@@ -271,8 +280,31 @@ export const registerPlaybackFadeGraph = (graph: PlaybackFadeGraph | null) => {
     registeredGraph = graph;
 };
 
+let envelopeListener: ((envelope: DeckGainEnvelope) => void) | null = null;
+let envelopeListenerWarned = false;
+
+/** The app-wide controller forwards its envelopes here; null unregisters. */
+export const registerPlaybackFadeEnvelopeListener = (listener: ((envelope: DeckGainEnvelope) => void) | null) => {
+    envelopeListener = listener;
+    envelopeListenerWarned = false;
+};
+
+// An envelope consumer must never break the fade's timing or drain logic, so a throwing listener is
+// logged (once per registration, not once per envelope) and otherwise ignored.
+const forwardEnvelope = (envelope: DeckGainEnvelope) => {
+    if (!envelopeListener) return;
+    try {
+        envelopeListener(envelope);
+    } catch (error) {
+        if (envelopeListenerWarned) return;
+        envelopeListenerWarned = true;
+        console.warn('[PlaybackFade] the envelope listener threw, ignoring it', error);
+    }
+};
+
 /** The app-wide controller. There is one audio context, so one controller. */
 export const playbackFade = createPlaybackFadeController({
     getGraph: () => registeredGraph,
     isEnabled: () => useAudioSettingsStore.getState().playbackFadeEnabled,
+    onEnvelope: forwardEnvelope,
 });
