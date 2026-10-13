@@ -33,7 +33,7 @@ Spotify 另作第二个子项目：没有 Premium 时只能用 AppleScript 控�
 
 ### 成功标准
 
-- 稳定播放时，载体与「音乐」App 的推算位置偏差保持在 80 ms 以内。
+- 稳定播放时，载体与「音乐」App 的推算位置偏差保持在 30 ms 以内。
 - 拖动进度、暂停后继续，2 秒内重新收敛到上述范围，且歌词不出现可见的前后跳动（除偏差 > 1 s 的直接对齐外）。
 - 开播时第一句歌词不早于「音乐」App 实际出声。
 - 两首 Apple 曲目之间的空隙小于 1 秒。
@@ -130,8 +130,8 @@ Folia 队列 ──▶ omni ──▶ apple-music provider ──▶ IPC ──�
    - 音量在 `syncOutputGain`（`src/App.tsx` 约 520 行）的钳制之后同步过去，节流，0–1 线性映射到 0–100。
    - 控制器自己的校正 seek 带内部标记，不回传。
 3. **漂移校正**：用 `position + (now − sampledAt)` 推算「音乐」App 的当前位置，与载体比较：
-   - 偏差 < 80 ms：不处理。
-   - 80 ms – 1 s：把载体 `playbackRate` 调到 1±0.05，持续若干秒追平，逐字动画不跳。
+   - 偏差 < 30 ms：不处理。
+   - 30 ms – 1 s：把载体 `playbackRate` 调到 1±0.05，持续若干秒追平，逐字动画不跳。
    - > 1 s：直接 seek 载体（内部标记）。
    - `playbackRate` 目前只被 Automix 的 `tempoBend` 使用，Apple 曲目上 Automix 已关闭，不冲突。
 4. **「音乐」App 侧的意外变化**：
@@ -277,3 +277,5 @@ Folia 队列 ──▶ omni ──▶ apple-music provider ──▶ IPC ──�
 | 载体静音 | 页面隐藏时，Chromium 把 `muted` 媒体的时钟降到约 0.25×；不静音则正常 | 载体元素不能设 `muted`，Folia 的静音改为把「音乐」App 音量设为 0。主窗口已设 `backgroundThrottling: false` |
 
 验证过的 JXA 脚本：`.superpowers/sdd/2026-10-11-apple-music-app-bridge/music-app-jxa.js`（Task 4 原样内嵌）。
+
+真机复测（2026-10-12）：稳定播放时载体恒定领先「音乐」App 约 70 ms（−0.067…−0.071 s），刚好低于原来的 80 ms 阈值而永远不被校正，所以漂移阈值收紧到 30 ms。同一次复测发现「音乐」App 的交叉淡入淡出 / AutoMix 会在本曲结束前数秒就开始下一首，载体此时还剩 2 s 以上，原逻辑把它当成用户接管；现在「音乐」App 最后一次报告本曲的位置距结尾不超过 12 s（`SYNC_MUSIC_TRANSITION_WINDOW_SEC`）时，视为本曲播完：暂停「音乐」App 的下一首，并把载体直接放到结尾，由 `ended` 切到 Folia 队列的下一首。

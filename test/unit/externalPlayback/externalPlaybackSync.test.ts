@@ -307,13 +307,23 @@ describe('drift correction', () => {
         carrier.currentTime = 50;
     });
 
-    it('ignores drift under 80 ms', () => {
-        engine.emit(state({ positionSec: 50.05 }));
+    it('ignores drift under 30 ms', () => {
+        engine.emit(state({ positionSec: 50.02 }));
         expect(carrier.playbackRate).toBe(1);
         expect(carrier.currentTime).toBe(50);
     });
 
-    it('nudges the carrier rate for drift between 80 ms and 1 s', () => {
+    it('nudges the carrier rate for a steady 50 ms drift', () => {
+        engine.emit(state({ positionSec: 50.05 }));
+        expect(carrier.playbackRate).toBeCloseTo(1.05);
+        engine.emit(state({ positionSec: 49.95 }));
+        expect(carrier.playbackRate).toBeCloseTo(0.95);
+        engine.emit(state({ positionSec: 50.02 }));
+        expect(carrier.playbackRate).toBe(1);
+        expect(carrier.currentTime).toBe(50);
+    });
+
+    it('nudges the carrier rate for drift between 30 ms and 1 s', () => {
         engine.emit(state({ positionSec: 50.3 }));
         expect(carrier.playbackRate).toBeCloseTo(1.05);
         engine.emit(state({ positionSec: 49.7 }));
@@ -524,6 +534,126 @@ describe('end of track', () => {
         expect(engine.play).toHaveBeenCalledWith(song, 0);
         expect(engine.seek).not.toHaveBeenCalled();
         expect(carrier.playbackRate).toBe(SYNC_HOLD_RATE);
+    });
+});
+
+// Music's crossfade / AutoMix starts its next track seconds before ours ends, while the carrier still has time left.
+describe('Music moving on early', () => {
+    it('treats Music crossfading into its next track a few seconds early as the end of ours', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5, durationSec: 197.72 }));
+        clock += 1000; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('still reports a takeover when Music leaves our track well before its end', async () => {
+        await startPlaying();
+        carrier.currentTime = 60;
+        engine.emit(state({ positionSec: 60 }));
+        clock += SYNC_SETTLE_MS; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
+        expect(carrier.paused).toBe(true);
+        expect(carrier.currentTime).toBe(60);
+        expect(engine.pause).not.toHaveBeenCalled();
+    });
+
+    it('uses the carrier duration when Music does not report one', async () => {
+        await startPlaying();
+        carrier.currentTime = 190;
+        engine.emit(state({ positionSec: 190, durationSec: null }));
+        clock += 1000; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it("judges the end by Music's own duration rather than the carrier's", async () => {
+        await startPlaying();
+        carrier.currentTime = 186;
+        // 11.72 s left by Music's clock, 14 s by the carrier's.
+        engine.emit(state({ positionSec: 186, durationSec: 197.72 }));
+        clock += 1000; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('finishes the carrier once, without echoing its seek to Music', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5, durationSec: 197.72 }));
+        clock += 1000; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        clock += 250; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.75 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        carrier.dispatch('seeked');   // the browser's answer to the finishing seek
+        expect(engine.seek).not.toHaveBeenCalled();
+        expect(engine.play).not.toHaveBeenCalled();
+        carrier.pause();   // the media element running out fires pause (then ended)
+        clock += 250; engine.emit(state({ mediaId: OTHER_ID, positionSec: 4 }));
+        // The auto-advance pause, then the carrier's own end-of-media pause; nothing more.
+        expect(engine.pause).toHaveBeenCalledTimes(2);
+        expect(carrier.currentTime).toBe(carrier.duration);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('does not finish a carrier the listener paused near the end', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5 }));
+        carrier.pause();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        clock += SYNC_SETTLE_MS + 100; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3 }));
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(194.6);
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
+    });
+
+    it('does not finish the carrier after Music was stopped under it', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5 }));
+        clock += 250; engine.emit(stopped());
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'engine-stopped' });
+        clock += 250; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3 }));
+        expect(engine.pause).not.toHaveBeenCalled();
+        expect(carrier.currentTime).toBe(194.6);
+        expect(onIssue).toHaveBeenLastCalledWith({ kind: 'takeover', reason: 'track-changed' });
+    });
+
+    it('forgets where Music was once this controller plays the track again', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5 }));
+        clock += 250; engine.emit(stopped());   // engine-stopped: the carrier pauses
+        carrier.userSeek(20);
+        carrier.play();
+        expect(engine.play).toHaveBeenCalledWith(song, 20);
+        clock += 250; engine.emit(state({ positionSec: 20 }));
+        clock += 250; engine.emit(state({ positionSec: 20.13 }));
+        expect(carrier.playbackRate).toBe(1);   // the rate hold released
+        clock += SYNC_SETTLE_MS; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3 }));
+        expect(carrier.currentTime).toBeCloseTo(20.13);
+        expect(engine.pause).not.toHaveBeenCalled();
+        expect(onIssue).toHaveBeenLastCalledWith({ kind: 'takeover', reason: 'track-changed' });
+    });
+
+    it('does not finish the carrier from a reading that arrives after dispose', async () => {
+        const subscribe = engine.subscribeState.getMockImplementation()!;
+        let deliver!: (reading: OmniExternalPlaybackState) => void;
+        engine.subscribeState.mockImplementationOnce((listener) => {
+            deliver = listener;
+            return subscribe(listener);
+        });
+        await startPlaying();
+        carrier.currentTime = 194.6;
+        engine.emit(state({ positionSec: 194.5 }));
+        await sync.dispose({ stopEngine: false });
+        clock += 1000; deliver(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(engine.pause).not.toHaveBeenCalled();
+        expect(carrier.currentTime).toBe(194.6);
+        expect(onIssue).not.toHaveBeenCalled();
     });
 });
 

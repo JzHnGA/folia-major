@@ -9,7 +9,7 @@ import {
 // Keeps one song's silent carrier <audio> and Music.app in lock-step: the listener's play / pause / seek on the
 // carrier are mirrored to Music, and the carrier's clock is steered from Music's reported position.
 
-export const SYNC_DRIFT_IGNORE_SEC = 0.08;
+export const SYNC_DRIFT_IGNORE_SEC = 0.03;
 export const SYNC_DRIFT_SEEK_SEC = 1;
 export const SYNC_RATE_NUDGE = 0.05;
 export const SYNC_START_TIMEOUT_MS = 8000;
@@ -18,6 +18,8 @@ export const SYNC_SETTLE_MS = 1000;
 export const SYNC_START_ADVANCE_SEC = 0.05;
 /** Chromium's minimum playbackRate: the carrier crawls at it while Music buffers after a play outside the start hold. */
 export const SYNC_HOLD_RATE = 0.0625;
+/** Music's crossfade / AutoMix starts its next track up to this long before ours ends (its longest crossfade). */
+export const SYNC_MUSIC_TRANSITION_WINDOW_SEC = 12;
 
 const PROVIDER_ID = 'apple-music';
 
@@ -108,6 +110,12 @@ export class ExternalPlaybackSync {
     private carrierEndedAtMs: number | null = null;
     /** Foreign tracks already paused as an auto-advance since this controller last played Music. */
     private readonly autoAdvancePaused = new Set<string>();
+    /**
+     * Music's own timeline for this track: its last fresh playing reading (duration falling back to the carrier's).
+     * Music starts its next track seconds early, so only this, not the carrier, tells that ours ended. Every play of
+     * ours forgets it.
+     */
+    private lastOurReading: { positionSec: number; durationSec: number } | null = null;
 
     /** Start hold: engine states only feed the audible check until the hold is released or aborted. */
     private held = false;
@@ -284,6 +292,8 @@ export class ExternalPlaybackSync {
 
     // Same track playing: follow a resume made in Music, then steer the carrier toward Music.
     private followPlaying(state: OmniExternalPlaybackState): void {
+        const durationSec = state.durationSec ?? this.carrier.duration;
+        this.lastOurReading = { positionSec: state.positionSec, durationSec };
         if (this.carrier.paused) {
             if (this.isSettling() || this.isCarrierEnded()) return;
             this.playCarrier();
@@ -292,7 +302,7 @@ export class ExternalPlaybackSync {
         this.correctDrift(this.estimate(state));
     }
 
-    // Under 80 ms is left alone, up to 1 s is absorbed by a ±5 % rate, beyond that the carrier jumps.
+    // Under 30 ms is left alone, up to 1 s is absorbed by a ±5 % rate, beyond that the carrier jumps.
     private correctDrift(estimate: number): void {
         const drift = estimate - this.carrier.currentTime;
         const magnitude = Math.abs(drift);
@@ -315,11 +325,17 @@ export class ExternalPlaybackSync {
     // listener's own playback. Around the carrier's end it is Music auto-advancing (it ignores "play once"): see
     // pauseAutoAdvance. Once the carrier ended longer ago than the grace, the listener may play anything: ignore it.
     // Otherwise, outside the settle window, it is the listener taking over.
+    // Music's crossfade / AutoMix starts its next track seconds before ours ends, while the carrier still has time
+    // left: when Music's last reading of ours was that close to its end, ours ended there (see finishWithMusic).
     private handleOtherTrack(state: OmniExternalPlaybackState): void {
         if (!this.commanded && this.carrier.paused) return;
         if (this.isCarrierEnded()) {
             const endedAt = this.carrierEndedAtMs;
             if (endedAt !== null && this.now() - endedAt <= SYNC_END_GRACE_SEC * 1000) this.pauseAutoAdvance(state);
+            return;
+        }
+        if (state.state === 'playing' && this.musicReachedOurEnd()) {
+            this.finishWithMusic(state);
             return;
         }
         if (!this.carrier.paused && this.remainingSec() < SYNC_END_GRACE_SEC) {
@@ -330,6 +346,23 @@ export class ExternalPlaybackSync {
         this.trackChanged = true;
         this.pauseCarrier();
         this.onIssue({ kind: 'takeover', reason: 'track-changed' });
+    }
+
+    // Music's last reading of ours was within its crossfade window of the end, under a running carrier. A paused
+    // carrier is the listener's pause (or a takeover): finishing it would move Folia's queue on against that pause.
+    private musicReachedOurEnd(): boolean {
+        const reading = this.lastOurReading;
+        if (!reading || this.carrier.paused || !Number.isFinite(this.carrier.duration)) return false;
+        return reading.durationSec - reading.positionSec <= SYNC_MUSIC_TRANSITION_WINDOW_SEC;
+    }
+
+    // Music moved on into its next track: pause that like any auto-advance (even inside the settle window) and run the
+    // carrier out now with an internal seek, so its `ended` moves Folia's queue on and the seek is not sent to Music.
+    // The reading is forgotten and the carrier sits at its end, so this happens once per play.
+    private finishWithMusic(state: OmniExternalPlaybackState): void {
+        this.lastOurReading = null;
+        this.pauseAutoAdvance(state);
+        this.seekCarrier(this.carrier.duration);
     }
 
     // Pauses Music's auto-advance into a foreign track, even inside the settle window: only a playing reading, and
@@ -424,6 +457,7 @@ export class ExternalPlaybackSync {
         this.markCommand();
         this.engineStopped = false;
         this.autoAdvancePaused.clear();
+        this.lastOurReading = null;
         const assumed: KnownEngineState = { state: 'playing', mediaId: this.mediaId };
         this.known = assumed;
         return this.runCommand(() => this.engine.play(this.song, position)).catch((error: unknown) => {
