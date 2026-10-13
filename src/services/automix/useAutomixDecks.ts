@@ -24,6 +24,7 @@ import type { TransitionSettings } from './transitionStrategy';
 import { usePlaybackStore, type TransitionDisplay } from '../../stores/usePlaybackStore';
 import { useAudioSettingsStore } from '../../stores/useAudioSettingsStore';
 import { playbackFade } from '../playbackFade';
+import type { DeckGainEnvelope } from '../gainEnvelope';
 import { getPlaybackRepresentation } from '../playbackRecovery/representationRegistry';
 import { buildNavidromeSourceRevision } from '../playbackRecovery/sourceRevision';
 
@@ -41,6 +42,12 @@ export type { TransitionDisplay };
 // without a sample-alignment click.
 
 export type { AutomixDeckId };
+
+/** The pair a transition is about, from arm to settle: who fades out on which deck, and who arrives on which. */
+export interface AutomixTransitionSongs {
+    tail: { deck: AutomixDeckId; song: SongResult };
+    incoming: { deck: AutomixDeckId; song: SongResult };
+}
 
 /**
  * Whether a player state means "the listener stopped this", as opposed to the player merely
@@ -191,6 +198,11 @@ type UseAutomixDecksParams = {
      * unreachable local file. Resolved by App, which owns the local library.
      */
     getLocalStemBytes?: (song: SongResult) => Promise<ArrayBuffer | null>;
+    /**
+     * Told about every gain envelope the session writes onto a deck's fade, after the write - see
+     * `AutomixSessionPorts.onDeckEnvelope`. Read through a ref, because the ports are built once.
+     */
+    onDeckEnvelope?: (deck: AutomixDeckId, envelope: DeckGainEnvelope) => void;
 };
 
 export function useAutomixDecks({
@@ -204,6 +216,7 @@ export function useAutomixDecks({
     onAdvanceTrack,
     onDeckPlayedOut,
     getLocalStemBytes,
+    onDeckEnvelope,
 }: UseAutomixDecksParams) {
     // Read here rather than passed in. Plain reads of the same store App.tsx was reading from, so
     // the values are identical within a render - this does not touch the advance ordering the note
@@ -249,6 +262,9 @@ export function useAutomixDecks({
     // State rather than a ref on purpose: lifting the hold has to re-run the audio bridge's
     // autoplay effect, and only a render does that.
     const [autoplayHeld, setAutoplayHeld] = useState(false);
+    // State for the same reason: the external playback session re-binds Music's song to a deck when this moves.
+    // Set at the arm, cleared by the settle every ending goes through.
+    const [transitionSongs, setTransitionSongs] = useState<AutomixTransitionSongs | null>(null);
 
     const elementsRef = useRef<Record<AutomixDeckId, HTMLAudioElement | null>>({ A: null, B: null });
     const chainsRef = useRef<Partial<Record<AutomixDeckId, AutomixDeckChain>>>({});
@@ -313,6 +329,10 @@ export function useAutomixDecks({
     playedOutRef.current = onDeckPlayedOut;
     const localBytesRef = useRef(getLocalStemBytes);
     localBytesRef.current = getLocalStemBytes;
+    const deckEnvelopeRef = useRef(onDeckEnvelope);
+    deckEnvelopeRef.current = onDeckEnvelope;
+    /** A throwing envelope listener is reported once, not on every ramp. */
+    const deckEnvelopeWarnedRef = useRef(false);
     /** Whether the picture is currently held. See `getDisplayElement`. */
     const displayHeldRef = useRef(false);
     /** The pair the picture is made of, kept current so the capture above can be synchronous. */
@@ -438,6 +458,7 @@ export function useAutomixDecks({
                     // the current track a second time.
                     setWarmSrc(null);
                     warmSlot.want(null);
+                    setTransitionSongs(null);
                     scheduleStallCheck();
                 }
             },
@@ -447,6 +468,17 @@ export function useAutomixDecks({
             // was made: separation runs on its own clock and a window that lands inside that gap
             // is still worth using.
             getStems: (key, role) => getStemsByKey(key, role),
+            // Called from inside the ramps of an arm, a blend and a settle: whatever follows the envelope must never
+            // throw into them, so a failure is logged once and dropped.
+            onDeckEnvelope: (deck, envelope) => {
+                try {
+                    deckEnvelopeRef.current?.(deck, envelope);
+                } catch (error) {
+                    if (deckEnvelopeWarnedRef.current) return;
+                    deckEnvelopeWarnedRef.current = true;
+                    console.warn('[Automix] a deck envelope listener failed', error);
+                }
+            },
         });
     }
     const session = sessionRef.current;
@@ -467,6 +499,8 @@ export function useAutomixDecks({
 
     const registerDeckA = useCallback((element: HTMLAudioElement | null) => bindDeck('A', element), [bindDeck]);
     const registerDeckB = useCallback((element: HTMLAudioElement | null) => bindDeck('B', element), [bindDeck]);
+
+    const getDeckElement = useCallback((deck: AutomixDeckId) => elementsRef.current[deck], []);
 
     const deckSrc = useCallback(
         (deck: AutomixDeckId) => resolveDeckSrc({ deck, activeDeck, audioSrc, tailSrc, warmSrc }),
@@ -658,6 +692,13 @@ export function useAutomixDecks({
         if (!plan) return;
 
         if (session.getPhase() === 'armed') {
+            // This closure is still the render from before the arm, so `activeDeck` is the deck fading out.
+            setTransitionSongs(current => (
+                current?.tail.deck === activeDeck && current.tail.song === currentSong
+                && current.incoming.deck === idleDeck && current.incoming.song === nextSong
+                    ? current
+                    : { tail: { deck: activeDeck, song: currentSong }, incoming: { deck: idleDeck, song: nextSong } }
+            ));
             report(`${audioSrc}:${modeTag}armed`, `blending ${plan.overlap}s - ${plan.reason}`);
         } else if (plan.kind !== 'fade') {
             report(`${audioSrc}:${modeTag}cut`, `plain cut - ${plan.reason}`);
@@ -712,6 +753,9 @@ export function useAutomixDecks({
      * now points at the deck being kept. See `suppressAutoplayRef`.
      */
     const cancelBlendKeepingTail = useCallback(() => session.abort(true), [session]);
+
+    /** Makes the blend in flight a hard cut, for a reason only the caller can see. See `cutTransition` in the session. */
+    const cutTransition = useCallback((reason: string) => session.cutTransition(reason), [session]);
 
     // Both decks are measured continuously while playing, not only once a blend is imminent: the
     // tempo estimate needs seconds of history behind it, and by the time a transition is planned
@@ -867,5 +911,8 @@ export function useAutomixDecks({
         isTransitionAudible,
         abortTransition,
         cancelBlendKeepingTail,
+        transitionSongs,
+        getDeckElement,
+        cutTransition,
     };
 }

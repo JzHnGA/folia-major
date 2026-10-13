@@ -93,6 +93,7 @@ import { usePlaybackAudioBridge } from './hooks/usePlaybackAudioBridge';
 import { useExternalPlaybackSync } from './hooks/useExternalPlaybackSync';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
 import { useAutomixDecks, type AutomixDeckId } from './services/automix/useAutomixDecks';
+import type { DeckGainEnvelope } from './services/gainEnvelope';
 import { usePlaybackInteractionBridge } from './hooks/usePlaybackInteractionBridge';
 import { usePersonalFmModeController } from './hooks/usePersonalFmModeController';
 import { PERSONAL_FM_MODE_COMMAND_ID } from './components/command-palette/commands/fmModeCommand';
@@ -523,6 +524,8 @@ export default function App() {
     // Mirrors the output volume to Music.app for Apple Music songs. Pointed at the external playback session
     // further down, once useExternalPlaybackSync exists; a ref so syncOutputGain keeps its identity.
     const externalVolumeMirrorRef = useRef<(volume: number) => void>(() => {});
+    // Automix's deck envelopes, for the same session: Automix is built before it, so they go through a ref too.
+    const deckEnvelopeRef = useRef<(deck: AutomixDeckId, envelope: DeckGainEnvelope) => void>(() => {});
 
     const syncOutputGain = useCallback((targetVolume: number, smoothing = 0.015) => {
         const clampedVolume = clampMediaVolume(targetVolume);
@@ -1160,6 +1163,7 @@ export default function App() {
         },
         onDeckPlayedOut: (song, src) => cachePlayedOutRef.current(song, src),
         getLocalStemBytes,
+        onDeckEnvelope: (deck, envelope) => deckEnvelopeRef.current(deck, envelope),
     });
 
     automixRef.current = automix;
@@ -1363,8 +1367,13 @@ export default function App() {
         activeDeck: automix.activeDeck,
         isLyricsLoading,
         onPlaybackFailure: skipAfterPlaybackFailure,
+        audioContextRef,
+        decks: { getElement: automix.getDeckElement, deckSrc: automix.deckSrc },
+        transition: automix.transitionSongs,
+        cutTransition: () => automix.cutTransition('Music did not start in time'),
     });
     externalVolumeMirrorRef.current = externalPlayback.mirrorVolume;
+    deckEnvelopeRef.current = externalPlayback.handleDeckEnvelope;
 
     const { setupAudioAnalyzer, cacheSongAssets, cacheSongAssetsFor, adoptActiveDeckSource } = usePlaybackAudioBridge({
         audioRef,
