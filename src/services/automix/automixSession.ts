@@ -4,16 +4,18 @@ import {
     connectStemDeck,
     rampGain,
     rampGainDb,
+    rampGainEnvelope,
     resetThrow,
     resetTone,
     scheduleBandBlend,
-    scheduleCrossfade,
+    scheduleCrossfadeEnvelopes,
     scheduleEchoThrow,
     scheduleStemWindow,
     type AutomixDeckChain,
     type AutomixStemBus,
     type AutomixStemChain,
 } from './crossfadeGraph';
+import type { DeckGainEnvelope } from '../gainEnvelope';
 import { diagMark } from './diag'; // TEMPORARY memory-diagnostic marks
 import {
     envelopeOf,
@@ -151,6 +153,14 @@ export interface AutomixSessionPorts {
      * identities from arm time, so it names them. See `getStemsByKey`.
      */
     getStems?: (key: string | null, role: 'tail' | 'head') => TrackStems | null;
+    /**
+     * Told about every gain envelope written onto a deck's `fade` node, after the write.
+     *
+     * Read-only data: whoever has to follow the same move somewhere Web Audio cannot reach (the Music
+     * app's own volume) reads it here instead of the parameter. Never announced for the stem gesture,
+     * which only runs between two tracks that both play through Web Audio.
+     */
+    onDeckEnvelope?: (deck: AutomixDeckId, envelope: DeckGainEnvelope) => void;
 }
 
 export interface AutomixTransitionRequest {
@@ -673,6 +683,14 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         return true;
     };
 
+    /** Moves a deck's fade gain with rampGain and announces the move; a deck with no chain is left alone. */
+    const rampFade = (context: AudioContext, deck: AutomixDeckId, value: number, seconds = 0) => {
+        const chain = ports.getChain(deck);
+        if (!chain) return;
+        const envelope = rampGainEnvelope(context, chain.fade, value, seconds);
+        ports.onDeckEnvelope?.(deck, envelope);
+    };
+
     /**
      * Returns both decks to a defined idle state. The one path every ending shares.
      *
@@ -717,7 +735,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
             (['A', 'B'] as const).forEach(deck => {
                 const chain = ports.getChain(deck);
                 if (!chain) return;
-                rampGain(context, chain.fade, 1, 0.03);
+                rampFade(context, deck, 1, 0.03);
                 rampGain(context, chain.trim, 1, 0.03);
                 resetTone(context, chain.tone);
                 resetThrow(context, chain.throw);
@@ -813,7 +831,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
 
         // Silence the incoming deck before it is allowed to make a sound, so the blend owns its
         // first sample instead of the track punching in at full level.
-        rampGain(context, incomingChain.fade, 0);
+        rampFade(context, incoming, 0);
         seekTo(incomingElement, nextPlan.inStart);
         // Its old readings describe wherever this deck was left after the last transition.
         clocks[incoming].reset();
@@ -877,7 +895,7 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
         if (phase !== 'armed') {
             // Whatever a cancelled blend left behind, a deck playing outside a transition sits at
             // unity. Cheap insurance against the only failure that is not self-correcting.
-            if (context && activeChain) rampGain(context, activeChain.fade, 1, 0.02);
+            if (context && activeChain) rampFade(context, activeDeck, 1, 0.02);
             return;
         }
 
@@ -951,8 +969,8 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
                 `[Automix] dropping blend, ${refusal}`
                 + (currentKey === plannedNextKey ? '' : ` (deck has "${currentKey}", planned "${plannedNextKey}")`),
             );
-            rampGain(context, tailChain.fade, 0, CUT_SECONDS);
-            rampGain(context, activeChain.fade, 1, CUT_SECONDS);
+            rampFade(context, tailDeck, 0, CUT_SECONDS);
+            rampFade(context, activeDeck, 1, CUT_SECONDS);
             cleanupTimer = setTimeout(
                 () => settle({ pauseTail: true }),
                 CUT_SECONDS * 1000 + 70,
@@ -1185,9 +1203,13 @@ export const createAutomixSession = (ports: AutomixSessionPorts) => {
                 periodSec,
             );
         }
-        scheduleCrossfade(
+        const scheduled = scheduleCrossfadeEnvelopes(
             context, tailChain.fade, activeChain.fade, wall, shape.crossover, hold, shape.together,
         );
+        // Tail first, then the deck that is now active; after the write, so a listener of the port
+        // never hears of a move the audio graph does not have yet.
+        scheduled.outgoing.forEach(envelope => ports.onDeckEnvelope?.(tailDeck, envelope));
+        scheduled.incoming.forEach(envelope => ports.onDeckEnvelope?.(activeDeck, envelope));
         // Only where there is an overlap to balance. Across a splice or a cut the two tracks are
         // never both audible, so pulling one down would just be a level step nobody asked for.
         if (shape.overlap >= AUTOMIX_MIN_OVERLAP_SEC) {

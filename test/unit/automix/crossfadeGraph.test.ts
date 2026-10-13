@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     rampGain,
     rampGainDb,
+    rampGainEnvelope,
     scheduleBandBlend,
     scheduleCrossfade,
+    scheduleCrossfadeEnvelopes,
     scheduleEchoThrow,
     softLimit,
 } from '@/services/automix/crossfadeGraph';
@@ -138,6 +140,102 @@ describe('scheduleCrossfade, held', () => {
         expect(outgoing.events).toContainEqual({ type: 'set', time: 10, value: 1 });
         expect(lastCurve(incoming)).toMatchObject({ time: 11.2, duration: 0.04 });
         expect(lastCurve(outgoing)).toMatchObject({ time: 11.2, duration: 0.04 });
+    });
+});
+
+describe('scheduleCrossfadeEnvelopes', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('returns the envelopes it wrote, the hold included', () => {
+        const context = createFakeContext(10);
+        const outgoing = createFakeGainNode();
+        const incoming = createFakeGainNode();
+
+        const scheduled = scheduleCrossfadeEnvelopes(context, asGain(outgoing), asGain(incoming), 0.04, 0.5, 1.2);
+
+        expect(scheduled.ok).toBe(true);
+        expect(scheduled.outgoing[0]).toEqual({ startAt: 10, seconds: 0, points: [1] });
+        expect(scheduled.incoming[0]).toEqual({ startAt: 10, seconds: 0, points: [0] });
+        expect(scheduled.outgoing[1]).toEqual({
+            startAt: 11.2, seconds: 0.04, points: Array.from(lastCurve(outgoing)!.curve),
+        });
+        expect(scheduled.incoming[1]).toEqual({
+            startAt: 11.2, seconds: 0.04, points: Array.from(lastCurve(incoming)!.curve),
+        });
+    });
+
+    it('announces only the curve when there is no hold', () => {
+        const context = createFakeContext(12.5);
+        const outgoing = createFakeGainNode();
+        const incoming = createFakeGainNode();
+
+        const scheduled = scheduleCrossfadeEnvelopes(context, asGain(outgoing), asGain(incoming), 4);
+
+        expect(scheduled.outgoing).toEqual([
+            { startAt: 12.5, seconds: 4, points: Array.from(lastCurve(outgoing)!.curve) },
+        ]);
+        expect(scheduled.incoming).toEqual([
+            { startAt: 12.5, seconds: 4, points: Array.from(lastCurve(incoming)!.curve) },
+        ]);
+    });
+
+    it('returns the cut it fell back to when the engine rejects the curves', () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => { });
+        const context = createFakeContext(2);
+        const outgoing = createFakeGainNode();
+        const incoming = createFakeGainNode();
+        outgoing.gain.setValueCurveAtTime = () => { throw new Error('refused'); };
+
+        const scheduled = scheduleCrossfadeEnvelopes(context, asGain(outgoing), asGain(incoming), 4);
+
+        expect(scheduled.ok).toBe(false);
+        expect(scheduled.outgoing.at(-1)).toMatchObject({ startAt: 2, seconds: 0.05 });
+        expect(scheduled.outgoing.at(-1)!.points.at(-1)).toBe(0);
+        expect(scheduled.incoming.at(-1)).toMatchObject({ startAt: 2, seconds: 0.05 });
+        expect(scheduled.incoming.at(-1)!.points.at(-1)).toBe(1);
+    });
+
+    it('writes exactly what scheduleCrossfade writes', () => {
+        const run = (schedule: typeof scheduleCrossfade | typeof scheduleCrossfadeEnvelopes) => {
+            const outgoing = createFakeGainNode();
+            const incoming = createFakeGainNode();
+            schedule(createFakeContext(7), asGain(outgoing), asGain(incoming), 3, 0.4, 0.5, 0.2);
+            return { outgoing: outgoing.events, incoming: incoming.events };
+        };
+
+        expect(run(scheduleCrossfadeEnvelopes)).toEqual(run(scheduleCrossfade));
+    });
+});
+
+describe('rampGainEnvelope', () => {
+    it('describes a ramp from the current value', () => {
+        const context = createFakeContext(3);
+        const node = createFakeGainNode();
+        node.gain.value = 1;
+
+        const envelope = rampGainEnvelope(context, asGain(node), 0, 0.2);
+
+        expect(envelope).toEqual({ startAt: 3, seconds: 0.2, points: [1, 0] });
+    });
+
+    it('describes an instant move as a single point', () => {
+        const context = createFakeContext(3);
+        const node = createFakeGainNode();
+
+        expect(rampGainEnvelope(context, asGain(node), 0)).toEqual({ startAt: 3, seconds: 0, points: [0] });
+        expect(rampGainEnvelope(context, asGain(node), 0.5, -1)).toEqual({ startAt: 3, seconds: 0, points: [0.5] });
+    });
+
+    it('writes what rampGain writes', () => {
+        const ramped = createFakeGainNode();
+        const enveloped = createFakeGainNode();
+        ramped.gain.value = 0.4;
+        enveloped.gain.value = 0.4;
+
+        rampGain(createFakeContext(3), asGain(ramped), 1, 0.05);
+        rampGainEnvelope(createFakeContext(3), asGain(enveloped), 1, 0.05);
+
+        expect(enveloped.events).toEqual(ramped.events);
     });
 });
 

@@ -6,6 +6,7 @@ import {
     type AutomixDeckId,
     type AutomixSessionPorts,
 } from '@/services/automix/automixSession';
+import type { DeckGainEnvelope } from '@/services/gainEnvelope';
 import { AUTOMIX_MIN_OVERLAP_SEC, type TransitionTrack } from '@/services/automix/transitionPlanner';
 import { DEFAULT_TRANSITION_SETTINGS } from '@/services/automix/transitionStrategy';
 import { type TrackProfile } from '@/services/automix/trackProfile';
@@ -60,6 +61,8 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
     const tailSrcChanges: (string | null)[] = [];
     const autoplayHolds: boolean[] = [];
     const advanceTrack = vi.fn();
+    /** Every gain envelope the session announced, in order, for the Apple Music mirror to consume. */
+    const envelopes: { deck: AutomixDeckId; envelope: DeckGainEnvelope }[] = [];
 
     /** Every stem lookup the session makes, so a test can check WHICH pair it asked about. */
     const stemAsks: { key: string | null; role: 'tail' | 'head' }[] = [];
@@ -75,6 +78,7 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
         // Always empty, so every other test here keeps taking the master crossfade it was written
         // against. Only the keys are under test.
         getStems: (key, role) => { stemAsks.push({ key, role }); return null; },
+        onDeckEnvelope: (deck, envelope) => { envelopes.push({ deck, envelope }); },
     };
 
     const session = createAutomixSession(ports);
@@ -100,7 +104,7 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
     );
 
     return {
-        session, elements, chains, context, stemAsks,
+        session, elements, chains, context, stemAsks, envelopes,
         activeDeckChanges, tailSrcChanges, autoplayHolds, advanceTrack, arm,
     };
 };
@@ -860,5 +864,136 @@ describe('automix session, transition styles', () => {
         expect(plan?.style).toBe('plainBlend');
         harness.session.handleActiveDeckPlaying('local:next-song');
         expect(harness.chains.A.toneParams[0].events).toHaveLength(0);
+    });
+});
+
+describe('automix session, deck envelopes', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.spyOn(console, 'log').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    const last = (harness: ReturnType<typeof createHarness>, deck: AutomixDeckId) => (
+        harness.envelopes.filter(entry => entry.deck === deck).at(-1)?.envelope
+    );
+
+    it('announces the incoming deck going silent at arm', () => {
+        const harness = createHarness();
+
+        harness.arm();
+
+        expect(last(harness, 'B')).toEqual({ startAt: 0, seconds: 0, points: [0] });
+    });
+
+    it('announces both crossfade curves exactly as scheduled', () => {
+        const harness = createHarness();
+        harness.arm();
+
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        const curve = lastCurve(harness.chains.A.fadeNode)!;
+        expect(last(harness, 'A')).toEqual({
+            startAt: curve.time, seconds: curve.duration, points: Array.from(curve.curve),
+        });
+        expect(last(harness, 'B')!.points).toEqual(Array.from(lastCurve(harness.chains.B.fadeNode)!.curve));
+    });
+
+    it('announces the outgoing deck first, then the incoming one', () => {
+        const harness = createHarness();
+        harness.arm();
+        const before = harness.envelopes.length;
+
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        // Deck A is the tail once B has taken the active role at arm.
+        expect(harness.envelopes.slice(before).map(entry => entry.deck)).toEqual(['A', 'B']);
+    });
+
+    it('announces the refusal ramps', () => {
+        const harness = createHarness();
+        harness.arm();
+
+        harness.session.handleActiveDeckPlaying('local:some-other-song');
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.05 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(0);
+        expect(last(harness, 'B')).toMatchObject({ seconds: 0.05 });
+        expect(last(harness, 'B')!.points.at(-1)).toBe(1);
+    });
+
+    it('announces unity on both decks when the transition settles', () => {
+        const harness = createHarness();
+        harness.arm();
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        vi.advanceTimersByTime(5_200);
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.03 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(1);
+        expect(last(harness, 'B')).toMatchObject({ seconds: 0.03 });
+        expect(last(harness, 'B')!.points.at(-1)).toBe(1);
+    });
+
+    it('announces unity for a deck that starts outside a transition', () => {
+        const harness = createHarness();
+
+        harness.session.handleActiveDeckPlaying(null);
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.02 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(1);
+    });
+
+    // A session built by hand, to say something the shared harness cannot: that the port is truly
+    // optional, and that it is told only after the audio graph has been written.
+    const bareSession = (onDeckEnvelope?: AutomixSessionPorts['onDeckEnvelope']) => {
+        const elements = { A: createFakeElement(100, 95), B: createFakeElement(100, 0) };
+        const chains = { A: createFakeChain(), B: createFakeChain() };
+        const context = createFakeContext();
+        const session = createAutomixSession({
+            getContext: () => context,
+            getElement: deck => asElement(elements[deck]),
+            getChain: deck => chains[deck],
+            onActiveDeckChange: () => { },
+            onTailSrcChange: () => { },
+            onAutoplayHoldChange: () => { },
+            advanceTrack: () => { },
+            onDeckEnvelope,
+        });
+        session.requestTransition({
+            time: 95,
+            audioSrc: 'outgoing.mp3',
+            from: BLENDABLE_FROM,
+            to: BLENDABLE_TO,
+            settings: DEFAULT_TRANSITION_SETTINGS,
+            nextKey: 'local:next-song',
+            fromKey: 'local:this-song',
+        });
+        return { session, chains };
+    };
+
+    it('runs a whole blend without the port', () => {
+        const { session, chains } = bareSession();
+
+        session.handleActiveDeckPlaying('local:next-song');
+        vi.advanceTimersByTime(5_200);
+
+        expect(session.getPhase()).toBe('idle');
+        expect(finalTarget(chains.A.fadeNode)).toBe(1);
+    });
+
+    it('announces an envelope only after the gain has been written', () => {
+        let written: boolean | null = null;
+        const { session, chains } = bareSession((deck, envelope) => {
+            if (deck === 'A' && envelope.seconds > 1) written = lastCurve(chains.A.fadeNode) !== null;
+        });
+
+        session.handleActiveDeckPlaying('local:next-song');
+
+        expect(written).toBe(true);
     });
 });
