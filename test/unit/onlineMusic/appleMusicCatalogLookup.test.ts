@@ -22,10 +22,13 @@ const asFetch = (mock: ReturnType<typeof respond>) => mock as unknown as typeof 
 
 beforeEach(() => {
     vi.resetModules();
+    // A failed lookup logs a warning; the failure tests expect it.
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
 });
 
 describe('Apple catalog lookup request', () => {
@@ -60,12 +63,39 @@ describe('Apple catalog lookup matching', () => {
 
     it('takes the row whose duration is closest when several qualify', async () => {
         const lookup = await load();
+        const same = { artistName: 'Nana Ou-Yang' };
         const rows = [
-            row({ trackName: '遠', trackTimeMillis: 199597 + 900 }),
-            row({ trackName: '近', trackTimeMillis: 199597 + 40 }),
-            row({ trackName: '中', trackTimeMillis: 199597 - 300 }),
+            row({ ...same, trackName: '遠', trackTimeMillis: 199597 + 900 }),
+            row({ ...same, trackName: '近', trackTimeMillis: 199597 + 40 }),
+            row({ ...same, trackName: '中', trackTimeMillis: 199597 - 300 }),
         ];
         expect((await lookup(song, asFetch(respond(rows))))?.title).toBe('近');
+    });
+
+    it('takes a single qualifying row even when its names share nothing with the library names', async () => {
+        const lookup = await load();
+        const rows = [row({ trackName: 'Elsewhere', artistName: 'Someone Else', trackTimeMillis: 199597 + 5000 }), row()];
+        expect(await lookup(song, asFetch(respond(rows)))).toMatchObject({ title: '我的爱没前奏' });
+    });
+
+    it('with several qualifying rows, takes the closest only when its title or artist overlaps the library names', async () => {
+        const lookup = await load();
+        const library = { ...song, name: '我爱的女孩', artist: 'Know Know' };
+        // The title overlaps after traditional-to-simplified normalization.
+        const byTitle = [row({ trackName: '我愛的女孩（Live）', artistName: 'Other', trackTimeMillis: 199597 + 10 }), row({ trackName: '別的歌', trackTimeMillis: 199597 + 400 })];
+        expect((await lookup({ ...library, id: 'a' }, asFetch(respond(byTitle))))?.title).toBe('我爱的女孩（Live）');
+        // The artist overlaps when one normalized name contains the other, ignoring case.
+        const byArtist = [row({ trackName: '別的歌', artistName: 'KNOW KNOW Band', trackTimeMillis: 199597 + 10 }), row({ trackName: '另一首', trackTimeMillis: 199597 + 400 })];
+        expect((await lookup({ ...library, id: 'b' }, asFetch(respond(byArtist))))?.title).toBe('别的歌');
+    });
+
+    it('with several qualifying rows and no overlap, returns null and remembers it', async () => {
+        const lookup = await load();
+        const rows = [row({ trackName: '別的歌', artistName: '別人', trackTimeMillis: 199597 + 10 }), row({ trackName: '另一首', artistName: '又一人', trackTimeMillis: 199597 + 400 })];
+        const fetchMock = respond(rows);
+        expect(await lookup(song, asFetch(fetchMock))).toBeNull();
+        expect(await lookup(song, asFetch(fetchMock))).toBeNull();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('returns null when the catalog has no rows', async () => {
@@ -156,11 +186,46 @@ describe('Apple catalog lookup failures', () => {
         expect(await lookup({ ...song, id: 'other' }, shapeless as unknown as typeof fetch)).toBeNull();
     });
 
-    it('does not remember a failure, so the next play can try again', async () => {
+    it('does not ask again for 30 seconds after a failure, then tries again', async () => {
         const lookup = await load();
+        let clock = 1_000_000;
+        const now = () => clock;
         const failing = vi.fn(async () => { throw new TypeError('network down'); });
-        expect(await lookup(song, failing as unknown as typeof fetch)).toBeNull();
-        expect(await lookup(song, asFetch(respond([row()])))).toMatchObject({ title: '我的爱没前奏' });
+        expect(await lookup(song, failing as unknown as typeof fetch, now)).toBeNull();
+        clock += 29_999;
+        expect(await lookup(song, failing as unknown as typeof fetch, now)).toBeNull();
+        expect(failing).toHaveBeenCalledTimes(1);
+        clock += 1;
+        expect(await lookup(song, asFetch(respond([row()])), now)).toMatchObject({ title: '我的爱没前奏' });
+    });
+
+    it('keeps an answer once it has one, however much time passes', async () => {
+        const lookup = await load();
+        let clock = 1_000_000;
+        const now = () => clock;
+        const fetchMock = respond([row()]);
+        await lookup(song, asFetch(fetchMock), now);
+        clock += 24 * 3_600_000;
+        await lookup(song, asFetch(fetchMock), now);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a non-200 answer and a timeout as failures for the same 30 seconds', async () => {
+        vi.useFakeTimers();
+        const lookup = await load();
+        const badStatus = respond([row()], { ok: false, status: 503 });
+        await lookup({ ...song, id: 'status' }, asFetch(badStatus));
+        await lookup({ ...song, id: 'status' }, asFetch(badStatus));
+        expect(badStatus).toHaveBeenCalledTimes(1);
+
+        const hanging = vi.fn((_input: unknown, init?: { signal?: AbortSignal }) => new Promise<never>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        const first = lookup({ ...song, id: 'slow' }, hanging as unknown as typeof fetch);
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(await first).toBeNull();
+        expect(await lookup({ ...song, id: 'slow' }, hanging as unknown as typeof fetch)).toBeNull();
+        expect(hanging).toHaveBeenCalledTimes(1);
     });
 
     it('gives up after five seconds by aborting the request', async () => {

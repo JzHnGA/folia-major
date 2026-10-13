@@ -272,22 +272,28 @@ describe('Apple Music library and catalog', () => {
         expect(song?.sourceRef).toMatchObject({ providerId: 'apple-music', mediaId: 'ABCDEF0123456789' });
     });
 
-    it('returns empty lyrics so the shared auto-match runs, without hints when the catalog lookup fails', async () => {
+    it('returns empty lyrics at once, without touching the catalog, so the shared auto-match runs', async () => {
         const { provider } = await load();
         const song = provider.normalizeSong(track);
+        catalogRows([{ trackName: '我的愛沒前奏', trackTimeMillis: 213400 }]);
         expect(await provider.lyrics!.getLyrics(song)).toEqual({ lyrics: null, isPureMusic: false });
+        expect(catalogFetch).not.toHaveBeenCalled();
     });
 
-    it('hands the catalog names to the shared auto-match as match hints', async () => {
+    it('does not wait for a slow catalog to answer the lyrics', async () => {
+        const { provider } = await load();
+        const song = provider.normalizeSong(track);
+        catalogFetch.mockImplementation(() => new Promise(() => undefined));
+        await expect(provider.lyrics!.getLyrics(song)).resolves.toEqual({ lyrics: null, isPureMusic: false });
+    });
+});
+
+describe('Apple Music lyric match hints', () => {
+    it('offers the catalog names for the shared auto-match', async () => {
         const { provider } = await load();
         const song = provider.normalizeSong({ ...track, name: 'Wo De Ai Mei Qian Zou', artist: 'Nana Ou-Yang', album: 'Wo De Ai Mei Qian Zou - Single', duration: 199.597 });
         catalogRows([{ trackName: '我的愛沒前奏', artistName: '歐陽娜娜', collectionName: '我的愛沒前奏 - Single', trackTimeMillis: 199597 }]);
-        const result = await provider.lyrics!.getLyrics(song);
-        expect(result).toEqual({
-            lyrics: null,
-            isPureMusic: false,
-            matchHints: { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' },
-        });
+        expect(await provider.lyrics!.getMatchHints!(song)).toEqual({ title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' });
         const url = new URL(String(catalogFetch.mock.calls[0][0]));
         expect(url.searchParams.get('term')).toBe('Wo De Ai Mei Qian Zou Nana Ou-Yang');
     });
@@ -296,26 +302,28 @@ describe('Apple Music library and catalog', () => {
         const { provider } = await load();
         catalogRows([{ trackName: '我愛的女孩', artistName: 'Know Know', trackTimeMillis: 178710 }]);
         const single = provider.normalizeSong({ ...track, id: '1111111111111111', album: 'KnowKnow - Single', duration: 178.71 });
-        expect(await provider.lyrics!.getLyrics(single)).toMatchObject({ matchHints: { title: '我爱的女孩', artist: 'Know Know', album: 'KnowKnow' } });
+        expect(await provider.lyrics!.getMatchHints!(single)).toEqual({ title: '我爱的女孩', artist: 'Know Know', album: 'KnowKnow' });
         const ep = provider.normalizeSong({ ...track, id: '2222222222222222', album: 'Seasons - EP', duration: 178.71 });
-        expect(await provider.lyrics!.getLyrics(ep)).toMatchObject({ matchHints: { album: 'Seasons' } });
+        expect(await provider.lyrics!.getMatchHints!(ep)).toMatchObject({ album: 'Seasons' });
     });
 
     it('does not turn an empty library album into a hinted album', async () => {
         const { provider } = await load();
         catalogRows([{ trackName: '我愛的女孩', trackTimeMillis: 178710 }]);
         const song = provider.normalizeSong({ ...track, album: '', duration: 178.71 });
-        const result = await provider.lyrics!.getLyrics(song);
-        expect(result.matchHints).toEqual({ title: '我爱的女孩' });
+        expect(await provider.lyrics!.getMatchHints!(song)).toEqual({ title: '我爱的女孩' });
     });
 
-    it('leaves the hints out when the catalog has no row for the song', async () => {
+    it('has no hints when the catalog has no row for the song', async () => {
         const { provider } = await load();
         catalogRows([]);
-        const song = provider.normalizeSong(track);
-        const result = await provider.lyrics!.getLyrics(song);
-        expect(result).toEqual({ lyrics: null, isPureMusic: false });
-        expect('matchHints' in result).toBe(false);
+        expect(await provider.lyrics!.getMatchHints!(provider.normalizeSong(track))).toBeNull();
+    });
+
+    it('has no hints when the catalog cannot be reached', async () => {
+        const { provider } = await load();
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        expect(await provider.lyrics!.getMatchHints!(provider.normalizeSong(track))).toBeNull();
     });
 });
 

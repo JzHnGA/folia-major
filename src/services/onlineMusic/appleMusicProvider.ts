@@ -172,10 +172,14 @@ const playback: OnlinePlaybackProvider = {
 };
 
 const lyrics: OnlineLyricsProvider = {
-    // Music.app has no lyrics API we use, so the shared automatic matching supplies them.
+    // Music.app has no lyrics API we use, so the shared automatic matching supplies them. Answers at once: this sits on the playback path.
+    async getLyrics() {
+        return { lyrics: null, isPureMusic: false };
+    },
     // The library often holds an English or traditional-Chinese name that lyric sites do not know, so the song's localized
-    // names from Apple's public catalog ride along as match hints. A failed lookup only means no hints.
-    async getLyrics(song) {
+    // names from Apple's public catalog are offered to the auto-match, which asks after playback has been released.
+    // A failed lookup only means no hints.
+    async getMatchHints(song) {
         const metadata = createProviderSongMetadata(song);
         const found = await lookupAppleMusicMatchHints({
             id: String(song.id),
@@ -183,9 +187,9 @@ const lyrics: OnlineLyricsProvider = {
             artist: metadata.artists.map(artist => artist.name).filter(Boolean).join(', '),
             durationMs: metadata.durationMs,
         });
-        if (!found) return { lyrics: null, isPureMusic: false };
+        if (!found) return null;
         const album = found.album || stripAppleReleaseSuffix(metadata.album?.name ?? '');
-        return { lyrics: null, isPureMusic: false, matchHints: { ...found, ...(album ? { album } : {}) } };
+        return { ...found, ...(album ? { album } : {}) };
     },
 };
 

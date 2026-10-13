@@ -121,20 +121,34 @@ describe('omni routing', () => {
         expect(getChorusRanges).toHaveBeenCalledWith('chorus-song');
     });
 
-    it('keeps the provider\'s match hints on the lyrics result, with or without lyrics', async () => {
-        const matchHints = { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' };
-        const lines = [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }];
-        let answer: Awaited<ReturnType<NonNullable<OnlineMusicProvider['lyrics']>['getLyrics']>> = { lyrics: null, isPureMusic: false, matchHints };
+    it('routes lyric match hints through the song owner and never throws', async () => {
+        const hints = { title: '我的爱没前奏', artist: '欧阳娜娜' };
+        const getMatchHints = vi.fn(async () => hints);
         registerOnlineMusicProvider({
             ...provider(providerId, { searchSongs: async () => ({ items: [], hasMore: false, nextOffset: 0 }) }),
-            lyrics: { getLyrics: async () => answer },
+            lyrics: { getLyrics: async () => ({ lyrics: null, isPureMusic: false }), getMatchHints },
         });
-        const target = song(providerId, 'hint-song');
+        registerOnlineMusicProvider({
+            ...provider(otherProviderId, { searchSongs: async () => ({ items: [], hasMore: false, nextOffset: 0 }) }),
+            lyrics: { getLyrics: async () => ({ lyrics: null, isPureMusic: false }) },
+        });
 
-        await expect(omni.getLyrics(target)).resolves.toMatchObject({ matchHints });
-        // The chorus resolver rebuilds the result when there are lyrics; the hints must ride through that too.
-        answer = { lyrics: { lines, isWordByWord: false }, isPureMusic: false, matchHints };
-        await expect(omni.getLyrics(target)).resolves.toMatchObject({ matchHints });
+        const target = song(providerId, 'hint-song');
+        await expect(omni.getLyricMatchHints(target)).resolves.toEqual(hints);
+        expect(getMatchHints).toHaveBeenCalledWith(target);
+        // A provider without the method, a provider that is not registered and a song of no provider all read as "no hints".
+        await expect(omni.getLyricMatchHints(song(otherProviderId, 'plain-song'))).resolves.toBeNull();
+        await expect(omni.getLyricMatchHints(song(missingProviderId, 'gone-song'))).resolves.toBeNull();
+        await expect(omni.getLyricMatchHints({ ...target, sourceRef: { kind: 'local', mediaId: 'local-id' } })).resolves.toBeNull();
+        // The lookup is not part of the lyrics answer, which stays what the provider returned.
+        await expect(omni.getLyrics(target)).resolves.toEqual({ lyrics: null, isPureMusic: false });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        getMatchHints.mockRejectedValueOnce(new Error('offline'));
+        await expect(omni.getLyricMatchHints(target)).resolves.toBeNull();
+        getMatchHints.mockResolvedValueOnce(null as never);
+        await expect(omni.getLyricMatchHints(target)).resolves.toBeNull();
+        warn.mockRestore();
     });
 
     it('rejects a late active-provider result after invalidation', async () => {

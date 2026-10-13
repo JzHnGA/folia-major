@@ -115,8 +115,13 @@ export interface ProviderLyricsResult {
     romanizationText?: string | null;
     isPureMusic: boolean;
     chorusRanges?: ChorusRange[];
-    // Names the provider knows the song by that suit a cross-platform lyric search better than its own metadata.
-    matchHints?: { title?: string; artist?: string; album?: string };
+}
+
+// Names a provider knows a song by that suit a cross-platform lyric search better than its own metadata.
+export interface ProviderLyricMatchHints {
+    title?: string;
+    artist?: string;
+    album?: string;
 }
 
 export interface ProviderAlbumSummary {
@@ -309,6 +314,8 @@ export interface OnlineExternalPlaybackProvider {
 export interface OnlineLyricsProvider {
     getLyrics(song: SongResult, context?: { userId?: MediaId | null }): Promise<ProviderLyricsResult>;
     getChorusRanges?(songId: MediaId): Promise<ChorusRange[]>;
+    // Optional extra names for the shared auto-match. Asked only after the lyrics were released, never on the playback path, so it may take a network round trip.
+    getMatchHints?(song: SongResult): Promise<ProviderLyricMatchHints | null>;
 }
 
 export interface OnlineSongMetadataProvider {
@@ -500,6 +507,7 @@ export type OmniAudioSource = ProviderAudioSource;
 export type OmniSongAvailability = ProviderSongAvailability;
 export type OmniSongReplacement = ProviderSongReplacement;
 export type OmniLyricsResult = ProviderLyricsResult;
+export type OmniLyricMatchHints = ProviderLyricMatchHints;
 export type OmniPlaybackReport = ProviderPlaybackReport;
 export type OmniExternalPlaybackEngine = OnlineExternalPlaybackProvider;
 export type OmniExternalPlaybackState = ExternalPlaybackState;

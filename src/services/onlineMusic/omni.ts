@@ -7,6 +7,7 @@ import type {
     OmniCollection,
     OmniExternalPlaybackEngine,
     OmniHistoryEntry,
+    OmniLyricMatchHints,
     OmniLyricsResult,
     OmniPage,
     OmniPlaybackReport,
@@ -533,6 +534,17 @@ export const omni = {
         })).result;
         // Extension layers (Folium omni hooks) may rewrite the lyrics after the provider answered.
         return applyOmniLyricsHook(song, resolved);
+    },
+
+    // Extra names for the shared lyric auto-match (Apple Music: the catalog's localized ones). Kept out of getLyrics so a slow
+    // lookup can never hold playback; null for a song whose provider has none, is not registered, or fails - it never throws.
+    async getLyricMatchHints(song: SongResult): Promise<OmniLyricMatchHints | null> {
+        try {
+            return (await getOnlineMusicProviderForSong(song)?.lyrics?.getMatchHints?.(song)) ?? null;
+        } catch (error) {
+            console.warn('[Omni] Lyric match hints failed; matching with the song names', error);
+            return null;
+        }
     },
 
     async getChorusRanges(song: SongResult): Promise<OmniChorusRange[]> {

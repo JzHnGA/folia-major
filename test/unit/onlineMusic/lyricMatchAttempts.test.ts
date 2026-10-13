@@ -41,6 +41,22 @@ describe('buildLyricMatchAttempts', () => {
         expect(buildLyricMatchAttempts(song, { title: original.title })).toEqual([original]);
     });
 
+    it('is a single attempt with the hinted album when only the album differs', () => {
+        expect(buildLyricMatchAttempts(song, { title: original.title, artist: original.artist, album: 'Wo De Ai Mei Qian Zou (Deluxe)' })).toEqual([
+            { ...original, album: 'Wo De Ai Mei Qian Zou (Deluxe)' },
+        ]);
+        expect(buildLyricMatchAttempts(song, { album: 'KnowKnow' })).toEqual([{ ...original, album: 'KnowKnow' }]);
+    });
+
+    it('compares titles and artists as the matcher reads them: simplified Chinese, case and punctuation do not count', () => {
+        const traditional: SongResult = { ...song, name: '我愛的女孩', artists: [{ id: 1, name: 'Know-Know' }], album: { id: 2, name: '我愛的女孩 - Single' } };
+        expect(buildLyricMatchAttempts(traditional, { title: '我爱的女孩', artist: 'KNOWKNOW', album: '我爱的女孩' })).toEqual([
+            { title: '我愛的女孩', artist: 'Know-Know', album: '我爱的女孩', durationMs: 199597 },
+        ]);
+        // A different title or artist still gets its own attempt.
+        expect(buildLyricMatchAttempts(traditional, { title: '我爱的女孩', artist: 'Know Know Band' })).toHaveLength(2);
+    });
+
     it('joins several artists the way the matcher always received them', () => {
         const duo: SongResult = { ...song, artists: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }] };
         expect(buildLyricMatchAttempts(duo)[0].artist).toBe('A, B');
@@ -71,6 +87,13 @@ describe('runLyricMatchAttempts', () => {
         const run = vi.fn(async (attempt: typeof attempts[number]) => (attempt === attempts[0] ? pureMusic : null));
         expect(await runLyricMatchAttempts(attempts, run, accepts)).toBe(pureMusic);
         expect(run).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops at a final answer, so an instrumental verdict on the hinted names ends the search', async () => {
+        const pureMusic = { isPureMusic: true as const };
+        const run = vi.fn(async (attempt: typeof attempts[number]) => (attempt === attempts[0] ? pureMusic : hit));
+        expect(await runLyricMatchAttempts(attempts, run, accepts, answer => 'isPureMusic' in answer)).toBe(pureMusic);
+        expect(run).toHaveBeenCalledTimes(1);
     });
 
     it('returns null when nothing answers', async () => {

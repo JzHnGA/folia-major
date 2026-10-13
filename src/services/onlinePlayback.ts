@@ -148,7 +148,6 @@ export async function loadOnlineSongLyrics(
             isPureMusic: prefetched.lyricRaw?.isPureMusic ?? false,
             lyrics: prefetched.lyrics,
             chorusRanges: [],
-            matchHints: undefined,
           }
         : await (async () => {
             const result = await omni.getLyrics(song, { userId });
@@ -159,7 +158,6 @@ export async function loadOnlineSongLyrics(
                 isPureMusic: result.isPureMusic,
                 lyrics: result.lyrics,
                 chorusRanges: result.chorusRanges || [],
-                matchHints: result.matchHints,
             };
         })();
     const parsedLyrics = processed.lyrics;
@@ -204,14 +202,17 @@ export async function loadOnlineSongLyrics(
                 }
                 : undefined;
             // A provider may hint at better search names (Apple Music: the catalog's localized ones); they are tried before the song's own.
+            // Asked here, after onDone(), because the lookup can take a network round trip that must never hold the audio.
+            const matchHints = await omni.getLyricMatchHints(song);
             const bestMatch = await runLyricMatchAttempts(
-                buildLyricMatchAttempts(song, processed.matchHints),
+                buildLyricMatchAttempts(song, matchHints),
                 attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
                     album: attempt.album,
                     preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
                     providerCandidate,
                 }),
                 match => 'lyrics' in match && match.source !== ownProviderId,
+                match => match.isPureMusic === true,
             );
             if (bestMatch && 'lyrics' in bestMatch && bestMatch.source !== ownProviderId) {
                 const overrideState: OnlineLyricsState = {

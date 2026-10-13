@@ -266,7 +266,6 @@ const prefetchSong = async (
                     isPureMusic: lyricResult.isPureMusic,
                     lyrics: lyricResult.lyrics,
                     chorusRanges: lyricResult.chorusRanges || [],
-                    matchHints: lyricResult.matchHints,
                 };
                 data.lyricRaw = {
                     mainLrc: processed.mainLrc,
@@ -306,14 +305,16 @@ const prefetchSong = async (
                             }
                             : undefined;
                         // A provider may hint at better search names (Apple Music: the catalog's localized ones); they are tried before the song's own.
+                        const matchHints = await omni.getLyricMatchHints(song);
                         const bestMatch = await runLyricMatchAttempts(
-                            buildLyricMatchAttempts(song, processed.matchHints),
+                            buildLyricMatchAttempts(song, matchHints),
                             attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
                                 album: attempt.album,
                                 preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
                                 ...(providerCandidate ? { providerCandidate } : {}),
                             }),
                             match => 'lyrics' in match && match.source !== sourceRef.providerId,
+                            match => match.isPureMusic === true,
                         );
                         if (bestMatch && 'lyrics' in bestMatch && bestMatch.source !== sourceRef.providerId) {
                             const overrideState: OnlineLyricsState = {

@@ -1350,11 +1350,11 @@ export function useLibraryPlaybackController({
             }
 
             const sourceRef = getPlaybackSourceRef(currentSong);
-            // An external-playback song (Music.app) has no lyrics of its own, but its provider answers with match hints
-            // (the catalog's localized names), which are tried before the song's own names.
             const ownLyricsResult = await omni.getLyrics(currentSong);
+            // A provider may hint at better search names (Apple Music: the catalog's localized ones); they are tried before the song's own.
+            const matchHints = await omni.getLyricMatchHints(currentSong);
             const bestMatch = await runLyricMatchAttempts(
-                buildLyricMatchAttempts(currentSong, ownLyricsResult.matchHints),
+                buildLyricMatchAttempts(currentSong, matchHints),
                 attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
                     album: attempt.album || '',
                     preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
@@ -1364,6 +1364,7 @@ export function useLibraryPlaybackController({
                         : undefined,
                 }),
                 match => 'lyrics' in match,
+                match => match.isPureMusic === true,
             );
 
             if (!bestMatch) {
