@@ -13,6 +13,9 @@ const keys = [
     'playFailed',
     'exportUnsupported',
     'audioSettingsHint',
+    'spectrumCapture',
+    'spectrumCaptureHint',
+    'spectrumCaptureDenied',
 ] as const;
 
 describe('appleMusic translations', () => {

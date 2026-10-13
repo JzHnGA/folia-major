@@ -733,6 +733,7 @@ export default {
       "settings-queue-behavior": { "title": "队列行为", "description": "直接跳到播放队列的组建与保留方式" },
       "settings-netease-scrobble": { "title": "网易云听歌打卡", "description": "直接跳到是否把播放记录上报给网易云音乐" },
       "netease-scrobble-toggle": { "title": "网易云听歌打卡", "description": "开启或关闭把播放记录上报给网易云音乐" },
+      "apple-music-spectrum-toggle": { "title": "Apple Music 频谱", "description": "开启或关闭采集系统声音来驱动 Apple Music 歌曲的频谱" },
       "settings-audio-output": { "title": "音频输出", "description": "直接跳到音频输出设备与格式设置" },
       "settings-transition": { "title": "智能过渡", "description": "直接跳到 FOLIA 智能过渡设置" },
       "settings-navidrome": { "title": "Navidrome 服务器", "description": "直接跳到 Navidrome 服务器连接设置" },
@@ -3481,6 +3482,9 @@ export default {
     "playFailed": "「音乐」App 无法播放这首歌。",
     "exportUnsupported": "Apple Music 歌曲由「音乐」App 发声，无法导出带声音的视频。",
     "audioSettingsHint": "Apple Music 歌曲由「音乐」App 输出，不受这里的设置影响。",
+    "spectrumCapture": "Apple Music 频谱（需要屏幕与系统录音权限）",
+    "spectrumCaptureHint": "播放 Apple Music 歌曲时采集系统声音，让频谱和音频可视化跟随「音乐」App。采集期间菜单栏会显示录制标志。",
+    "spectrumCaptureDenied": "无法采集系统声音。请在「系统设置 → 隐私与安全性 → 屏幕与系统录音」中允许 Folia，然后重新打开 Folia。",
   },
   "unifiedPanel": {
     "nowPlayingStageDescription": "Now Playing 正由外部播放器控制，Folia 只负责展示歌词和视觉效果。",

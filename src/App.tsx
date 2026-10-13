@@ -104,6 +104,7 @@ import { usePlaybackQueueController } from './hooks/usePlaybackQueueController';
 import { usePlaybackTransportController } from './hooks/usePlaybackTransportController';
 import { useLocalLibraryCatalog } from './hooks/useLocalLibraryCatalog';
 import { usePlaybackVisualizerBridge } from './hooks/usePlaybackVisualizerBridge';
+import { useAppleMusicSpectrumCapture } from './hooks/useAppleMusicSpectrumCapture';
 import { useRandomVisualizerMode } from './hooks/useRandomVisualizerMode';
 import { useObsBrowserSourcePublisher } from './hooks/useObsBrowserSourcePublisher';
 import { useLyricApiPublisher } from './hooks/useLyricApiPublisher';
@@ -1520,9 +1521,13 @@ export default function App() {
         onLike: handleLike,
     });
 
+    // Apple Music songs sound from the Music app; this listens to system audio so their spectrum still moves.
+    const captureAnalyserRef = useAppleMusicSpectrumCapture({ audioContextRef });
+
     usePlaybackVisualizerBridge({
         audioRef,
         analyserRef,
+        captureAnalyserRef,
         isTransitionAudible: automix.isTransitionAudible,
         // The loop below is what actually drives the progress bar and the lyric read-head, sixty
         // times a second off whichever deck it is pointed at. Both have to be the held picture's,

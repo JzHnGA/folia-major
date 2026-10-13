@@ -17,6 +17,7 @@ import { useOnlineProviderAccountStore } from '../../../stores/useOnlineProvider
 import { usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { omni } from '../../../services/onlineMusic/omni';
 import { isNeteaseScrobbleReady } from '../../../services/onlineMusic/playbackReportGate';
+import { isAppleMusicSpectrumCaptureAvailable } from '../../../services/externalPlayback/spectrumCaptureAvailability';
 
 // src/components/modal/settings/PlaybackSettingsSubview.tsx
 // Playback behavior and output-device settings extracted from the global settings modal.
@@ -54,20 +55,24 @@ const PlaybackSettingsSubview: React.FC<PlaybackSettingsSubviewProps> = ({
         enableTranscodeFallback,
         neteaseScrobbleEnabled,
         playbackFadeEnabled,
+        appleMusicSpectrumCapture,
         queueAddBehavior,
         onToggleTranscodeFallback,
         onToggleNeteaseScrobble,
         onTogglePlaybackFade,
+        onAppleMusicSpectrumCaptureChange,
         onQueueAddBehaviorChange,
     } = useAudioSettingsStore(useShallow(state => ({
         audioOutputDeviceId: state.audioOutputDeviceId,
         enableTranscodeFallback: state.enableTranscodeFallback,
         neteaseScrobbleEnabled: state.neteaseScrobbleEnabled,
         playbackFadeEnabled: state.playbackFadeEnabled,
+        appleMusicSpectrumCapture: state.appleMusicSpectrumCapture,
         queueAddBehavior: state.queueAddBehavior,
         onToggleTranscodeFallback: state.handleToggleTranscodeFallback,
         onToggleNeteaseScrobble: state.handleToggleNeteaseScrobble,
         onTogglePlaybackFade: state.handleTogglePlaybackFade,
+        onAppleMusicSpectrumCaptureChange: state.setAppleMusicSpectrumCapture,
         onQueueAddBehaviorChange: state.handleSetQueueAddBehavior,
     })));
     // Subscribed to rather than read once: the panel has to grey out the moment the NetEase account
@@ -77,6 +82,8 @@ const PlaybackSettingsSubview: React.FC<PlaybackSettingsSubviewProps> = ({
     const canReportNeteasePlayback = isNeteaseScrobbleReady();
     // The Music app renders these songs, so the output device picker below does not apply to them.
     const isExternalPlayback = usePlaybackStore(state => omni.isExternalPlaybackSong(state.currentSong));
+    // Same predicate the command palette gates its toggle on: only where the Apple Music provider exists.
+    const canCaptureAppleMusicSpectrum = isAppleMusicSpectrumCaptureAvailable();
     const {
         autoUseBestLyric,
         preferredAlternativeLyricSource,
@@ -439,6 +446,19 @@ const PlaybackSettingsSubview: React.FC<PlaybackSettingsSubviewProps> = ({
                                 </div>
                             </div>
                             {renderToggle(enableTranscodeFallback, () => onToggleTranscodeFallback(!enableTranscodeFallback))}
+                        </div>
+                    )}
+                    {canCaptureAppleMusicSpectrum && (
+                        <div className="flex items-start justify-between gap-3 border-b border-current/10 pb-4">
+                            <div className="space-y-1">
+                                <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                    {t('appleMusic.spectrumCapture')}
+                                </div>
+                                <div className="text-[11px] opacity-50 max-w-[420px]" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('appleMusic.spectrumCaptureHint')}
+                                </div>
+                            </div>
+                            {renderToggle(appleMusicSpectrumCapture, () => onAppleMusicSpectrumCaptureChange(!appleMusicSpectrumCapture))}
                         </div>
                     )}
                     <div className="flex items-start justify-between gap-3">

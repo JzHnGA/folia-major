@@ -16,6 +16,8 @@ type UsePlaybackVisualizerBridgeParams = {
 
     audioRef: MutableRefObject<HTMLAudioElement | null>;
     analyserRef: MutableRefObject<AnalyserNode | null>;
+    /** Analyser fed by the system-audio capture (useAppleMusicSpectrumCapture); the only one that hears an external song. */
+    captureAnalyserRef: MutableRefObject<AnalyserNode | null>;
     animationFrameRef: MutableRefObject<number>;
     effectiveLoopMode: 'off' | 'all' | 'one';
     isNowPlayingStageActive: boolean;
@@ -51,6 +53,7 @@ type UsePlaybackVisualizerBridgeParams = {
 export function usePlaybackVisualizerBridge({
     audioRef,
     analyserRef,
+    captureAnalyserRef,
     animationFrameRef,
     effectiveLoopMode,
     isNowPlayingStageActive,
@@ -91,16 +94,21 @@ export function usePlaybackVisualizerBridge({
         // An external song is the exception: its carrier <audio> is silent, so the analyser reads
         // nothing. Only the bands fall back to the breath - the clock below still follows
         // isActuallyPlaying, since the carrier is what keeps the lyrics moving.
+        //
+        // With the Apple Music spectrum setting on, the system-audio capture hears the song instead,
+        // and its analyser stands in for the main one.
+        const activeAnalyser = isExternalPlayback ? captureAnalyserRef.current : analyserRef.current;
         const hasAudibleSignal = resolveHasAnalyserSignal({
             isActuallyPlaying,
             isTransitionAudible: isTransitionAudible(),
             isExternalPlayback,
+            hasExternalCapture: isExternalPlayback && activeAnalyser !== null,
         });
 
-        if (hasAudibleSignal && analyserRef.current) {
-            const bufferLength = analyserRef.current.frequencyBinCount;
+        if (hasAudibleSignal && activeAnalyser) {
+            const bufferLength = activeAnalyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
-            analyserRef.current.getByteFrequencyData(dataArray);
+            activeAnalyser.getByteFrequencyData(dataArray);
             audioBands.spectrum?.set(dataArray);
 
             const getEnergy = (minHz: number, maxHz: number): number => {
@@ -244,6 +252,7 @@ export function usePlaybackVisualizerBridge({
     }, [
         activePlaybackContext,
         analyserRef,
+        captureAnalyserRef,
         animationFrameRef,
         audioBands,
         audioPower,

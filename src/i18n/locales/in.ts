@@ -731,6 +731,7 @@ export default {
       "settings-queue-behavior": { "title": "Perilaku antrean", "description": "Langsung ke pengaturan cara antrean putar dibentuk dan disimpan" },
       "settings-netease-scrobble": { "title": "Laporan dengar NetEase", "description": "Langsung ke pengaturan pelaporan pemutaran ke NetEase Cloud Music" },
       "netease-scrobble-toggle": { "title": "Laporan dengar NetEase", "description": "Aktifkan atau matikan pelaporan pemutaran ke NetEase Cloud Music" },
+      "apple-music-spectrum-toggle": { "title": "Spektrum Apple Music", "description": "Aktifkan atau matikan perekaman audio sistem yang menggerakkan spektrum lagu Apple Music" },
       "settings-audio-output": { "title": "Keluaran audio", "description": "Langsung ke pengaturan perangkat dan format keluaran audio" },
       "settings-transition": { "title": "Transisi cerdas", "description": "Langsung ke pengaturan transisi FOLIA" },
       "settings-navidrome": { "title": "Server Navidrome", "description": "Langsung ke pengaturan koneksi server Navidrome" },
@@ -3366,7 +3367,10 @@ export default {
     "engineStopped": "Music berhenti memutar, jadi Folia dijeda.",
     "playFailed": "Music tidak dapat memutar lagu ini.",
     "exportUnsupported": "Lagu Apple Music diputar lewat aplikasi Music, jadi tidak bisa diekspor beserta suaranya.",
-    "audioSettingsHint": "Lagu Apple Music diputar lewat aplikasi Music dan tidak terpengaruh pengaturan ini."
+    "audioSettingsHint": "Lagu Apple Music diputar lewat aplikasi Music dan tidak terpengaruh pengaturan ini.",
+    "spectrumCapture": "Spektrum Apple Music (perlu izin Perekaman Layar & Audio Sistem)",
+    "spectrumCaptureHint": "Saat lagu Apple Music diputar, Folia merekam audio sistem agar spektrum mengikuti Music. macOS menampilkan indikator perekaman selama itu.",
+    "spectrumCaptureDenied": "Folia tidak dapat merekam audio sistem. Izinkan di Pengaturan Sistem → Privasi & Keamanan → Perekaman Layar & Audio Sistem, lalu buka ulang Folia."
   },
   "unifiedPanel": {
     "nowPlayingStageDescription": "Now Playing dikendalikan oleh pemutar eksternal. Folia hanya bertanggung jawab menampilkan lirik dan efek visual.",

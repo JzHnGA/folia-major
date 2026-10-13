@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, screen, dialog, shell, nativeImage, desktopCapturer, Menu, Tray, nativeTheme, powerSaveBlocker, safeStorage, protocol, crashReporter, net: electronNet } = require('electron');
+const { app, BrowserWindow, ipcMain, session, screen, dialog, shell, nativeImage, desktopCapturer, webContents: electronWebContents, Menu, Tray, nativeTheme, powerSaveBlocker, safeStorage, protocol, crashReporter, net: electronNet } = require('electron');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -33,6 +33,7 @@ const { createLyricApi } = require('./lyricApi.cjs');
 const { createLocalCoverAssetStore, getLocalCoverAssetDirectory } = require('./localCoverAssets.cjs');
 const { createMusicAppBridge } = require('./appleMusic/musicAppBridge.cjs');
 const { createArtworkIndex } = require('./appleMusic/artworkIndex.cjs');
+const { createDisplayMediaHandler } = require('./appleMusic/systemAudioLoopback.cjs');
 const {
   compareVersions,
   getReleaseUrl,
@@ -2850,6 +2851,13 @@ function isAudioMediaPermission(permission, details) {
   return mediaType === 'audio' || mediaType === 'unknown' || typeof mediaType === 'undefined';
 }
 
+// getDisplayMedia may be gated by this permission before the display-media handler runs. Only macOS installs that
+// handler (setupAppleMusicSystemAudioLoopbackHandler), and the handler itself still limits the grant to the
+// trusted main window's top frame, so allowing the permission there does not widen what can be captured.
+function isDisplayCapturePermission(permission) {
+  return process.platform === 'darwin' && permission === 'display-capture';
+}
+
 function isAllowedMainWindowPermission(permission, details) {
   return (
     isFileSystemPermission(permission) ||
@@ -2857,6 +2865,7 @@ function isAllowedMainWindowPermission(permission, details) {
     isClipboardWritePermission(permission) ||
     isSpeakerSelectionPermission(permission) ||
     isAudioMediaPermission(permission, details) ||
+    isDisplayCapturePermission(permission) ||
     permission === 'unknown'
   );
 }
@@ -2940,6 +2949,21 @@ function setupFileSystemAccessPermissionHandlers() {
 
     callback(true);
   });
+}
+
+// macOS only: lets the main window's renderer hear system audio (Music.app's output) for the Apple Music
+// spectrum. getDisplayMedia needs the "Screen & System Audio Recording" permission; without it getSources
+// rejects and the handler answers with an empty grant, so the renderer sees a failed capture.
+function setupAppleMusicSystemAudioLoopbackHandler() {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  session.defaultSession.setDisplayMediaRequestHandler(createDisplayMediaHandler({
+    isTrustedMainWindowContents,
+    getWebContentsFromFrame: (frame) => electronWebContents.fromFrame(frame),
+    getScreenSources: () => desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+  }));
 }
 
 function setupCorsBypassHandlers() {
@@ -5218,6 +5242,7 @@ app.whenReady().then(async () => {
   }
 
   setupFileSystemAccessPermissionHandlers();
+  setupAppleMusicSystemAudioLoopbackHandler();
   setupCorsBypassHandlers();
   localCoverAssetStore.registerProtocolHandler(protocol, electronNet);
   // Transcode fallback is an optional degradation path; a failure preparing it must never keep

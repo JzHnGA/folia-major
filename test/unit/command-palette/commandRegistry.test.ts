@@ -146,6 +146,8 @@ const createContext = (overrides: CommandPaletteContextOverrides = {}): CommandP
             toggleLocalLibraryAutoScan: vi.fn(),
             canReportNeteasePlayback: vi.fn(() => false),
             toggleNeteaseScrobble: vi.fn(),
+            canUseAppleMusicSpectrumCapture: vi.fn(() => false),
+            toggleAppleMusicSpectrumCapture: vi.fn(),
             voiceInputPauseSupported: false,
             modSystemEnabled: false,
             toggleVoiceInputPause: vi.fn(),
@@ -1049,6 +1051,32 @@ describe('transition performance command', () => {
         const context = createContext({ settings: { canUseTransitionPerformance: () => false } });
         const ids = getCommandPaletteMatches('performance mode', context).map(match => match.command.id);
         expect(ids).not.toContain('transition-performance-toggle');
+    });
+});
+
+// The Apple Music spectrum switch only exists where the Apple Music provider is registered (macOS
+// desktop). The command asks the same question as the settings row, so it can't be run elsewhere.
+describe('apple music spectrum capture command', () => {
+    const findCommand = () => COMMAND_PALETTE_COMMANDS.find(entry => entry.id === 'apple-music-spectrum-toggle');
+    const availableIds = (canUse: boolean) => (
+        getAvailableCommandPaletteCommands(createContext({ settings: { canUseAppleMusicSpectrumCapture: () => canUse } }))
+            .map(command => command.id)
+    );
+
+    it('is offered where the Apple Music provider is available', () => {
+        expect(availableIds(true)).toContain('apple-music-spectrum-toggle');
+    });
+
+    it('is withdrawn where it is not', () => {
+        expect(availableIds(false)).not.toContain('apple-music-spectrum-toggle');
+    });
+
+    it('flips the setting when run', () => {
+        const context = createContext({ settings: { canUseAppleMusicSpectrumCapture: () => true } });
+
+        expect(findCommand()).toBeDefined();
+        expect(findCommand()!.execute('', context)).toBe(true);
+        expect(context.settings.toggleAppleMusicSpectrumCapture).toHaveBeenCalledTimes(1);
     });
 });
 

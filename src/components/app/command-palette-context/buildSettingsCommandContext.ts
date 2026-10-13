@@ -7,6 +7,7 @@ import { useDesktopSettingsStore } from '../../../stores/useDesktopSettingsStore
 import { useLocalLibrarySettingsStore } from '../../../stores/useLocalLibrarySettingsStore';
 import { isLocalLibraryAutoScanSupported } from '../../../services/localLibraryAutoScan';
 import { isNeteaseScrobbleReady } from '../../../services/onlineMusic/playbackReportGate';
+import { isAppleMusicSpectrumCaptureAvailable } from '../../../services/externalPlayback/spectrumCaptureAvailability';
 import { useLyricSettingsStore } from '../../../stores/useLyricSettingsStore';
 import { useGridViewSettingsStore } from '../../../stores/useGridViewSettingsStore';
 import { useLatticeSettingsStore } from '../../../stores/useLatticeSettingsStore';
@@ -188,6 +189,10 @@ export const buildSettingsCommandContext = (
         canReportNeteasePlayback: isNeteaseScrobbleReady,
         toggleNeteaseScrobble: () => audio.handleToggleNeteaseScrobble(
             !useAudioSettingsStore.getState().neteaseScrobbleEnabled,
+        ),
+        canUseAppleMusicSpectrumCapture: isAppleMusicSpectrumCaptureAvailable,
+        toggleAppleMusicSpectrumCapture: () => audio.setAppleMusicSpectrumCapture(
+            !useAudioSettingsStore.getState().appleMusicSpectrumCapture,
         ),
         voiceInputPauseSupported: deps.voiceInputPauseSupported,
         modSystemEnabled: desktop.modSystemEnabled,
