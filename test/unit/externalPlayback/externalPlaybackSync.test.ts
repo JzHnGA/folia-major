@@ -876,3 +876,242 @@ describe('dispose', () => {
         expect(engine.stop).not.toHaveBeenCalled();
     });
 });
+
+// Automix arms an incoming Apple song early: Music starts on a carrier Automix holds itself, and the carrier leads
+// the transition until Automix settles.
+describe('preroll', () => {
+    const startPreroll = async () => {
+        sync.start('preroll'); await flushPromises();
+        engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));   // audible
+    };
+
+    // Automix lifts its hold 2 s after Music became audible, and Music, 2.2 s in, is seeked back to the carrier.
+    const liftHold = async () => {
+        clock += 2000; engine.emit(state({ positionSec: 2.1 }));
+        await carrier.play();
+        clock += 100; engine.emit(state({ positionSec: 2.2 }));
+        await flushPromises();
+    };
+
+    it('prerolls Music without touching the held carrier', async () => {
+        await startPreroll();
+        expect(engine.play).toHaveBeenCalledWith(song, 0);
+        clock += 1000; engine.emit(state({ positionSec: 1.2 }));
+        expect(carrier.play).not.toHaveBeenCalled(); expect(carrier.currentTime).toBe(0);
+        expect(engine.seek).not.toHaveBeenCalled(); expect(onHoldReleased).not.toHaveBeenCalled(); expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('seeks Music back to the carrier once Automix starts it', async () => {
+        await startPreroll();
+        clock += 2000; engine.emit(state({ positionSec: 2.1 }));
+        await carrier.play();                                   // Automix lifts its hold
+        expect(engine.resume).not.toHaveBeenCalled(); expect(engine.play).toHaveBeenCalledTimes(1);
+        clock += 100; engine.emit(state({ positionSec: 2.2 }));
+        expect(engine.seek).toHaveBeenCalledWith(0); expect(carrier.playbackRate).toBe(1); expect(carrier.currentTime).toBe(0);
+    });
+
+    it('leaves Music alone for drift under a second while the carrier leads', async () => {
+        await startPreroll();
+        await liftHold();
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        clock += SYNC_SETTLE_MS;
+        carrier.currentTime = 1;
+        engine.emit(state({ positionSec: 1.5 }));
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+        expect(carrier.playbackRate).toBe(1);
+        expect(carrier.currentTime).toBe(1);
+    });
+
+    it('follows Music again once the transition ends', async () => {
+        await startPreroll();
+        await liftHold();
+        clock += SYNC_SETTLE_MS;
+        sync.endTransition();
+        carrier.currentTime = 1;
+        engine.emit(state({ positionSec: 1.3 }));
+        expect(carrier.playbackRate).toBeCloseTo(1.05);
+        expect(engine.seek).toHaveBeenCalledTimes(1);
+    });
+
+    // The session asks this when Automix starts the carrier: a preroll still pending there is cut to a hard cut.
+    it('reports the preroll pending until Music is audible', async () => {
+        sync.start('preroll');
+        expect(sync.isPrerollPending()).toBe(true);
+        carrier.play();   // Automix starting the carrier does not end the wait
+        expect(sync.isPrerollPending()).toBe(true);
+        await flushPromises();
+        engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(sync.isPrerollPending()).toBe(false);
+    });
+
+    it('never reports a preroll pending for play and idle starts', () => {
+        sync.start('play');
+        expect(sync.isPrerollPending()).toBe(false);
+        const idle = createSync();
+        idle.start('idle');
+        expect(idle.isPrerollPending()).toBe(false);
+    });
+
+    it('stops reporting the preroll pending once disposed', async () => {
+        sync.start('preroll');
+        await sync.dispose({ stopEngine: true });
+        expect(sync.isPrerollPending()).toBe(false);
+    });
+
+    it('fails a preroll that never becomes audible within 8 s', () => {
+        sync.start('preroll');
+        expect(engine.play).toHaveBeenCalledWith(song, 0);
+        engine.emit(state({ positionSec: 0 }));
+        vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS - 1);
+        expect(onIssue).not.toHaveBeenCalled();
+        expect(sync.isPrerollPending()).toBe(true);
+        vi.advanceTimersByTime(1);
+        expect(onIssue).toHaveBeenCalledTimes(1);
+        const issue = onIssue.mock.calls[0][0];
+        expect(issue.kind).toBe('failure');
+        const error = issue.kind === 'failure' ? issue.error : null;
+        expect(error).toBeInstanceOf(OnlineProviderError);
+        expect(error).toMatchObject({ code: 'not-playable', providerId: 'apple-music' });
+        expect(onHoldReleased).not.toHaveBeenCalled();
+        expect(sync.isPrerollPending()).toBe(false);
+    });
+
+    it('reports a rejected preroll play', async () => {
+        const error = new OnlineProviderError('not-playable', 'Track not found', 'apple-music');
+        engine.play.mockRejectedValueOnce(error);
+        sync.start('preroll');
+        await flushPromises();
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'failure', error });
+        expect(sync.isPrerollPending()).toBe(false);
+        vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS);
+        expect(onIssue).toHaveBeenCalledTimes(1);
+        expect(onHoldReleased).not.toHaveBeenCalled();
+    });
+
+    it('pauses Music when a preroll is aborted', () => {
+        sync.start('preroll');
+        sync.abortStart();
+        expect(sync.isPrerollPending()).toBe(false);
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS);
+        expect(onIssue).not.toHaveBeenCalled();
+        expect(onHoldReleased).not.toHaveBeenCalled();
+    });
+
+    it('does not pause Music on abort when the preroll play was rejected', async () => {
+        engine.play.mockRejectedValueOnce(new OnlineProviderError('not-playable', 'Track not found', 'apple-music'));
+        sync.start('preroll');
+        await flushPromises();
+        sync.abortStart();
+        expect(engine.pause).not.toHaveBeenCalled();
+    });
+
+    // The session aborts a preroll whose carrier never played, which outlasts the audible check.
+    it('still pauses Music on abort once it is audible but Automix has not started the carrier', async () => {
+        await startPreroll();
+        sync.abortStart();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        sync.abortStart();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        carrier.play();   // Music sits paused on our track: resumed, and it leads again
+        expect(engine.resume).toHaveBeenCalledTimes(1);
+        clock += SYNC_SETTLE_MS; carrier.currentTime = 1; engine.emit(state({ positionSec: 1.3 }));
+        expect(carrier.playbackRate).toBeCloseTo(1.05);
+    });
+
+    it('ends the preroll wait on a carrier pause without a failure', () => {
+        sync.start('preroll');
+        carrier.play();   // Automix lifts its hold before Music is audible
+        expect(engine.play).toHaveBeenCalledTimes(1);
+        expect(carrier.playbackRate).toBe(1);
+        carrier.pause();
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(sync.isPrerollPending()).toBe(false);
+        vi.advanceTimersByTime(SYNC_START_TIMEOUT_MS);
+        expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('keeps the preroll when Automix starts the carrier before Music reports our track', () => {
+        sync.start('preroll');
+        engine.emit(stopped());   // Music has not switched yet
+        carrier.play();
+        expect(engine.play).toHaveBeenCalledTimes(1);
+        expect(carrier.playbackRate).toBe(1);
+        clock += 250; engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).not.toHaveBeenCalled();
+        expect(carrier.currentTime).toBe(0);
+        expect(carrier.playbackRate).toBe(1);
+    });
+
+    it('carries a seek made during the preroll into the wait instead of replaying Music', () => {
+        sync.start('preroll');
+        engine.emit(stopped());
+        carrier.play();
+        carrier.userSeek(30);
+        expect(engine.play).toHaveBeenCalledTimes(1);
+        expect(engine.seek).not.toHaveBeenCalled();
+        expect(carrier.playbackRate).toBe(1);
+        clock += 250; engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).toHaveBeenCalledWith(30);   // the one re-seek, to where the listener put the carrier
+    });
+
+    it('seeks Music to the carrier when it becomes audible after Automix started the carrier', () => {
+        sync.start('preroll');
+        carrier.play();
+        carrier.currentTime = 1.5;   // the carrier ran on while Music was still loading
+        engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).toHaveBeenCalledWith(1.5);
+        expect(carrier.currentTime).toBe(1.5);
+        expect(carrier.playbackRate).toBe(1);
+    });
+
+    it('aligns the carrier to Music when the transition ended before Music became audible', () => {
+        sync.start('preroll');
+        carrier.play();
+        sync.endTransition();
+        carrier.currentTime = 1.5;
+        engine.emit(state({ positionSec: 0 }));
+        clock += 250; engine.emit(state({ positionSec: 0.13 }));
+        expect(engine.seek).not.toHaveBeenCalled();
+        expect(carrier.currentTime).toBeCloseTo(0.13);
+        expect(onHoldReleased).not.toHaveBeenCalled();
+    });
+});
+
+// Music's last reading of ours is what tells that ours ended under a crossfade; it must be current and meaningful.
+describe("Music's last reading of ours", () => {
+    it('ages the last reading of ours to the foreign sample, so a 12 s crossfade still ends ours', async () => {
+        await startPlaying();
+        carrier.currentTime = 180; engine.emit(state({ positionSec: 180, durationSec: 197.72 }));   // 17.72 s left
+        clock += 6000; carrier.currentTime = 186;
+        engine.emit(state({ mediaId: OTHER_ID, positionSec: 0.5 }));                                // aged: 11.72 s left
+        expect(engine.pause).toHaveBeenCalledTimes(1);
+        expect(carrier.currentTime).toBe(carrier.duration); expect(onIssue).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the carrier duration when Music reports a non-positive one', async () => {
+        await startPlaying();
+        carrier.currentTime = 60; engine.emit(state({ positionSec: 60, durationSec: 0 }));
+        clock += SYNC_SETTLE_MS; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
+        expect(carrier.currentTime).toBe(60);
+        expect(engine.pause).not.toHaveBeenCalled();
+    });
+
+    it('forgets the last reading when the listener seeks', async () => {
+        await startPlaying();
+        carrier.currentTime = 194.6; engine.emit(state({ positionSec: 194.5, durationSec: 197.72 }));
+        carrier.userSeek(30);
+        expect(engine.seek).toHaveBeenCalledWith(30);
+        await flushPromises();
+        clock += SYNC_SETTLE_MS; engine.emit(state({ mediaId: OTHER_ID, positionSec: 3.5 }));
+        expect(onIssue).toHaveBeenCalledWith({ kind: 'takeover', reason: 'track-changed' });
+        expect(carrier.currentTime).toBe(30);
+        expect(engine.pause).not.toHaveBeenCalled();
+    });
+});

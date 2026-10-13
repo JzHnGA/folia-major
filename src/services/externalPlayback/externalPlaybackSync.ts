@@ -8,6 +8,8 @@ import {
 // src/services/externalPlayback/externalPlaybackSync.ts
 // Keeps one song's silent carrier <audio> and Music.app in lock-step: the listener's play / pause / seek on the
 // carrier are mirrored to Music, and the carrier's clock is steered from Music's reported position.
+// During an Automix transition into this song ('preroll' until endTransition) the carrier leads instead: Music is
+// seeked to it, and the carrier's rate is left alone.
 
 export const SYNC_DRIFT_IGNORE_SEC = 0.03;
 export const SYNC_DRIFT_SEEK_SEC = 1;
@@ -34,6 +36,8 @@ export interface ExternalPlaybackCarrier {
     removeEventListener(type: 'play' | 'pause' | 'seeked', listener: () => void): void;
 }
 
+export type ExternalPlaybackStartIntent = 'play' | 'idle' | 'preroll';
+
 export type ExternalPlaybackIssue =
     | { kind: 'takeover'; reason: 'track-changed' | 'engine-stopped' }
     | { kind: 'failure'; error: unknown };
@@ -55,9 +59,10 @@ type KnownEngineState = Pick<OmniExternalPlaybackState, 'state' | 'mediaId'>;
 /**
  * Waiting for Music to become audible after a play. 'start' is the start hold (the session keeps the carrier
  * paused); 'rate' is the rate hold (the carrier keeps playing at SYNC_HOLD_RATE).
+ * 'preroll' is Automix's early start: Automix holds the carrier itself, so nothing here holds or releases it.
  */
 interface AudibleWait {
-    mode: 'start' | 'rate';
+    mode: 'start' | 'rate' | 'preroll';
     targetPos: number;
     /** First playing reading of this track that the advance is measured from. */
     anchor: { positionSec: number; sampledAtMs: number } | null;
@@ -67,6 +72,11 @@ interface AudibleWait {
 
 /** How far past the elapsed sample time a reading may run ahead of the anchor before the pair is not trusted. */
 const AUDIBLE_ANCHOR_SLACK_SEC = 0.3;
+
+// Music reports a zero length for a track it has not loaded yet: only a finite positive length is Music's own.
+const toMusicDuration = (durationSec: number | null): number | null => (
+    durationSec !== null && Number.isFinite(durationSec) && durationSec > 0 ? durationSec : null
+);
 
 // The bridge rejects anything but a finite position >= 0, float noise like -1e-9 included.
 const toEnginePosition = (positionSec: number): number => (
@@ -114,14 +124,22 @@ export class ExternalPlaybackSync {
      * Music's own timeline for this track: its last fresh playing reading (duration falling back to the carrier's).
      * Music starts its next track seconds early, so only this, not the carrier, tells that ours ended. Every play of
      * ours forgets it.
+     * It keeps its sample time so a later foreign reading can age it, and a listener seek forgets it as well.
      */
-    private lastOurReading: { positionSec: number; durationSec: number } | null = null;
+    private lastOurReading: { positionSec: number; durationSec: number; sampledAtMs: number } | null = null;
 
     /** Start hold: engine states only feed the audible check until the hold is released or aborted. */
     private held = false;
     private audible: AudibleWait | null = null;
     /** The start's play was sent and has not been rejected, so Music may be playing this track. */
     private startPlayLive = false;
+    /**
+     * A preroll whose carrier has not played yet (Automix still holds it): abortStart pauses what it started. It
+     * outlasts the audible wait (isPrerollPending), since Music becomes audible about 2.5 s before Automix starts it.
+     */
+    private prerollCarrierHeld = false;
+    /** Automix's transition into this song: the carrier is the position master until endTransition. */
+    private carrierMaster = false;
 
     /** Set before the controller touches the carrier itself; the matching event only clears it. */
     private internalSeek = false;
@@ -141,11 +159,13 @@ export class ExternalPlaybackSync {
     }
 
     // 'play' sends play from the carrier position and holds until Music is audible; 'idle' sends nothing.
-    start(intent: 'play' | 'idle'): void {
+    // 'preroll' also plays from the carrier position, but Automix holds the carrier: no hold, no onHoldReleased.
+    start(intent: ExternalPlaybackStartIntent): void {
         if (this.disposed || this.started) return;
         this.started = true;
         // The command goes out before subscribing so any reading taken before it is already stale.
         if (intent === 'play') this.beginStartHold();
+        else if (intent === 'preroll') this.beginPreroll();
         this.carrier.addEventListener('play', this.handleCarrierPlay);
         this.carrier.addEventListener('pause', this.handleCarrierPause);
         this.carrier.addEventListener('seeked', this.handleCarrierSeeked);
@@ -153,11 +173,32 @@ export class ExternalPlaybackSync {
     }
 
     // The listener paused during the start hold: drop the hold without releasing it and pause what was started.
+    /** Also ends a pending preroll (pausing Music if its play was sent). */
     abortStart(): void {
-        if (this.disposed || !this.held) return;
+        if (this.disposed) return;
+        if (this.prerollCarrierHeld) {
+            this.prerollCarrierHeld = false;
+            this.carrierMaster = false;
+            if (this.isPrerollPending()) this.endAudibleWait();
+            if (this.startPlayLive) this.sendPause();
+            return;
+        }
+        if (!this.held) return;
         if (this.audible?.mode === 'start') this.endAudibleWait();
         this.held = false;
         if (this.startPlayLive) this.sendPause();
+    }
+
+    /** Automix settled: Music becomes the position master again. */
+    endTransition(): void {
+        this.carrierMaster = false;
+    }
+
+    // The wait ends however it ends: audible, abortStart, a failure, the carrier's pause or dispose. Meanwhile Music's
+    // play is already on its way, so a carrier play or seek during it must not send another.
+    /** True while a 'preroll' start is still waiting for Music to become audible. */
+    isPrerollPending(): boolean {
+        return this.audible?.mode === 'preroll';
     }
 
     // Stops listening; Music is stopped only when asked, when this controller drove it, and nobody took it over.
@@ -187,6 +228,18 @@ export class ExternalPlaybackSync {
         this.held = true;
         const wait = this.beginAudibleWait('start', toEnginePosition(this.carrier.currentTime));
         this.startPlayLive = true;
+        this.sendPlay(wait.targetPos).catch((error: unknown) => {
+            this.startPlayLive = false;
+            this.failAudibleWait(wait, error);
+        });
+    }
+
+    // Automix armed this song early on a carrier it holds itself: Music starts now and the carrier leads from here on.
+    private beginPreroll(): void {
+        const wait = this.beginAudibleWait('preroll', toEnginePosition(this.carrier.currentTime));
+        this.startPlayLive = true;
+        this.prerollCarrierHeld = true;
+        this.carrierMaster = true;
         this.sendPlay(wait.targetPos).catch((error: unknown) => {
             this.startPlayLive = false;
             this.failAudibleWait(wait, error);
@@ -261,6 +314,11 @@ export class ExternalPlaybackSync {
             this.sendSeek(wait.targetPos);
             return;
         }
+        if (wait.mode === 'preroll') {
+            this.endAudibleWait();
+            this.alignAfterPreroll(estimate);
+            return;
+        }
         this.seekCarrier(estimate);
         this.endAudibleWait();
         if (wait.mode === 'rate') {
@@ -269,6 +327,14 @@ export class ExternalPlaybackSync {
         }
         this.held = false;
         this.onHoldReleased();
+    }
+
+    // Music became audible on a preroll. A carrier Automix still holds is left to the transition; a running one leads
+    // while the transition lasts (Music is seeked to it beyond a second), and after endTransition it follows Music.
+    private alignAfterPreroll(estimate: number): void {
+        if (this.carrier.paused) return;
+        if (this.carrierMaster) this.seekMusicToCarrier(estimate);
+        else this.seekCarrier(estimate);
     }
 
     // --- engine states ---
@@ -292,14 +358,30 @@ export class ExternalPlaybackSync {
 
     // Same track playing: follow a resume made in Music, then steer the carrier toward Music.
     private followPlaying(state: OmniExternalPlaybackState): void {
-        const durationSec = state.durationSec ?? this.carrier.duration;
-        this.lastOurReading = { positionSec: state.positionSec, durationSec };
+        const durationSec = toMusicDuration(state.durationSec) ?? this.carrier.duration;
+        this.lastOurReading = { positionSec: state.positionSec, durationSec, sampledAtMs: state.sampledAtMs };
+        if (this.carrierMaster) {
+            this.leadWithCarrier(state);
+            return;
+        }
         if (this.carrier.paused) {
             if (this.isSettling() || this.isCarrierEnded()) return;
             this.playCarrier();
         }
         if (this.isSettling()) return;   // positions jitter for about 1 s after a command
         this.correctDrift(this.estimate(state));
+    }
+
+    // During the transition the carrier leads: a carrier Automix holds is not played, Music is seeked to a running
+    // one when it drifts beyond a second outside the settle window, and the carrier's rate is never touched.
+    private leadWithCarrier(state: OmniExternalPlaybackState): void {
+        if (this.carrier.paused || this.isSettling()) return;
+        this.seekMusicToCarrier(this.estimate(state));
+    }
+
+    private seekMusicToCarrier(estimate: number): void {
+        const position = this.carrier.currentTime;
+        if (Math.abs(estimate - position) > SYNC_DRIFT_SEEK_SEC) this.sendSeek(position);
     }
 
     // Under 30 ms is left alone, up to 1 s is absorbed by a ±5 % rate, beyond that the carrier jumps.
@@ -334,7 +416,7 @@ export class ExternalPlaybackSync {
             if (endedAt !== null && this.now() - endedAt <= SYNC_END_GRACE_SEC * 1000) this.pauseAutoAdvance(state);
             return;
         }
-        if (state.state === 'playing' && this.musicReachedOurEnd()) {
+        if (state.state === 'playing' && this.musicReachedOurEnd(state)) {
             this.finishWithMusic(state);
             return;
         }
@@ -350,10 +432,14 @@ export class ExternalPlaybackSync {
 
     // Music's last reading of ours was within its crossfade window of the end, under a running carrier. A paused
     // carrier is the listener's pause (or a takeover): finishing it would move Folia's queue on against that pause.
-    private musicReachedOurEnd(): boolean {
+    // The reading is aged to the foreign sample's time: Music kept playing ours until it moved on.
+    private musicReachedOurEnd(foreign: OmniExternalPlaybackState): boolean {
         const reading = this.lastOurReading;
         if (!reading || this.carrier.paused || !Number.isFinite(this.carrier.duration)) return false;
-        return reading.durationSec - reading.positionSec <= SYNC_MUSIC_TRANSITION_WINDOW_SEC;
+        const agedSec = Number.isFinite(foreign.sampledAtMs) && Number.isFinite(reading.sampledAtMs)
+            ? Math.max(0, (foreign.sampledAtMs - reading.sampledAtMs) / 1000)
+            : 0;
+        return reading.durationSec - (reading.positionSec + agedSec) <= SYNC_MUSIC_TRANSITION_WINDOW_SEC;
     }
 
     // Music moved on into its next track: pause that like any auto-advance (even inside the settle window) and run the
@@ -385,12 +471,15 @@ export class ExternalPlaybackSync {
     // --- carrier events ---
 
     // Listener play: nothing if Music already plays this track, resume if it is paused on it, otherwise play from here.
+    // A preroll's carrier playing is Automix lifting its hold: during the wait that is no reason for another play.
     private readonly handleCarrierPlay = (): void => {
+        this.prerollCarrierHeld = false;
         if (this.internalPlay) {
             this.internalPlay = false;
             return;
         }
         if (!this.canCommand()) return;
+        if (this.isPrerollPending()) return;
         if (this.knownOnOurTrack('playing')) return;
         if (this.knownOnOurTrack('paused')) {
             this.sendResume();
@@ -406,6 +495,8 @@ export class ExternalPlaybackSync {
             return;
         }
         this.cancelRateHold();
+        // A pause during the preroll wait ends it without a failure; the pause goes to Music as usual.
+        if (this.isPrerollPending()) this.endAudibleWait();
         if (!this.canCommand()) return;
         this.sendPause();
     };
@@ -417,6 +508,8 @@ export class ExternalPlaybackSync {
             this.internalSeek = false;
             return;
         }
+        // Music's last reading of ours describes a position the listener just left.
+        this.lastOurReading = null;
         if (!this.canCommand()) return;
         const position = this.carrier.currentTime;
         if (this.audible) {
@@ -426,7 +519,8 @@ export class ExternalPlaybackSync {
         }
         const onOurTrack = this.known !== null && this.known.state !== 'stopped' && this.isOurTrack(this.known.mediaId);
         if (onOurTrack) this.sendSeek(position);
-        else if (!this.carrier.paused) this.playWithRateHold(position);
+        // A preroll's play is already on its way: its wait re-seeks to the new target once Music is audible.
+        else if (!this.carrier.paused && !this.isPrerollPending()) this.playWithRateHold(position);
     };
 
     // --- commands to Music ---
