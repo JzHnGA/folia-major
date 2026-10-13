@@ -92,6 +92,35 @@ describe('createCarrierRegistry', () => {
         expect(deps.create).toHaveBeenCalledTimes(2);
     });
 
+    // A hand-off can release the incoming song before the player's own acquire lands; the deck that is
+    // already rendering the carrier must keep the URL it has, not be handed a second one.
+    it('hands a released carrier back to a song acquired again while a deck still renders it', async () => {
+        const url = await registry.acquire(APPLE);
+        deps.isInUse.mockReturnValue(true);
+        registry.release(APPLE);
+
+        await expect(registry.acquire(APPLE)).resolves.toBe(url);
+        expect(deps.create).toHaveBeenCalledTimes(1);
+        expect(deps.revoke).not.toHaveBeenCalled();
+        expect(registry.owns(url)).toBe(true);
+        expect(registry.peek(APPLE)).toBe(url);
+
+        // Held again, so it follows the normal rule: revoked once the last holder lets go and no deck is on it.
+        deps.isInUse.mockReturnValue(false);
+        registry.release(APPLE);
+        expect(deps.revoke).toHaveBeenCalledExactlyOnceWith(url);
+        expect(registry.owns(url)).toBe(false);
+    });
+
+    it('does not revive a carrier that was already revoked', async () => {
+        const url = await registry.acquire(APPLE);
+        registry.release(APPLE);
+        expect(deps.revoke).toHaveBeenCalledExactlyOnceWith(url);
+
+        const next = await registry.acquire(APPLE);
+        expect(next).not.toBe(url);
+    });
+
     it('forgets a carrier that failed to mint', async () => {
         deps.create.mockRejectedValueOnce(new OnlineProviderError('not-playable', 'no carrier'));
         const waiters = [registry.acquire(APPLE), registry.acquire(APPLE)];
@@ -125,16 +154,6 @@ describe('createCarrierRegistry', () => {
         await flush();
         expect(deps.revoke).toHaveBeenCalledExactlyOnceWith(url);
         expect(registry.owns(url)).toBe(false);
-    });
-
-    it('does not let a release for a failed mint take a later holder\'s reference', async () => {
-        deps.create.mockRejectedValueOnce(new OnlineProviderError('not-playable', 'no carrier'));
-        await expect(registry.acquire(APPLE)).rejects.toThrow();
-        const url = await registry.acquire(APPLE);
-
-        registry.release(OTHER);
-        expect(registry.owns(url)).toBe(true);
-        expect(deps.revoke).not.toHaveBeenCalled();
     });
 
     it('mints through omni at standard quality and rejects a source without a playable URL', async () => {

@@ -39,19 +39,36 @@ interface CarrierEntry {
     minting: Promise<string>;
 }
 
-// Builds a registry over the given mint/revoke/in-use hooks. At zero holders an entry leaves the table at once
-// (a later acquire mints anew) and its URL waits in a revoke list that every call sweeps, so a carrier a deck is
-// still sounding survives until that deck lets go.
+/** A URL whose last holder let go, kept (with its song) until no deck renders it. */
+interface ReleasedCarrier {
+    key: string;
+    url: string;
+}
+
+// Builds a registry over the given mint/revoke/in-use hooks. At zero holders an entry leaves the table at once and
+// its URL waits in a revoke list that every call sweeps, so a carrier a deck is still sounding survives until that
+// deck lets go. A song acquired again while its URL is still waiting there gets that URL back; once it is revoked,
+// a later acquire mints anew.
 export const createCarrierRegistry = (deps: CarrierRegistryDeps): CarrierRegistry => {
     const entries = new Map<string, CarrierEntry>();
-    let awaitingRevoke: string[] = [];
+    let awaitingRevoke: ReleasedCarrier[] = [];
 
     const sweep = () => {
-        awaitingRevoke = awaitingRevoke.filter(url => {
+        awaitingRevoke = awaitingRevoke.filter(({ url }) => {
             if (deps.isInUse(url)) return true;
             deps.revoke(url);
             return false;
         });
+    };
+
+    // Puts the song's most recently released, not yet revoked URL back in the table as a single-holder-to-be entry.
+    const revive = (key: string): CarrierEntry | null => {
+        const index = awaitingRevoke.map(released => released.key).lastIndexOf(key);
+        if (index < 0) return null;
+        const [{ url }] = awaitingRevoke.splice(index, 1);
+        const entry: CarrierEntry = { holders: 0, url, minting: Promise.resolve(url) };
+        entries.set(key, entry);
+        return entry;
     };
 
     const mint = (key: string, song: SongResult): CarrierEntry => {
@@ -63,7 +80,7 @@ export const createCarrierRegistry = (deps: CarrierRegistryDeps): CarrierRegistr
                     entry.url = url;
                     // Every holder let go while it was minting, so nobody is left to release this URL.
                     if (entries.get(key) !== entry) {
-                        awaitingRevoke.push(url);
+                        awaitingRevoke.push({ key, url });
                         sweep();
                     }
                     return url;
@@ -82,15 +99,15 @@ export const createCarrierRegistry = (deps: CarrierRegistryDeps): CarrierRegistr
         entry.holders -= 1;
         if (entry.holders > 0) return;
         entries.delete(key);
-        if (entry.url) awaitingRevoke.push(entry.url);
+        if (entry.url) awaitingRevoke.push({ key, url: entry.url });
     };
 
     return {
         acquire(song) {
             const key = getPlaybackSongKey(song);
-            const entry = entries.get(key) ?? mint(key, song);
-            entry.holders += 1;
             sweep();
+            const entry = entries.get(key) ?? revive(key) ?? mint(key, song);
+            entry.holders += 1;
             return entry.minting;
         },
         peek(song) {

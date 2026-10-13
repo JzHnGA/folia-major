@@ -6,6 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // 集合导航清空；App 的句柄按调用现读。
 
 const services = vi.hoisted(() => ({ clearPrefetchRuntime: vi.fn(), clearTrackProfileRuntime: vi.fn() }));
+// The registry only says which URL is a shared carrier; releasePlaybackBlobUrl stays real, so what is revoked is observable.
+const registry = vi.hoisted(() => ({ releaseUrl: vi.fn((url: string) => url === 'blob:carrier') }));
+vi.mock('@/services/externalPlayback/carrierRegistry', () => ({ carrierRegistry: registry }));
 vi.mock('@/services/prefetchService', () => ({ clearPrefetchRuntime: services.clearPrefetchRuntime }));
 vi.mock('@/services/automix/profileService', () => ({ clearTrackProfileRuntime: services.clearTrackProfileRuntime }));
 
@@ -39,9 +42,11 @@ describe('provider switch cleanup port', () => {
         const audio = fakeAudio();
         const automix = { abortTransition: vi.fn() };
         const setLyrics = vi.fn();
+        const blobUrlRef = { current: 'blob:old-track' as string | null };
         const host: LibraryAccountSwitchHost = {
             audioRef: { current: audio as unknown as HTMLAudioElement },
             automixRef: { current: automix },
+            blobUrlRef,
             setLyrics,
         };
         const port = createLibraryAccountSwitchCleanupPort(() => host);
@@ -52,7 +57,8 @@ describe('provider switch cleanup port', () => {
         expect(audio.pause).toHaveBeenCalledTimes(1);
         expect(audio.removeAttribute).toHaveBeenCalledWith('src');
         expect(audio.load).toHaveBeenCalledTimes(1);
-        expect(revoke).toHaveBeenCalledWith('blob:old-track');
+        expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:old-track');
+        expect(blobUrlRef.current).toBeNull();
         expect(setLyrics).toHaveBeenCalledWith(null);
         expect(usePlaybackStore.getState()).toMatchObject({
             audioSrc: null,
@@ -75,6 +81,7 @@ describe('provider switch cleanup port', () => {
         let host: LibraryAccountSwitchHost = {
             audioRef: { current: null },
             automixRef: { current: null },
+            blobUrlRef: { current: null },
             setLyrics: vi.fn(),
         };
         const port = createLibraryAccountSwitchCleanupPort(() => host);
@@ -85,6 +92,28 @@ describe('provider switch cleanup port', () => {
 
         expect(laterAudio.pause).toHaveBeenCalledTimes(1);
         expect(revoke).not.toHaveBeenCalled();
+        revoke.mockRestore();
+    });
+
+    // The held URL is the one `blobUrlRef` names, and the next hand-over (`retireBlobUrl` / `replaceBlobUrl`) reads
+    // that same ref: releasing without clearing it would release the carrier a second time and take another
+    // holder's reference with it.
+    it('releases a held carrier once instead of revoking it, and clears the ref', () => {
+        const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+        usePlaybackStore.setState({ audioSrc: 'blob:carrier' });
+        const blobUrlRef = { current: 'blob:carrier' as string | null };
+        const port = createLibraryAccountSwitchCleanupPort(() => ({
+            audioRef: { current: null },
+            automixRef: { current: null },
+            blobUrlRef,
+            setLyrics: vi.fn(),
+        }));
+
+        port.resetForProviderSwitch('kugou', 'apple-music');
+
+        expect(registry.releaseUrl).toHaveBeenCalledExactlyOnceWith('blob:carrier');
+        expect(revoke).not.toHaveBeenCalled();
+        expect(blobUrlRef.current).toBeNull();
         revoke.mockRestore();
     });
 });

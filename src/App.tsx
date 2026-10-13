@@ -767,10 +767,11 @@ export default function App() {
     }), [handleLogout, logoutKugouLibrary, logoutQqLibrary, logoutBodianLibrary, logoutAppleMusicLibrary]);
 
     // 在线账户 controller（Library v2 · A4）：扫码登录、选平台、切换确认与登出都在 core，App 只交出 per-provider 的
-    // 刷新与登出，以及确认切换后的播放清理端口。端口读的三样（audio / automix 句柄、歌词写入）都是稳定引用，建一次。
+    // 刷新与登出，以及确认切换后的播放清理端口。端口读的几样（audio / automix 句柄、blob 地址 ref、歌词写入）都是稳定引用，建一次。
     const [providerSwitchCleanup] = useState(() => createLibraryAccountSwitchCleanupPort(() => ({
         audioRef,
         automixRef,
+        blobUrlRef,
         setLyrics: setLyricsStable,
     })));
     const accountController = useLibraryAccountController({

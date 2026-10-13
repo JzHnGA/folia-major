@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import type { MutableRefObject, RefObject } from 'react';
 import { PlayerState, type LyricData } from '../../types';
 import type { OnlineProviderId } from '../../types/onlineMusic';
 import type { LibraryProviderSwitchCleanupPort } from '../core/contracts/account';
@@ -6,6 +6,7 @@ import { usePlaybackStore } from '../../stores/usePlaybackStore';
 import { useSearchNavigationStore } from '../../stores/useSearchNavigationStore';
 import { useCollectionNavigationStore } from '../../stores/useCollectionNavigationStore';
 import { clearPrefetchRuntime } from '../../services/prefetchService';
+import { releasePlaybackBlobUrl } from '../../services/playbackBlobUrls';
 import { clearTrackProfileRuntime } from '../../services/automix/profileService';
 
 // src/library/app/createLibraryAccountPort.ts
@@ -17,6 +18,8 @@ import { clearTrackProfileRuntime } from '../../services/automix/profileService'
 export type LibraryAccountSwitchHost = {
     audioRef: RefObject<HTMLAudioElement | null>;
     automixRef: RefObject<{ abortTransition: () => void } | null>;
+    /** 当前歌曲持有的 blob 地址（本地文件或外部歌曲的载体）；后续的换歌交接读的是同一个 ref。 */
+    blobUrlRef: MutableRefObject<string | null>;
     /** App 的歌词写入（带过滤设置的那一个；清空时只传 null）。 */
     setLyrics: (lyrics: LyricData | null) => void;
 };
@@ -25,7 +28,7 @@ export const createLibraryAccountSwitchCleanupPort = (
     getHost: () => LibraryAccountSwitchHost,
 ): LibraryProviderSwitchCleanupPort => ({
     resetForProviderSwitch: (nextProviderId: OnlineProviderId) => {
-        const { audioRef, automixRef, setLyrics } = getHost();
+        const { audioRef, automixRef, blobUrlRef, setLyrics } = getHost();
         const playback = usePlaybackStore.getState();
         // Stops any deck still fading out in the background: this path clears the active deck
         // only, and a tail left running would have no control pointing at it any more.
@@ -34,7 +37,12 @@ export const createLibraryAccountSwitchCleanupPort = (
         audio?.pause();
         audio?.removeAttribute('src');
         audio?.load();
-        if (playback.audioSrc?.startsWith('blob:')) URL.revokeObjectURL(playback.audioSrc);
+        // Released through the ref that names it, then cleared: the next handover reads the same ref, and a shared
+        // carrier released twice would take another holder's reference with it.
+        if (blobUrlRef.current) {
+            releasePlaybackBlobUrl(blobUrlRef.current);
+            blobUrlRef.current = null;
+        }
         playback.setAudioSrc(null);
         playback.setCurrentSong(null);
         playback.setPlayQueue([]);
