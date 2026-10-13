@@ -2,16 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import {
     ExternalPlaybackSession,
     routeExternalPlaybackIssue,
+    type ExternalPlaybackDeck,
     type ExternalPlaybackIssueRoute,
     type ExternalPlaybackSessionInput,
 } from '@/services/externalPlayback/externalPlaybackSession';
 import type {
     ExternalPlaybackIssue,
+    ExternalPlaybackStartIntent,
     ExternalPlaybackSync,
     ExternalPlaybackSyncOptions,
 } from '@/services/externalPlayback/externalPlaybackSync';
+import type { ExternalVolumeMirror } from '@/services/externalPlayback/externalVolumeMirror';
+import type { DeckGainEnvelope } from '@/services/gainEnvelope';
 import { OnlineProviderError, type OmniExternalPlaybackEngine } from '@/types/onlineMusic';
 import { PlayerState, type SongResult } from '@/types';
+import { getPlaybackSongKey } from '@/utils/appPlaybackGuards';
 
 // test/unit/externalPlayback/externalPlaybackSession.test.ts
 // The cross-track session: the autoplay hold for a new external song, when each per-song controller is created,
@@ -60,8 +65,10 @@ class FakeCarrier {
 }
 
 interface FakeSync {
-    start: Mock<(intent: 'play' | 'idle') => void>;
+    start: Mock<(intent: ExternalPlaybackStartIntent) => void>;
     abortStart: Mock<() => void>;
+    endTransition: Mock<() => void>;
+    isPrerollPending: Mock<() => boolean>;
     dispose: Mock<(options: { stopEngine: boolean }) => Promise<void>>;
 }
 
@@ -121,7 +128,13 @@ beforeEach(() => {
     engine = { setMonitoring: vi.fn(), setVolume: vi.fn().mockResolvedValue(undefined) };
     created = [];
     createSync = vi.fn((options: ExternalPlaybackSyncOptions) => {
-        const sync: FakeSync = { start: vi.fn(), abortStart: vi.fn(), dispose: vi.fn().mockResolvedValue(undefined) };
+        const sync: FakeSync = {
+            start: vi.fn(),
+            abortStart: vi.fn(),
+            endTransition: vi.fn(),
+            isPrerollPending: vi.fn(() => false),
+            dispose: vi.fn().mockResolvedValue(undefined),
+        };
         created.push({ options, sync });
         return sync as unknown as ExternalPlaybackSync;
     });
@@ -509,6 +522,248 @@ describe('ExternalPlaybackSession', () => {
 
         expect(latest().sync.dispose).toHaveBeenCalledWith({ stopEngine: true });
         expect(engine.setMonitoring).toHaveBeenLastCalledWith(false);
+    });
+});
+
+// Two decks as Automix runs them: deck A is the module's carrier, deck B the other one; both have metadata.
+describe('ExternalPlaybackSession across an Automix transition', () => {
+    let deckA: FakeCarrier;
+    let deckB: FakeCarrier;
+    let cutTransition: Mock<() => void>;
+    let mirror: {
+        bind: Mock; drive: Mock; yieldControl: Mock; unbind: Mock; dispose: Mock;
+        setUserVolume: Mock; handleDeckEnvelope: Mock; handleFadeEnvelope: Mock;
+    };
+
+    const decks = (a: string | null, b: string | null): ExternalPlaybackDeck[] => [
+        { id: 'A', element: deckA, src: a },
+        { id: 'B', element: deckB, src: b },
+    ];
+    const outTo = { tail: { deck: 'A' as const, song: APPLE }, incoming: { deck: 'B' as const, song: NETEASE } };
+    const inTo = { tail: { deck: 'A' as const, song: NETEASE }, incoming: { deck: 'B' as const, song: APPLE } };
+    // Automix armed a blend into APPLE on deck B, with its carrier already preheated there.
+    const armIn = (overrides: Partial<ExternalPlaybackSessionInput> = {}) => input({
+        song: NETEASE, audioSrc: 'https://n', carrier: deckB, decks: decks('https://n', SRC), transition: inTo,
+        ...overrides,
+    });
+
+    beforeEach(() => {
+        deckA = carrier;
+        deckB = new FakeCarrier();
+        deckA.readyState = 1;
+        deckB.readyState = 1;
+        cutTransition = vi.fn();
+        mirror = {
+            bind: vi.fn(), drive: vi.fn(), yieldControl: vi.fn(), unbind: vi.fn(), dispose: vi.fn(),
+            setUserVolume: vi.fn(), handleDeckEnvelope: vi.fn(), handleFadeEnvelope: vi.fn(),
+        };
+        session = new ExternalPlaybackSession({
+            isExternal,
+            getEngine: song => (isExternal(song) ? engine as unknown as OmniExternalPlaybackEngine : null),
+            createSync,
+            clearAutoplayIntent,
+            setPaused,
+            onIssue,
+            cutTransition,
+            createMirror: () => mirror as unknown as ExternalVolumeMirror,
+        });
+    });
+
+    it('keeps the tail controller through the advance and stops Music only when the tail settles', () => {
+        session.update(input({ decks: decks(SRC, null) }));
+        const first = latest();
+        session.update(input({ carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo }));
+        session.update(input({
+            song: NETEASE, audioSrc: 'https://n', carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo,
+        }));
+
+        expect(createSync).toHaveBeenCalledTimes(1);
+        expect(first.options.carrier).toBe(deckA);
+        expect(first.sync.dispose).not.toHaveBeenCalled();
+        expect(engine.setMonitoring).not.toHaveBeenCalledWith(false);
+
+        session.update(input({
+            song: NETEASE, audioSrc: 'https://n', carrier: deckB, decks: decks(null, 'https://n'), transition: null,
+        }));
+
+        expect(first.sync.dispose).toHaveBeenCalledWith({ stopEngine: true });
+        expect(engine.setMonitoring).toHaveBeenLastCalledWith(false);
+        expect(mirror.unbind).toHaveBeenCalled();
+    });
+
+    it('prerolls the arriving Apple song at arm without a hold or a lyric wait', () => {
+        session.update(armIn({ isLyricsLoading: true }));
+
+        expect(latest().options.carrier).toBe(deckB);
+        expect(latest().sync.start).toHaveBeenCalledWith('preroll');
+        expect(session.isAutoplayHeld(APPLE, SRC, getPlaybackSongKey(APPLE))).toBe(false);
+        expect(mirror.bind).toHaveBeenCalledWith(expect.objectContaining({ deck: 'B', carrier: deckB }));
+        expect(mirror.drive.mock.invocationCallOrder[0]).toBeGreaterThan(latest().sync.start.mock.invocationCallOrder[0]);
+    });
+
+    it('does not hold the arriving song in the render before its binding', () => {
+        expect(session.isAutoplayHeld(APPLE, SRC, getPlaybackSongKey(APPLE))).toBe(false);
+        expect(session.isAutoplayHeld(APPLE, SRC, getPlaybackSongKey(APPLE_NEXT))).toBe(true);
+    });
+
+    it('keeps the prerolled controller when the advance commits it', () => {
+        session.update(armIn());
+        session.update(armIn({ song: APPLE, audioSrc: SRC }));
+
+        expect(createSync).toHaveBeenCalledTimes(1);
+        expect(latest().sync.dispose).not.toHaveBeenCalled();
+    });
+
+    it('hands the position back to Music when the transition settles', () => {
+        session.update(armIn());
+        session.update(armIn({ song: APPLE, audioSrc: SRC }));
+        const { sync } = latest();
+
+        session.update(input({ song: APPLE, audioSrc: SRC, carrier: deckB, decks: decks(null, SRC), transition: null }));
+
+        expect(sync.endTransition).toHaveBeenCalledTimes(1);
+        expect(sync.dispose).not.toHaveBeenCalled();
+        expect(createSync).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not bind an arriving Apple song to a deck still rendering the outgoing source', () => {
+        session.update(input({ carrier: deckB, decks: decks('https://n', 'https://n'), transition: inTo }));
+
+        expect(createSync).not.toHaveBeenCalled();
+    });
+
+    it('aborts the preroll when the listener pauses during the lead', () => {
+        session.update(armIn());
+        const { sync } = latest();
+
+        session.update(armIn({ playerState: PlayerState.PAUSED }));
+
+        expect(sync.abortStart).toHaveBeenCalledTimes(1);
+        expect(mirror.yieldControl).toHaveBeenCalled();
+        expect(clearAutoplayIntent).not.toHaveBeenCalled();
+        expect(sync.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('cuts the blend before routing a failed preroll', () => {
+        session.update(armIn());
+        const failed = latest();
+        const issue: ExternalPlaybackIssue = { kind: 'failure', error: new Error('play refused') };
+
+        failed.options.onIssue(issue);
+
+        expect(cutTransition).toHaveBeenCalledTimes(1);
+        expect(onIssue).toHaveBeenCalledWith(issue);
+        expect(cutTransition.mock.invocationCallOrder[0]).toBeLessThan(onIssue.mock.invocationCallOrder[0]);
+        expect(failed.sync.dispose).toHaveBeenCalledWith({ stopEngine: true });
+    });
+
+    it('cuts the blend once when Automix starts a carrier whose Music is still not audible', async () => {
+        session.update(armIn());
+        const { sync } = latest();
+        sync.isPrerollPending.mockReturnValue(true);
+
+        await deckB.play();
+
+        expect(cutTransition).toHaveBeenCalledTimes(1);
+        expect(mirror.drive).toHaveBeenCalledTimes(2);
+        expect(onIssue).not.toHaveBeenCalled();
+        expect(sync.abortStart).not.toHaveBeenCalled();
+
+        deckB.pause();
+        await deckB.play();
+        expect(cutTransition).toHaveBeenCalledTimes(1);
+
+        // The refused blend settles like any other: the binding stays and Music leads again.
+        session.update(input({ song: APPLE, audioSrc: SRC, carrier: deckB, decks: decks(null, SRC), transition: null }));
+        expect(sync.endTransition).toHaveBeenCalledTimes(1);
+        expect(sync.dispose).not.toHaveBeenCalled();
+    });
+
+    it('leaves the blend alone when Music is audible by the time Automix starts the carrier', async () => {
+        session.update(armIn());
+
+        await deckB.play();
+
+        expect(cutTransition).not.toHaveBeenCalled();
+        expect(mirror.drive).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the same controller when a mid-blend cancel returns to the outgoing Apple song', () => {
+        session.update(input({ decks: decks(SRC, null) }));
+        const first = latest();
+        session.update(input({ carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo }));
+        session.update(input({
+            song: NETEASE, audioSrc: 'https://n', carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo,
+        }));
+
+        session.update(input({ song: APPLE, audioSrc: SRC, carrier: deckA, decks: decks(SRC, null), transition: null }));
+
+        expect(createSync).toHaveBeenCalledTimes(1);
+        expect(first.sync.dispose).not.toHaveBeenCalled();
+        expect(first.sync.start).toHaveBeenCalledTimes(1);
+        expect(first.sync.endTransition).not.toHaveBeenCalled();
+    });
+
+    it("yields Music's volume when its carrier pauses and drives it again when it plays", async () => {
+        session.update(input({ decks: decks(SRC, null) }));
+        expect(mirror.drive).toHaveBeenCalledTimes(1);
+
+        await deckA.play();
+        expect(mirror.drive).toHaveBeenCalledTimes(2);
+
+        deckA.pause();
+        expect(mirror.yieldControl).toHaveBeenCalledTimes(1);
+    });
+
+    it("yields Music's volume on a takeover", () => {
+        session.update(input({ decks: decks(SRC, null) }));
+
+        latest().options.onIssue({ kind: 'takeover', reason: 'track-changed' });
+
+        expect(mirror.yieldControl).toHaveBeenCalled();
+        expect(cutTransition).not.toHaveBeenCalled();
+    });
+
+    it('hands envelopes and the user volume to the mirror', () => {
+        const envelope: DeckGainEnvelope = { startAt: 1, seconds: 2, points: [1, 0] };
+
+        session.handleDeckEnvelope('B', envelope);
+        session.handleFadeEnvelope(envelope);
+        session.mirrorVolume(0.4);
+
+        expect(mirror.handleDeckEnvelope).toHaveBeenCalledWith('B', envelope);
+        expect(mirror.handleFadeEnvelope).toHaveBeenCalledWith(envelope);
+        expect(mirror.setUserVolume).toHaveBeenCalledWith(0.4);
+    });
+
+    it('never throws into Automix or the pause fade', async () => {
+        for (const method of Object.values(mirror)) method.mockImplementation(() => { throw new Error('boom'); });
+        cutTransition.mockImplementation(() => { throw new Error('boom'); });
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        try {
+            expect(() => session.update(armIn())).not.toThrow();
+            latest().sync.isPrerollPending.mockReturnValue(true);
+
+            expect(() => session.handleDeckEnvelope('B', { startAt: 0, seconds: 0, points: [1] })).not.toThrow();
+            expect(() => session.handleFadeEnvelope({ startAt: 0, seconds: 0, points: [1] })).not.toThrow();
+            expect(() => session.mirrorVolume(0.5)).not.toThrow();
+            await expect(deckB.play()).resolves.toBeUndefined();
+            expect(cutTransition).toHaveBeenCalledTimes(1);
+            expect(() => latest().options.onIssue({ kind: 'failure', error: new Error('timeout') })).not.toThrow();
+            expect(onIssue).toHaveBeenCalledTimes(1);
+            expect(warn).toHaveBeenCalledTimes(1);
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it('releases the mirror when disposed', () => {
+        session.update(input({ decks: decks(SRC, null) }));
+
+        session.dispose();
+
+        expect(mirror.unbind).toHaveBeenCalled();
+        expect(mirror.dispose).toHaveBeenCalledTimes(1);
     });
 });
 
