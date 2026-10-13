@@ -48,8 +48,12 @@ interface Restore {
 /** What one engine was told; at most one command in flight, only the newest value queued behind it. */
 interface Channel {
     engine: OmniExternalPlaybackEngine;
-    /** Last percentage sent and not refused; null when Music's volume is unknown. */
+    /** Last percentage sent (assumed applied while in flight); null before the first send or after a refusal. */
     sentPct: number | null;
+    /** Anything was ever sent: a null sentPct then means Music's volume is unknown, not untouched. */
+    everSent: boolean;
+    /** The next value goes out even if it repeats sentPct (a new drive: the listener may have moved Music's slider). */
+    resend: boolean;
     inFlight: boolean;
     pendingPct: number | null;
     restore: Restore | null;
@@ -140,7 +144,9 @@ export class ExternalVolumeMirror {
             const target = this.target;
             if (!target) return;
             this.driving = true;
-            this.cancelRestore(this.channelFor(target.engine));
+            const channel = this.channelFor(target.engine);
+            this.cancelRestore(channel);
+            channel.resend = true;
             this.update();
         });
     }
@@ -212,7 +218,8 @@ export class ExternalVolumeMirror {
         const latest = channel.pendingPct ?? channel.sentPct;
         let pct = toPct(value);
         // A tail settle pauses the carrier and then ramps its fade back to 1; that must not make Music audible again.
-        if (target.carrier.paused && this.seenPlaying && latest !== null) pct = Math.min(pct, latest);
+        // After a refusal Music may be anywhere, so it is held at 0 rather than raised.
+        if (target.carrier.paused && this.seenPlaying && channel.everSent) pct = Math.min(pct, latest ?? 0);
         this.send(channel, pct);
 
         const moving = time < envelopeEndsAt(deck?.envelope ?? null) || time < envelopeEndsAt(fade.envelope);
@@ -232,7 +239,7 @@ export class ExternalVolumeMirror {
     private channelFor(engine: OmniExternalPlaybackEngine): Channel {
         let channel = this.channels.get(engine);
         if (!channel) {
-            channel = { engine, sentPct: null, inFlight: false, pendingPct: null, restore: null };
+            channel = { engine, sentPct: null, everSent: false, resend: false, inFlight: false, pendingPct: null, restore: null };
             this.channels.set(engine, channel);
         }
         return channel;
@@ -244,10 +251,13 @@ export class ExternalVolumeMirror {
             channel.pendingPct = pct;
             return;
         }
-        if (pct === channel.sentPct) return;
+        if (pct === channel.sentPct && !channel.resend) return;
         channel.inFlight = true;
         channel.sentPct = pct;
-        // Refused while Music is not running: its volume is unknown then, and the next value goes out regardless.
+        channel.everSent = true;
+        channel.resend = false;
+        // Refused while Music is not running, or on a control timeout that may still have applied it: either way
+        // Music's volume is unknown then, and the next value goes out regardless.
         invoke(() => channel.engine.setVolume(pct / 100)).then(
             () => this.settle(channel),
             () => {
@@ -267,10 +277,11 @@ export class ExternalVolumeMirror {
     }
 
     // Waits for a reading taken after the yield that shows Music paused, stopped or on another track, or the timeout.
+    // Skipped only for an engine never sent anything, or one settled at the user volume; an unknown volume (after a
+    // refusal) or a command still in flight may leave Music below it.
     private beginRestore(channel: Channel, mediaId: string | null): void {
-        if (channel.restore || this.userVolume === null) return;
-        const latest = channel.pendingPct ?? channel.sentPct;
-        if (latest === null || latest === toPct(this.userVolume)) return;
+        if (channel.restore || this.userVolume === null || !channel.everSent) return;
+        if (!channel.inFlight && channel.sentPct === toPct(this.userVolume)) return;
         const yieldedAt = this.now();
         const restore: Restore = { mediaId, yieldedAt, unsubscribe: () => undefined, timer: null };
         channel.restore = restore;

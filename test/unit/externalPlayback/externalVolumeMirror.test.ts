@@ -38,8 +38,9 @@ const createEngine = () => {
 // An engine command that settles only when the test says so.
 const deferred = () => {
     let resolve!: () => void;
-    const promise = new Promise<void>(done => { resolve = done; });
-    return { promise, resolve };
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 };
 
 let audio: { t: number };
@@ -178,6 +179,44 @@ describe('driving Music', () => {
         expect(sent()).toEqual([1, 0, 1]);
     });
 
+    it('applies no deck factor to a target whose deck is unknown', async () => {
+        mirror.setUserVolume(1);
+        mirror.bind({ ...target(), deck: null });
+        mirror.drive();
+        mirror.handleDeckEnvelope('A', { startAt: 0, seconds: 0, points: [0] });
+        mirror.handleDeckEnvelope('B', { startAt: 0, seconds: 0, points: [0] });
+        mirror.handleFadeEnvelope({ startAt: 0, seconds: 0, points: [0.5] });
+        await advance(0.2);
+        expect(sent()).toEqual([1, 0.5]);
+    });
+
+    it('reads envelopes at their end while there is no audio graph, and holds their last point across a new one', async () => {
+        let graph = false;
+        const offline = new ExternalVolumeMirror({ audioNow: () => (graph ? audio.t : null), now: () => clock });
+        offline.setUserVolume(1);
+        offline.bind(target());
+        offline.drive();
+        offline.handleDeckEnvelope('A', { startAt: 0, seconds: 1, points: [1, 0.3] });
+        await advance(0);
+        expect(sent()).toEqual([1, 0.3]);                                             // +∞: straight to the last point, no ticking
+        offline.handleDeckEnvelope('A', { startAt: 10, seconds: 1, points: [1, 1] });  // cancel-and-hold at the old last point
+        graph = true;
+        offline.handleFadeEnvelope({ startAt: 0, seconds: 0, points: [1] });
+        await advance(0.2);
+        expect(sent().at(-1)).toBe(0.3);
+        offline.dispose();
+    });
+
+    it('stops every timer once the envelope settles', async () => {
+        mirror.setUserVolume(1);
+        mirror.bind(target());
+        mirror.drive();
+        mirror.handleDeckEnvelope('A', { startAt: 0, seconds: 0.3, points: [1, 0] });
+        await advance(0.5);
+        expect(sent().at(-1)).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('sends nothing before the user volume is known', async () => {
         mirror.bind(target());
         mirror.drive();
@@ -219,6 +258,35 @@ describe('command queue', () => {
         mirror.setUserVolume(1);
         await advance(0.1);
         expect(sent()).toEqual([1, 0.5, 0.4, 0.4]);
+    });
+
+    it('sends the first value of a new drive even when it repeats the previous song\'s last one', async () => {
+        mirror.setUserVolume(0.8);
+        mirror.bind(target());
+        mirror.drive();
+        await advance(0.2);
+        expect(sent()).toEqual([0.8]);
+
+        // The listener may have moved Music's own slider in between: the new song sets it again.
+        mirror.bind({ ...target(), mediaId: OTHER_ID });
+        mirror.drive();
+        await advance(0.2);
+        expect(sent()).toEqual([0.8, 0.8]);
+    });
+
+    it('never raises a paused carrier\'s Music after a refusal left its volume unknown', async () => {
+        mirror.setUserVolume(1);
+        mirror.bind(target());
+        mirror.drive();
+        await advance(0);
+        engine.setVolume.mockRejectedValueOnce(new Error('control timeout'));
+        mirror.handleDeckEnvelope('A', { startAt: 0, seconds: 0, points: [0] });       // may or may not have applied
+        await advance(0);
+        const before = sent().length;
+        carrier.paused = true;
+        mirror.handleDeckEnvelope('A', { startAt: 0, seconds: 0.03, points: [0, 1] });
+        await advance(0.2);
+        expect(sent().slice(before).every(volume => volume === 0)).toBe(true);
     });
 
     it('never throws out of a handler and logs the first failure only', async () => {
@@ -310,6 +378,72 @@ describe('giving the user volume back', () => {
         expect(engine.listenerCount()).toBe(0);
         await advance(0.6);
         expect(sent()).toEqual([1]);
+    });
+
+    it('restores after a refused fade left Music\'s volume unknown', async () => {
+        mirror.setUserVolume(1);
+        mirror.bind(target());
+        mirror.drive();
+        await advance(0.2);
+        engine.setVolume.mockRejectedValueOnce(new Error('control timeout'));          // the bridge may still have applied it
+        mirror.handleFadeEnvelope({ startAt: audio.t, seconds: 0, points: [0] });
+        await advance(0);
+        expect(sent().at(-1)).toBe(0);
+
+        mirror.yieldControl();
+        expect(engine.listenerCount()).toBe(1);
+        await advance(MIRROR_RESTORE_TIMEOUT_MS / 1000);
+        expect(sent().at(-1)).toBe(1);
+        expect(engine.listenerCount()).toBe(0);
+    });
+
+    it('restores when the command in flight at the yield is refused', async () => {
+        await driveToSilence();
+        const command = deferred();
+        engine.setVolume.mockReturnValueOnce(command.promise);
+        mirror.handleDeckEnvelope('A', { startAt: audio.t, seconds: 0, points: [1] });  // back to the user volume, in flight
+        mirror.yieldControl();
+        command.reject(new Error('control timeout'));
+        await advance(0);
+        clock += 10;
+        engine.emit(reading({ state: 'paused', sampledAtMs: clock }));
+        expect(sent()).toEqual([1, 0, 1, 1]);
+        expect(engine.listenerCount()).toBe(0);
+    });
+
+    it('skips the restore on an engine that was never sent anything', async () => {
+        mirror.bind(target());
+        mirror.setUserVolume(0.5);
+        mirror.yieldControl();
+        expect(engine.listenerCount()).toBe(0);
+    });
+
+    it('gives the old engine its user volume back when another engine is bound', async () => {
+        await driveToSilence();
+        const next = createEngine();
+        mirror.bind({ ...target(), engine: next, mediaId: OTHER_ID });
+        clock += 10;
+        engine.emit(reading({ state: 'paused', sampledAtMs: clock }));
+        expect(sent().at(-1)).toBe(1);
+        expect(engine.listenerCount()).toBe(0);
+        expect(next.setVolume).not.toHaveBeenCalled();
+    });
+
+    it('stops ticking on dispose and keeps only a pending restore\'s timer until it completes', async () => {
+        mirror.setUserVolume(1);
+        mirror.bind(target());
+        mirror.drive();
+        mirror.handleDeckEnvelope('A', { startAt: 0, seconds: 1, points: [1, 1] });     // moving, at the user volume
+        await advance(0);
+        mirror.dispose();
+        expect(vi.getTimerCount()).toBe(0);
+
+        await driveToSilence();
+        mirror.dispose();
+        expect(vi.getTimerCount()).toBe(1);
+        await advance(MIRROR_RESTORE_TIMEOUT_MS / 1000);
+        expect(sent().at(-1)).toBe(1);
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it('lets a new binding on the same engine cancel a pending restore', async () => {
