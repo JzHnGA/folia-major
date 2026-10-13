@@ -30,6 +30,7 @@ import { resolveExplicitFileTimedLyricFormat } from '../utils/lyrics/formatDetec
 import { applyUploadedLocalLyrics } from '../utils/lyrics/localLyricsUpload';
 import { omni } from '../services/onlineMusic/omni';
 import { getProviderSongMetadata } from '../services/onlineMusic/songMetadata';
+import { buildLyricMatchAttempts, runLyricMatchAttempts } from '../services/onlineMusic/lyricMatchAttempts';
 import { getSongResourceCacheKey } from '../services/onlineMusic/resourceKeys';
 import { getSongCacheWithLegacyMigration } from '../services/onlineMusic/resourceCache';
 import { buildLocalSourceRevision, buildNavidromeSourceRevision } from '../services/playbackRecovery/sourceRevision';
@@ -1348,19 +1349,22 @@ export function useLibraryPlaybackController({
                 return true;
             }
 
-            const currentSongMetadata = getProviderSongMetadata(currentSong);
-            const artistName = currentSongMetadata.artists.map(artist => artist.name).filter(Boolean).join(', ');
-            const albumName = currentSongMetadata.album?.name || '';
             const sourceRef = getPlaybackSourceRef(currentSong);
+            // An external-playback song (Music.app) has no lyrics of its own, but its provider answers with match hints
+            // (the catalog's localized names), which are tried before the song's own names.
             const ownLyricsResult = await omni.getLyrics(currentSong);
-            const bestMatch = await autoMatchBestLyric(currentSong.name, artistName, currentSongMetadata.durationMs, {
-                album: albumName,
-                preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
-                providerCandidate: sourceRef.kind === 'online'
-                    && (sourceRef.providerId === 'netease' || sourceRef.providerId === 'kugou')
-                    ? { providerId: sourceRef.providerId as 'netease' | 'kugou', song: currentSong, lyricsResult: ownLyricsResult }
-                    : undefined,
-            });
+            const bestMatch = await runLyricMatchAttempts(
+                buildLyricMatchAttempts(currentSong, ownLyricsResult.matchHints),
+                attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
+                    album: attempt.album || '',
+                    preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
+                    providerCandidate: sourceRef.kind === 'online'
+                        && (sourceRef.providerId === 'netease' || sourceRef.providerId === 'kugou')
+                        ? { providerId: sourceRef.providerId as 'netease' | 'kugou', song: currentSong, lyricsResult: ownLyricsResult }
+                        : undefined,
+                }),
+                match => 'lyrics' in match,
+            );
 
             if (!bestMatch) {
                 setStatusMsg({ type: 'info', text: t('status.bestLyricsNotFound') || '' });

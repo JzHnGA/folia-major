@@ -115,6 +115,8 @@ export interface ProviderLyricsResult {
     romanizationText?: string | null;
     isPureMusic: boolean;
     chorusRanges?: ChorusRange[];
+    // Names the provider knows the song by that suit a cross-platform lyric search better than its own metadata.
+    matchHints?: { title?: string; artist?: string; album?: string };
 }
 
 export interface ProviderAlbumSummary {

@@ -8,6 +8,7 @@ import { getPlaybackSourceRef } from '../../utils/appPlaybackGuards';
 import { createProviderSongMetadata } from '../../utils/songMetadata';
 import { createSilentCarrierUrl } from '../externalPlayback/silentCarrier';
 import { getLocalCoverAssetUrl } from '../localCoverAssetUrl';
+import { lookupAppleMusicMatchHints, stripAppleReleaseSuffix } from './appleMusicCatalogLookup';
 import {
     getAppleMusicPermission, isAppleMusicBridgeAvailable, requestAppleMusic, setAppleMusicMonitoring, subscribeAppleMusicState,
 } from './appleMusicTransport';
@@ -172,8 +173,19 @@ const playback: OnlinePlaybackProvider = {
 
 const lyrics: OnlineLyricsProvider = {
     // Music.app has no lyrics API we use, so the shared automatic matching supplies them.
-    async getLyrics() {
-        return { lyrics: null, isPureMusic: false };
+    // The library often holds an English or traditional-Chinese name that lyric sites do not know, so the song's localized
+    // names from Apple's public catalog ride along as match hints. A failed lookup only means no hints.
+    async getLyrics(song) {
+        const metadata = createProviderSongMetadata(song);
+        const found = await lookupAppleMusicMatchHints({
+            id: String(song.id),
+            name: song.name,
+            artist: metadata.artists.map(artist => artist.name).filter(Boolean).join(', '),
+            durationMs: metadata.durationMs,
+        });
+        if (!found) return { lyrics: null, isPureMusic: false };
+        const album = found.album || stripAppleReleaseSuffix(metadata.album?.name ?? '');
+        return { lyrics: null, isPureMusic: false, matchHints: { ...found, ...(album ? { album } : {}) } };
     },
 };
 

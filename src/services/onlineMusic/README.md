@@ -23,7 +23,7 @@ UI / hooks / stores / app services
 当前 registry 注册 `netease`、`kugou`、`qq`、桌面端的 `bodian`，以及仅 macOS 桌面端的 `apple-music`。波点接入状态、接口与剩余验收见
 [`docs/bodian.md`](../../../docs/bodian.md)；支持喜欢与自建歌单歌曲增删，收藏写入尚未实现。Navidrome 是独立的 Subsonic 服务，入口是 `src/services/navidromeService.ts`，不属于 Omni provider。
 
-`apple-music` 控制本机「音乐」App：只使用本机的音乐资料库（搜索与歌单），不走 Apple 账号或网络接口。声音由「音乐」App 播放，Folia 自己的 `<audio>` 播放一段等长的静音 WAV 载体，让歌词时钟保持平滑；这类歌曲属于「外部播放」，见下文 `isExternalPlaybackSong`。
+`apple-music` 控制本机「音乐」App：播放、搜索与歌单只使用本机的音乐资料库，不走 Apple 账号；唯一的联网请求是匹配歌词时查询 Apple 公开目录（iTunes Search API，不需要登录）以取得歌曲的本地化名称。声音由「音乐」App 播放，Folia 自己的 `<audio>` 播放一段等长的静音 WAV 载体，让歌词时钟保持平滑；这类歌曲属于「外部播放」，见下文 `isExternalPlaybackSong`。
 
 扫码登录的分工：provider（`neteaseProvider.ts`、`qqProvider.ts`）把后端的响应翻译成 `QrLoginState`，失败时带上后端原文（`message`）、原始返回字段（`detail`，QQ 的失败阶段与原因、上游状态码、退避时长、上一次失败都原样保留）、结构化原因（`reason`：手机上取消、连接被重置）、冷却（`retryAfterMs`）以及「网络层瞬时失败」（`transient`，没拿到上游回应、二维码仍有效）；要码与生成二维码拿不到 key / 图片时直接抛错，不再交出空值。provider 不持有任何扫码的模块级状态：一轮扫码的步骤、代次、时间线都在 Library Core 的 `core/services/providerLoginSession.ts`。会话在登录失败后自动调用 `omni.runQrLoginSelfCheck` 跑一次主动自检（在手机上取消除外），结论由 `core/model/loginSelfCheckRules.ts` 推出、显示在登录界面上，并和时间线、`omni.getQrLoginDiagnostics` 的 provider 段一起进诊断报告。
 
@@ -58,7 +58,7 @@ provider 段的内容来自主进程的内嵌后端快照（`loginBackendDiagnos
 - `bodianProvider.ts`：波点 adapter；`bodianTransport.ts` 通过受限 IPC 连接 `electron/bodianApiBridge.cjs`。
   桥接调用固定版本的 `bodian-music-api`，协议实现在独立仓库维护；Folia 负责加密存储与媒体策略。
   `bodianCatalog.ts` / `bodianLibrary.ts` 处理集合与用户库，`bodianNormalize.ts` 统一数据，凭据不返回 renderer。
-- `appleMusicProvider.ts`：Apple Music（「音乐」App）adapter，provider id 固定为 `apple-music`，只在 macOS 桌面端注册。歌曲身份是 16 位十六进制 persistent ID，歌单 id 另外允许 `library`（资料库全部歌曲）。`getAudioSource` 返回按歌曲时长生成的静音载体（`src/services/externalPlayback/silentCarrier.ts`），歌词接口返回空值，让跨 provider 的自动匹配每次都补上歌词。`appleMusicTransport.ts` 只通过 `window.electron.appleMusic` 的受限 IPC 与主进程通信；`electron/appleMusic/musicAppBridge.cjs` 持有一个常驻的 `osascript -l JavaScript` 进程（脚本在 `musicAppScript.cjs`，以 JSON 行通信），`artworkIndex.cjs` 把封面索引存在 `userData/apple-music-artwork-index.json`。
+- `appleMusicProvider.ts`：Apple Music（「音乐」App）adapter，provider id 固定为 `apple-music`，只在 macOS 桌面端注册。歌曲身份是 16 位十六进制 persistent ID，歌单 id 另外允许 `library`（资料库全部歌曲）。`getAudioSource` 返回按歌曲时长生成的静音载体（`src/services/externalPlayback/silentCarrier.ts`），歌词接口不带歌词，让跨 provider 的自动匹配每次都补上歌词；它在结果里附带 `matchHints`（由 `appleMusicCatalogLookup.ts` 用台湾区目录按标题+艺人查询，只接受时长差不超过 1 s 的结果，名称转简体、去掉专辑名的 ` - Single` / ` - EP`），自动匹配经 `lyricMatchAttempts.ts` 先用 hints、再用资料库原名检索。查询失败或超时（5 s）只表示没有 hints。`appleMusicTransport.ts` 只通过 `window.electron.appleMusic` 的受限 IPC 与主进程通信；`electron/appleMusic/musicAppBridge.cjs` 持有一个常驻的 `osascript -l JavaScript` 进程（脚本在 `musicAppScript.cjs`，以 JSON 行通信），`artworkIndex.cjs` 把封面索引存在 `userData/apple-music-artwork-index.json`。
 - 外部播放同步（`src/services/externalPlayback/`）：`externalPlaybackSync.ts` 管单首歌，载体 `<audio>` 与「音乐」App 对时：开播时先压住载体，等「音乐」确实出声再放行；偏差小于 30 ms 不处理，30 ms 到 1 s 用 `playbackRate` 微调（1 ± 0.05），超过 1 s 直接 seek；每次 play / resume / seek 之后 1 s 内不做校正。`externalPlaybackSession.ts` 跨歌曲持有控制器、保持引擎监听并把 Folia 音量同步给「音乐」，`externalPlaybackGuards.ts` 的 `involvesExternalPlayback` 供其他模块判断。渲染侧接线在 `src/hooks/useExternalPlaybackSync.ts`，资料库读取在 `src/hooks/useAppleMusicLibrary.ts`。
   外部播放的歌曲不参与 Automix、预取音频、媒体缓存、视频导出、音频分析（含音频驱动的频段），EQ、效果器与输出设备也不作用于它们（设置里有对应说明）。载体 `<audio>` 绝不能设 `muted`，否则页面隐藏时 Chromium 会把时钟降到约 0.25 倍；Folia 的静音靠把「音乐」音量设为 0 实现。
 - `neteaseProvider.ts`：网易云 adapter，归一化到 Omni contract。

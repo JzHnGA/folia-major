@@ -41,6 +41,12 @@ const load = async () => {
 
 const originalCreateObjectURL = URL.createObjectURL;
 
+// The lyric hints come from Apple's public catalog; no test may reach it, so every request fails unless a test installs rows.
+const catalogFetch = vi.fn(async (_input: unknown, _init?: unknown): Promise<unknown> => { throw new TypeError('offline'); });
+const catalogRows = (rows: Array<Record<string, unknown>>) => catalogFetch.mockImplementation(async () => ({
+    ok: true, status: 200, json: async () => ({ resultCount: rows.length, results: rows }),
+}));
+
 beforeEach(() => {
     vi.resetModules();
     request.mockClear();
@@ -48,6 +54,9 @@ beforeEach(() => {
     onState.mockClear();
     unsubscribeState.mockClear();
     handlers = {};
+    catalogFetch.mockReset();
+    catalogFetch.mockImplementation(async () => { throw new TypeError('offline'); });
+    vi.stubGlobal('fetch', catalogFetch);
     installBridge();
     URL.createObjectURL = vi.fn(() => 'blob:apple-music-carrier');
 });
@@ -263,10 +272,50 @@ describe('Apple Music library and catalog', () => {
         expect(song?.sourceRef).toMatchObject({ providerId: 'apple-music', mediaId: 'ABCDEF0123456789' });
     });
 
-    it('returns empty lyrics so the shared auto-match runs', async () => {
+    it('returns empty lyrics so the shared auto-match runs, without hints when the catalog lookup fails', async () => {
         const { provider } = await load();
         const song = provider.normalizeSong(track);
         expect(await provider.lyrics!.getLyrics(song)).toEqual({ lyrics: null, isPureMusic: false });
+    });
+
+    it('hands the catalog names to the shared auto-match as match hints', async () => {
+        const { provider } = await load();
+        const song = provider.normalizeSong({ ...track, name: 'Wo De Ai Mei Qian Zou', artist: 'Nana Ou-Yang', album: 'Wo De Ai Mei Qian Zou - Single', duration: 199.597 });
+        catalogRows([{ trackName: '我的愛沒前奏', artistName: '歐陽娜娜', collectionName: '我的愛沒前奏 - Single', trackTimeMillis: 199597 }]);
+        const result = await provider.lyrics!.getLyrics(song);
+        expect(result).toEqual({
+            lyrics: null,
+            isPureMusic: false,
+            matchHints: { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' },
+        });
+        const url = new URL(String(catalogFetch.mock.calls[0][0]));
+        expect(url.searchParams.get('term')).toBe('Wo De Ai Mei Qian Zou Nana Ou-Yang');
+    });
+
+    it('falls back to the library album without its Single or EP suffix when the catalog gives no album', async () => {
+        const { provider } = await load();
+        catalogRows([{ trackName: '我愛的女孩', artistName: 'Know Know', trackTimeMillis: 178710 }]);
+        const single = provider.normalizeSong({ ...track, id: '1111111111111111', album: 'KnowKnow - Single', duration: 178.71 });
+        expect(await provider.lyrics!.getLyrics(single)).toMatchObject({ matchHints: { title: '我爱的女孩', artist: 'Know Know', album: 'KnowKnow' } });
+        const ep = provider.normalizeSong({ ...track, id: '2222222222222222', album: 'Seasons - EP', duration: 178.71 });
+        expect(await provider.lyrics!.getLyrics(ep)).toMatchObject({ matchHints: { album: 'Seasons' } });
+    });
+
+    it('does not turn an empty library album into a hinted album', async () => {
+        const { provider } = await load();
+        catalogRows([{ trackName: '我愛的女孩', trackTimeMillis: 178710 }]);
+        const song = provider.normalizeSong({ ...track, album: '', duration: 178.71 });
+        const result = await provider.lyrics!.getLyrics(song);
+        expect(result.matchHints).toEqual({ title: '我爱的女孩' });
+    });
+
+    it('leaves the hints out when the catalog has no row for the song', async () => {
+        const { provider } = await load();
+        catalogRows([]);
+        const song = provider.normalizeSong(track);
+        const result = await provider.lyrics!.getLyrics(song);
+        expect(result).toEqual({ lyrics: null, isPureMusic: false });
+        expect('matchHints' in result).toBe(false);
     });
 });
 

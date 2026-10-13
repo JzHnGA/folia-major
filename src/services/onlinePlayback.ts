@@ -12,7 +12,7 @@ import { omni } from './onlineMusic/omni';
 import { getSongResourceCacheKey } from './onlineMusic/resourceKeys';
 import { getCachedSongAudioBlob, getCachedSongReplayGain, getSongCacheWithLegacyMigration } from './onlineMusic/resourceCache';
 import { toSafePlaybackUrl } from '../utils/appPlaybackHelpers';
-import { getProviderSongMetadata } from './onlineMusic/songMetadata';
+import { buildLyricMatchAttempts, runLyricMatchAttempts } from './onlineMusic/lyricMatchAttempts';
 import { useLyricSettingsStore } from '../stores/useLyricSettingsStore';
 import { saveLyricCacheSongMetadata } from './lyricExport/lyricCacheMetadata';
 
@@ -148,6 +148,7 @@ export async function loadOnlineSongLyrics(
             isPureMusic: prefetched.lyricRaw?.isPureMusic ?? false,
             lyrics: prefetched.lyrics,
             chorusRanges: [],
+            matchHints: undefined,
           }
         : await (async () => {
             const result = await omni.getLyrics(song, { userId });
@@ -158,6 +159,7 @@ export async function loadOnlineSongLyrics(
                 isPureMusic: result.isPureMusic,
                 lyrics: result.lyrics,
                 chorusRanges: result.chorusRanges || [],
+                matchHints: result.matchHints,
             };
         })();
     const parsedLyrics = processed.lyrics;
@@ -185,28 +187,32 @@ export async function loadOnlineSongLyrics(
 
         try {
             onAutoMatchStart?.();
-            const metadata = getProviderSongMetadata(song);
-            const artistName = metadata.artists.map(a => a.name).join(', ');
-            const bestMatch = await autoMatchBestLyric(song.name, artistName, metadata.durationMs, {
-                album: metadata.album?.name,
-                preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
-                providerCandidate: song.sourceRef?.kind === 'online'
-                    && (song.sourceRef.providerId === 'netease' || song.sourceRef.providerId === 'kugou' || song.sourceRef.providerId === 'qq')
-                    ? {
-                        providerId: song.sourceRef.providerId as 'netease' | 'kugou' | 'qq',
-                        song,
-                        lyricsResult: {
-                            lyrics: parsedLyrics,
-                            mainText: processed.mainLrc,
-                            wordByWordText: processed.yrcLrc,
-                            translationText: processed.transLrc,
-                            isPureMusic: processed.isPureMusic,
-                            chorusRanges: processed.chorusRanges,
-                        },
-                    }
-                    : undefined
-            });
             const ownProviderId = song.sourceRef?.kind === 'online' ? song.sourceRef.providerId : null;
+            const providerCandidate = song.sourceRef?.kind === 'online'
+                && (song.sourceRef.providerId === 'netease' || song.sourceRef.providerId === 'kugou' || song.sourceRef.providerId === 'qq')
+                ? {
+                    providerId: song.sourceRef.providerId as 'netease' | 'kugou' | 'qq',
+                    song,
+                    lyricsResult: {
+                        lyrics: parsedLyrics,
+                        mainText: processed.mainLrc,
+                        wordByWordText: processed.yrcLrc,
+                        translationText: processed.transLrc,
+                        isPureMusic: processed.isPureMusic,
+                        chorusRanges: processed.chorusRanges,
+                    },
+                }
+                : undefined;
+            // A provider may hint at better search names (Apple Music: the catalog's localized ones); they are tried before the song's own.
+            const bestMatch = await runLyricMatchAttempts(
+                buildLyricMatchAttempts(song, processed.matchHints),
+                attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
+                    album: attempt.album,
+                    preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
+                    providerCandidate,
+                }),
+                match => 'lyrics' in match && match.source !== ownProviderId,
+            );
             if (bestMatch && 'lyrics' in bestMatch && bestMatch.source !== ownProviderId) {
                 const overrideState: OnlineLyricsState = {
                     lyricsSource: 'online',

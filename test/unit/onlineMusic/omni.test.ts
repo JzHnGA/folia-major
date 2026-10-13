@@ -121,6 +121,22 @@ describe('omni routing', () => {
         expect(getChorusRanges).toHaveBeenCalledWith('chorus-song');
     });
 
+    it('keeps the provider\'s match hints on the lyrics result, with or without lyrics', async () => {
+        const matchHints = { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' };
+        const lines = [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }];
+        let answer: Awaited<ReturnType<NonNullable<OnlineMusicProvider['lyrics']>['getLyrics']>> = { lyrics: null, isPureMusic: false, matchHints };
+        registerOnlineMusicProvider({
+            ...provider(providerId, { searchSongs: async () => ({ items: [], hasMore: false, nextOffset: 0 }) }),
+            lyrics: { getLyrics: async () => answer },
+        });
+        const target = song(providerId, 'hint-song');
+
+        await expect(omni.getLyrics(target)).resolves.toMatchObject({ matchHints });
+        // The chorus resolver rebuilds the result when there are lyrics; the hints must ride through that too.
+        answer = { lyrics: { lines, isWordByWord: false }, isPureMusic: false, matchHints };
+        await expect(omni.getLyrics(target)).resolves.toMatchObject({ matchHints });
+    });
+
     it('rejects a late active-provider result after invalidation', async () => {
         let resolveSearch!: (value: { items: UnifiedSong[]; hasMore: false; nextOffset: number }) => void;
         registerOnlineMusicProvider(provider(providerId, {

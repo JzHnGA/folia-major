@@ -139,8 +139,10 @@ describe('omni.hooks', () => {
         const lyrics = await applyOmniLyricsHook(song, {
             lyrics: { lines: [{ words: [], startTime: 0, endTime: 1, fullText: 'hi' }] },
             isPureMusic: false,
+            matchHints: { title: '你好' },
         });
         expect(lyrics.lyrics?.lines[0].fullText).toBe('HI');
+        expect(lyrics.matchHints).toEqual({ title: '你好' });
     });
 });
 

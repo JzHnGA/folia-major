@@ -406,3 +406,84 @@ describe('lyric auto-match for external-playback songs', () => {
         expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
     });
 });
+
+describe('lyric auto-match with provider match hints', () => {
+    const appleSong: SongResult = {
+        id: 'apple-song',
+        name: 'Wo De Ai Mei Qian Zou',
+        artists: [{ id: 1, name: 'Nana Ou-Yang' }],
+        album: { id: 2, name: 'Wo De Ai Mei Qian Zou' },
+        durationMs: 199597,
+        sourceRef: { kind: 'online', providerId: 'apple-music', mediaId: '0123456789ABCDEF' },
+    };
+    const parsedFixture = {
+        lines: [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }],
+        isWordByWord: false,
+    };
+    const hints = { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' };
+    const callbacks = {
+        isCurrent: () => true,
+        onLyrics: vi.fn(),
+        onDone: vi.fn(),
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        songCacheMock.mockResolvedValue(null);
+        loadLyricsStateMock.mockResolvedValue(null);
+        isExternalMock.mockReturnValue(true);
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false, matchHints: hints });
+        autoMatchMock.mockReset();
+    });
+
+    it('searches with the hinted names first', async () => {
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('falls back to the song names when the hinted search finds nothing', async () => {
+        autoMatchMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 2, source: 'netease', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(2);
+        expect(autoMatchMock).toHaveBeenNthCalledWith(1, '我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(autoMatchMock).toHaveBeenNthCalledWith(2, 'Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('does not take lyrics the song\'s own provider answered as a match, and keeps searching', async () => {
+        autoMatchMock
+            .mockResolvedValueOnce({ id: 1, source: 'apple-music', lyrics: parsedFixture, isPureMusic: false })
+            .mockResolvedValueOnce({ id: 2, source: 'kugou', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(2);
+        expect(saveLyricsStateMock).toHaveBeenCalledWith(appleSong, expect.objectContaining({ matchedLyricsSource: 'kugou' }));
+    });
+
+    it('searches once with the song names when the provider sends no hints', async () => {
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false });
+        autoMatchMock.mockResolvedValue(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+    });
+
+    it('searches once when the hints equal the song names', async () => {
+        lyricsMock.mockResolvedValue({
+            lyrics: null,
+            isPureMusic: false,
+            matchHints: { title: 'Wo De Ai Mei Qian Zou', artist: 'Nana Ou-Yang', album: 'Wo De Ai Mei Qian Zou' },
+        });
+        autoMatchMock.mockResolvedValue(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still records an instrumental verdict reached by the hinted search', async () => {
+        autoMatchMock.mockResolvedValueOnce({ isPureMusic: true }).mockResolvedValueOnce(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(saveLyricsStateMock).toHaveBeenCalledWith(appleSong, markOnlineLyricsPureMusic(null));
+    });
+});
