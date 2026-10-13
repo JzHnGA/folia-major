@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { retireBlobUrl } from '../../../src/services/playbackBlobUrls';
+
+// The carrier registry owns the reference counts of the shared silent carriers; here it only says which
+// URLs it holds, so the ledger's own behaviour is what is under test.
+const registryMock = vi.hoisted(() => ({
+    releaseUrl: vi.fn((url: string) => url === 'blob:carrier'),
+}));
+
+vi.mock('@/services/externalPlayback/carrierRegistry', () => ({
+    carrierRegistry: registryMock,
+}));
+
+import { releasePlaybackBlobUrl, retireBlobUrl } from '../../../src/services/playbackBlobUrls';
 
 // A blend keeps the previous track sounding on the other deck, and a URL revoked while that deck
 // still holds it leaves the deck unable to seek - silently, with no error event. So the only thing
@@ -24,6 +35,7 @@ describe('retireBlobUrl', () => {
         decksHolding();
         retireBlobUrl(null);
         revoke.mockClear();
+        registryMock.releaseUrl.mockClear();
     });
 
     it('keeps a URL the outgoing deck is still sounding', () => {
@@ -71,5 +83,46 @@ describe('retireBlobUrl', () => {
         decksHolding('blob:three');
         retireBlobUrl('blob:three');
         expect(revoke.mock.calls.flat().sort()).toEqual(['blob:one', 'blob:two']);
+    });
+
+    // A shared carrier is counted by the registry, which keeps it while a deck renders it. Holding it in
+    // this ledger as well would revoke it behind the registry's back, and while another holder still has it.
+    it('releases a carrier instead of holding or revoking it', () => {
+        decksHolding('blob:carrier');
+        retireBlobUrl('blob:carrier');
+        expect(registryMock.releaseUrl).toHaveBeenCalledWith('blob:carrier');
+
+        decksHolding();
+        retireBlobUrl(null);
+        expect(revoke).not.toHaveBeenCalledWith('blob:carrier');
+    });
+
+    it('still holds a URL the registry does not own', () => {
+        decksHolding('blob:outgoing');
+        retireBlobUrl('blob:outgoing');
+        expect(registryMock.releaseUrl).toHaveBeenCalledWith('blob:outgoing');
+
+        decksHolding();
+        retireBlobUrl(null);
+        expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:outgoing');
+    });
+});
+
+describe('releasePlaybackBlobUrl', () => {
+    let revoke: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        revoke = vi.fn();
+        vi.stubGlobal('URL', { revokeObjectURL: revoke });
+        registryMock.releaseUrl.mockClear();
+    });
+
+    it('releases a carrier and revokes anything else', () => {
+        releasePlaybackBlobUrl('blob:carrier');
+        expect(registryMock.releaseUrl).toHaveBeenCalledWith('blob:carrier');
+        expect(revoke).not.toHaveBeenCalled();
+
+        releasePlaybackBlobUrl('blob:x');
+        expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:x');
     });
 });

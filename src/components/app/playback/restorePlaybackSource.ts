@@ -8,6 +8,7 @@ import { buildNavidromeSourceRevision } from '../../../services/playbackRecovery
 import { getLocalLibraryCatalogSnapshot } from '../../../services/localLibraryEntityRepository';
 import { getNavidromeConfig, navidromeApi } from '../../../services/navidromeService';
 import { applyOnlineAudioSourceMetadata, loadOnlineSongAudioSource, loadOnlineSongLyrics } from '../../../services/onlinePlayback';
+import { releasePlaybackBlobUrl } from '../../../services/playbackBlobUrls';
 import type { ThemeCacheSongKey } from '../../../services/themeCache';
 import type { LyricData, LocalSong, SongResult, StatusMessage } from '../../../types';
 import type { NavidromeSong } from '../../../types/navidrome';
@@ -58,7 +59,7 @@ const replaceBlobUrl = (
     nextBlobUrl: string,
 ) => {
     if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
+        releasePlaybackBlobUrl(blobUrlRef.current);
     }
     blobUrlRef.current = nextBlobUrl;
 };

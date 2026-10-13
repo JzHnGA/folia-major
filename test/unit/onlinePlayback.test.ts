@@ -167,6 +167,48 @@ describe('online audio ReplayGain plumbing', () => {
         expect(result).toEqual({ kind: 'ok', audioSrc: 'blob:carrier', blobUrl: 'blob:carrier', replayGain: undefined });
         expect(updatePrefetchedAudioUrlMock).not.toHaveBeenCalled();
     });
+
+    // The carrier registry is a module singleton, so these use songs no other case holds.
+    const externalSong = (id: string): SongResult => ({
+        ...song,
+        id,
+        sourceRef: { kind: 'online', providerId: 'apple', mediaId: id },
+    });
+
+    it('gives the same carrier to the same external song while it is held', async () => {
+        const shared = externalSong('shared-carrier');
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockResolvedValue({ url: 'blob:shared-carrier', fetchedAt: 1, quality: 'standard' });
+
+        const first = await loadOnlineSongAudioSource(shared, 'high', null);
+        const second = await loadOnlineSongAudioSource(shared, 'high', null);
+
+        expect(second).toEqual(first);
+        expect(first).toMatchObject({ kind: 'ok', audioSrc: 'blob:shared-carrier', blobUrl: 'blob:shared-carrier' });
+        expect(sourceMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('never reads the audio cache or the prefetched URL for an external song', async () => {
+        const external = externalSong('uncached-carrier');
+        isExternalMock.mockReturnValue(true);
+        cachedAudioMock.mockResolvedValue(new Blob(['cached']));
+        sourceMock.mockResolvedValue({ url: 'blob:uncached-carrier', fetchedAt: 1, quality: 'standard' });
+        const prefetched = { audioUrl: 'https://audio.test/prefetched.flac', audioUrlFetchedAt: Date.now() } as any;
+
+        const result = await loadOnlineSongAudioSource(external, 'high', prefetched);
+
+        expect(result).toMatchObject({ kind: 'ok', audioSrc: 'blob:uncached-carrier' });
+        expect(cachedAudioMock).not.toHaveBeenCalled();
+    });
+
+    it('reports an external song whose carrier cannot be minted as unavailable', async () => {
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockRejectedValueOnce(new OnlineProviderError('not-playable', 'No carrier', 'apple'));
+
+        await expect(loadOnlineSongAudioSource(externalSong('unmintable-carrier'), 'high', null))
+            .resolves.toEqual({ kind: 'unavailable', reason: 'not-playable' });
+        expect(updatePrefetchedAudioUrlMock).not.toHaveBeenCalled();
+    });
 });
 
 describe('online QQ lyric candidate plumbing', () => {

@@ -1,5 +1,6 @@
 import { LyricData, OnlineLyricsState, ReplayGainInfo, SongResult } from '../types';
 import { saveToCache } from './db';
+import { acquireCarrier } from './externalPlayback/carrierRegistry';
 import { PrefetchedSongData, isUrlValid, updatePrefetchedAudioUrl } from './prefetchService';
 import { isPureMusicLyricText } from '../utils/lyrics/pureMusic';
 import { migrateLyricDataRenderHints } from '../utils/lyrics/renderHints';
@@ -24,6 +25,18 @@ export async function loadOnlineSongAudioSource(
     | { kind: 'ok'; audioSrc: string; blobUrl?: string; replayGain?: ReplayGainInfo }
     | { kind: 'unavailable'; reason?: ProviderErrorCode }
 > {
+    // An external song plays through Music.app, so there is no audio to cache or prefetch: it gets the shared
+    // silent carrier its lyric clock runs on. The caller owns one reference to it, handed back as blobUrl.
+    if (omni.isExternalPlaybackSong(song)) {
+        try {
+            const carrierUrl = await acquireCarrier(song);
+            return { kind: 'ok', audioSrc: carrierUrl, blobUrl: carrierUrl, replayGain: song.replayGain };
+        } catch (error) {
+            console.warn('[OnlinePlayback] Carrier audio for the external song could not be made', error);
+            return { kind: 'unavailable', ...(error instanceof OnlineProviderError ? { reason: error.code } : {}) };
+        }
+    }
+
     const cachedAudioBlob = await getCachedSongAudioBlob(song);
     if (cachedAudioBlob) {
         const blobUrl = createSafeObjectUrl(cachedAudioBlob);
@@ -60,11 +73,6 @@ export async function loadOnlineSongAudioSource(
     }
 
     const replayGain = applyOnlineAudioSourceMetadata(song, source?.replayGain).replayGain;
-    // An external song's URL is a silent carrier blob made for this one playback: it is handed back as
-    // blobUrl so the caller revokes it, and kept out of the prefetch cache where it would outlive that.
-    if (omni.isExternalPlaybackSong(song)) {
-        return { kind: 'ok', audioSrc: url, blobUrl: url, replayGain };
-    }
     updatePrefetchedAudioUrl(song, url, audioQuality, replayGain);
     return { kind: 'ok', audioSrc: url, replayGain };
 }
