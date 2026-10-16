@@ -126,7 +126,8 @@ export class ExternalVolumeMirror {
         });
     }
 
-    // Follows this engine, idle until drive(); a pending restore on the same engine is dropped, the new song takes over.
+    // Follows this engine, idle until drive(). A pending restore on the same engine is kept: an idle new song is
+    // never driven, so only drive() may drop it, or Music would stay at the faded volume.
     bind(target: ExternalVolumeTarget): void {
         this.guard(() => {
             if (this.target && this.target.engine !== target.engine) this.unbind();
@@ -134,7 +135,6 @@ export class ExternalVolumeMirror {
             this.target = target;
             this.driving = false;
             this.seenPlaying = false;
-            this.cancelRestore(this.channelFor(target.engine));
         });
     }
 

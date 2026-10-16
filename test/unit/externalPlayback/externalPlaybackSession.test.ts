@@ -608,10 +608,14 @@ describe('ExternalPlaybackSession across an Automix transition', () => {
 
     it('keeps the prerolled controller when the advance commits it', () => {
         session.update(armIn());
+        const prerolled = latest().sync;
         session.update(armIn({ song: APPLE, audioSrc: SRC }));
 
         expect(createSync).toHaveBeenCalledTimes(1);
         expect(latest().sync.dispose).not.toHaveBeenCalled();
+        expect(latest().sync).toBe(prerolled);
+        expect(latest().sync.start).toHaveBeenCalledTimes(1);
+        expect(latest().sync.start).toHaveBeenCalledWith('preroll');
     });
 
     it('hands the position back to Music when the transition settles', () => {
@@ -679,6 +683,33 @@ describe('ExternalPlaybackSession across an Automix transition', () => {
         expect(sync.dispose).not.toHaveBeenCalled();
     });
 
+    it('cuts the blend when the arriving song is bound only after Automix started its carrier', () => {
+        const base = createSync.getMockImplementation()!;
+        createSync.mockImplementationOnce((options) => {
+            const sync = base(options) as unknown as FakeSync;
+            sync.isPrerollPending.mockReturnValue(true);
+            return sync as unknown as ExternalPlaybackSync;
+        });
+        deckB.paused = false;
+
+        session.update(armIn());
+        const { sync } = latest();
+
+        expect(sync.start).toHaveBeenCalledWith('preroll');
+        expect(cutTransition).toHaveBeenCalledTimes(1);
+        expect(cutTransition.mock.invocationCallOrder[0]).toBeGreaterThan(sync.start.mock.invocationCallOrder[0]);
+        expect(onIssue).not.toHaveBeenCalled();
+
+        // Past the lead already: a pause is the carrier's own (the controller follows it), not a preroll abort.
+        session.update(armIn({ playerState: PlayerState.PAUSED }));
+        expect(sync.abortStart).not.toHaveBeenCalled();
+        expect(mirror.yieldControl).not.toHaveBeenCalled();
+
+        sync.isPrerollPending.mockReturnValue(false);
+        latest().options.onIssue({ kind: 'failure', error: new Error('timeout') });
+        expect(cutTransition).toHaveBeenCalledTimes(1);
+    });
+
     it('leaves the blend alone when Music is audible by the time Automix starts the carrier', async () => {
         session.update(armIn());
 
@@ -716,9 +747,17 @@ describe('ExternalPlaybackSession across an Automix transition', () => {
     });
 
     it("yields Music's volume on a takeover", () => {
+        // Mid fade-out: the outgoing Apple song is the tail of a blend the queue has already advanced past.
         session.update(input({ decks: decks(SRC, null) }));
+        const tail = latest();
+        session.update(input({ carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo }));
+        session.update(input({
+            song: NETEASE, audioSrc: 'https://n', carrier: deckB, decks: decks(SRC, 'https://n'), transition: outTo,
+        }));
+        expect(latest()).toBe(tail);
+        expect(mirror.yieldControl).not.toHaveBeenCalled();
 
-        latest().options.onIssue({ kind: 'takeover', reason: 'track-changed' });
+        tail.options.onIssue({ kind: 'takeover', reason: 'track-changed' });
 
         expect(mirror.yieldControl).toHaveBeenCalled();
         expect(cutTransition).not.toHaveBeenCalled();

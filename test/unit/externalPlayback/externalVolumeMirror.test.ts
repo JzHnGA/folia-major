@@ -446,13 +446,38 @@ describe('giving the user volume back', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('lets a new binding on the same engine cancel a pending restore', async () => {
+    it('keeps a pending restore when a new song is bound on the same engine and not driven', async () => {
         await driveToSilence();
         mirror.yieldControl();
         mirror.bind({ ...target(), mediaId: OTHER_ID });
-        await advance(0.6);
-        expect(sent().at(-1)).toBe(0);
+        clock += 10;
+        engine.emit(reading({ state: 'paused', sampledAtMs: clock }));
+        expect(sent().at(-1)).toBe(1);
         expect(engine.listenerCount()).toBe(0);
+    });
+
+    it('restores after 500 ms for a new song bound idle on the same engine without a confirmation', async () => {
+        await driveToSilence();
+        mirror.yieldControl();
+        mirror.bind({ ...target(), mediaId: OTHER_ID });
+        await advance(MIRROR_RESTORE_TIMEOUT_MS / 1000 - 0.1);
+        expect(sent().at(-1)).toBe(0);
+        await advance(0.1);
+        expect(sent().at(-1)).toBe(1);
+        expect(engine.listenerCount()).toBe(0);
+    });
+
+    it('drops the pending restore before any raise once the new song on the same engine is driven', async () => {
+        await driveToSilence();
+        mirror.yieldControl();
+        const before = sent().length;
+        mirror.bind({ ...target(), mediaId: OTHER_ID });
+        mirror.drive();
+        expect(engine.listenerCount()).toBe(0);
+        clock += 10;
+        engine.emit(reading({ state: 'paused', sampledAtMs: clock }));
+        await advance(0.6);
+        expect(sent().slice(before)).toEqual([0]);
     });
 
     it('drops a pending restore when Folia drives the same song again', async () => {

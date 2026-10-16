@@ -86,7 +86,7 @@ interface Attachment {
     intent: ExternalPlaybackStartIntent;
     /** Its part in Automix's transition; the binding keeps the attachment while only this changes. */
     role: ExternalPlaybackBinding['role'];
-    /** The carrier dispatched a play since attach: a preroll's carrier then no longer waits on Automix. */
+    /** The carrier ran at attach or dispatched a play since: a preroll's carrier then no longer waits on Automix. */
     carrierPlayed: boolean;
     /** cutTransition was already asked for on this attachment's behalf. */
     cutRequested: boolean;
@@ -265,7 +265,8 @@ export class ExternalPlaybackSession {
         const attachment: Attachment = {
             key, song, carrier, engine, intent,
             role: binding.role,
-            carrierPlayed: false,
+            // A binding that appears after Automix started the carrier is past the lead already.
+            carrierPlayed: !carrier.paused,
             cutRequested: false,
             sync: null,
             started: false,
@@ -314,9 +315,14 @@ export class ExternalPlaybackSession {
     private handleCarrierPlay(attachment: Attachment): void {
         this.guard(() => {
             if (this.attachment !== attachment) return;
-            if (attachment.role === 'incoming' && attachment.sync?.isPrerollPending()) this.requestCut(attachment);
+            this.cutIfPrerollLate(attachment);
             this.mirror.drive();
         });
+    }
+
+    // The arriving song's carrier runs while its preroll still waits for Music to sound: ask for the hard cut.
+    private cutIfPrerollLate(attachment: Attachment): void {
+        if (attachment.role === 'incoming' && attachment.sync?.isPrerollPending()) this.requestCut(attachment);
     }
 
     private handleCarrierPause(attachment: Attachment): void {
@@ -391,6 +397,10 @@ export class ExternalPlaybackSession {
         if (attachment.intent === 'play' && this.lyricsLoading) return;
         attachment.started = true;
         sync.start(attachment.intent);
+        // A preroll started under a carrier Automix already runs is as late as one whose carrier plays during the wait.
+        if (attachment.intent === 'preroll' && !attachment.carrier.paused) {
+            this.guard(() => this.cutIfPrerollLate(attachment));
+        }
         if (attachment.intent !== 'idle') this.guard(() => this.mirror.drive());
     }
 
