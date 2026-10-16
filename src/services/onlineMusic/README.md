@@ -13,12 +13,17 @@ UI / hooks / stores / app services
                  -> kugouTransport.ts（酷狗请求/IPC 边界）
             -> qqProvider.ts
                  -> qqTransport.ts（QQ 音乐请求边界）
+            -> appleMusicProvider.ts（仅 macOS 桌面端）
+                 -> appleMusicTransport.ts（受限 IPC 边界）
+                      -> electron/appleMusic/musicAppBridge.cjs（常驻 osascript，控制「音乐」App）
        -> providerAccountCache.ts / providerStorage.ts
   -> src/types/onlineMusic.ts（共享合同）
 ```
 
-当前 registry 注册 `netease`、`kugou`、`qq` 和桌面端的 `bodian`。波点接入状态、接口与剩余验收见
+当前 registry 注册 `netease`、`kugou`、`qq`、桌面端的 `bodian`，以及仅 macOS 桌面端的 `apple-music`。波点接入状态、接口与剩余验收见
 [`docs/bodian.md`](../../../docs/bodian.md)；支持喜欢与自建歌单歌曲增删，收藏写入尚未实现。Navidrome 是独立的 Subsonic 服务，入口是 `src/services/navidromeService.ts`，不属于 Omni provider。
+
+`apple-music` 控制本机「音乐」App：播放、搜索与歌单只使用本机的音乐资料库，不走 Apple 账号；唯一的联网请求是匹配歌词时查询 Apple 公开目录（iTunes Search API，不需要登录）以取得歌曲的本地化名称。声音由「音乐」App 播放，Folia 自己的 `<audio>` 播放一段等长的静音 WAV 载体，让歌词时钟保持平滑；这类歌曲属于「外部播放」，见下文 `isExternalPlaybackSong`。
 
 扫码登录的分工：provider（`neteaseProvider.ts`、`qqProvider.ts`）把后端的响应翻译成 `QrLoginState`，失败时带上后端原文（`message`）、原始返回字段（`detail`，QQ 的失败阶段与原因、上游状态码、退避时长、上一次失败都原样保留）、结构化原因（`reason`：手机上取消、连接被重置）、冷却（`retryAfterMs`）以及「网络层瞬时失败」（`transient`，没拿到上游回应、二维码仍有效）；要码与生成二维码拿不到 key / 图片时直接抛错，不再交出空值。provider 不持有任何扫码的模块级状态：一轮扫码的步骤、代次、时间线都在 Library Core 的 `core/services/providerLoginSession.ts`。会话在登录失败后自动调用 `omni.runQrLoginSelfCheck` 跑一次主动自检（在手机上取消除外），结论由 `core/model/loginSelfCheckRules.ts` 推出、显示在登录界面上，并和时间线、`omni.getQrLoginDiagnostics` 的 provider 段一起进诊断报告。
 
@@ -43,6 +48,7 @@ provider 段的内容来自主进程的内嵌后端快照（`loginBackendDiagnos
 | 集合详情 | `getCollectionTracks`、`getCollectionDetail`、`getAlbumDetail`、`getArtistDetail`、`getArtistSongs`、`getArtistAlbums` | 按 collection 的 `providerId` 路由 |
 | 修改 | `likeSong`、`toggleSongLike`、`getSubscriptionStatus`、`subscribe`、`updateCollectionTracks` | mutation 按歌曲/集合所属 provider 执行并更新 account cache |
 | 外链与引用 | `canResolveCatalogRef`、`resolveCatalogRefs`、`getSongPageUrl` | 共享 `catalogRefs.ts` 的 provider-aware 引用 |
+| 外部播放 | `isExternalPlaybackSong`、`getExternalPlaybackEngine` | 能力 `externalPlayback`：歌曲由 provider 的外部引擎（「音乐」App）发声，`<audio>` 只载静音载体；判断一律走这两个方法，`src/utils` 等叶子层不得自行判断 provider id。`getExternalPlaybackEngine` 在 provider 未声明能力或未提供引擎时返回 `null`，两者都不会抛错 |
 
 共享类型包括 `UnifiedSong`、`OmniCollection`、`OmniPage`、`OmniLyricsResult`、`OmniAudioSource`、`OmniUser`、`OmniError`、`OmniProviderCapabilities`。调用方不能依赖 provider 的 raw field、numeric id 单独比较或 raw response envelope。
 
@@ -52,6 +58,9 @@ provider 段的内容来自主进程的内嵌后端快照（`loginBackendDiagnos
 - `bodianProvider.ts`：波点 adapter；`bodianTransport.ts` 通过受限 IPC 连接 `electron/bodianApiBridge.cjs`。
   桥接调用固定版本的 `bodian-music-api`，协议实现在独立仓库维护；Folia 负责加密存储与媒体策略。
   `bodianCatalog.ts` / `bodianLibrary.ts` 处理集合与用户库，`bodianNormalize.ts` 统一数据，凭据不返回 renderer。
+- `appleMusicProvider.ts`：Apple Music（「音乐」App）adapter，provider id 固定为 `apple-music`，只在 macOS 桌面端注册。歌曲身份是 16 位十六进制 persistent ID，歌单 id 另外允许 `library`（资料库全部歌曲）。`getAudioSource` 返回按歌曲时长生成的静音载体（`src/services/externalPlayback/silentCarrier.ts`），歌词接口立即返回空值（不带歌词、不联网），让跨 provider 的自动匹配每次都补上歌词；另有可选方法 `lyrics.getMatchHints`（经 `omni.getLyricMatchHints` 调用，永不抛错），由 `appleMusicCatalogLookup.ts` 用台湾区目录按标题+艺人查询：只接受时长差不超过 1 s 的结果，同时有多个时要求最接近的那个在标题或艺人上与资料库名称重叠；名称转简体、去掉专辑名的 ` - Single` / ` - EP`。这个查询可能要一次网络往返，所以只在放行音频之后的自动匹配阶段（`loadOnlineSongLyrics` 在 `onDone()` 之后、预取、手动「重新匹配最佳歌词」）才调用，从不放在起播路径上；自动匹配经 `lyricMatchAttempts.ts` 先用 hints、再用资料库原名检索。查询失败或超时（5 s）只表示没有 hints，同一首歌 30 s 内不再重试；目录里没有可用结果则在本次运行内一直记住。`appleMusicTransport.ts` 只通过 `window.electron.appleMusic` 的受限 IPC 与主进程通信；`electron/appleMusic/musicAppBridge.cjs` 持有一个常驻的 `osascript -l JavaScript` 进程（脚本在 `musicAppScript.cjs`，以 JSON 行通信），`artworkIndex.cjs` 把封面索引存在 `userData/apple-music-artwork-index.json`。
+- 外部播放同步（`src/services/externalPlayback/`）：`externalPlaybackSync.ts` 管单首歌，载体 `<audio>` 与「音乐」App 对时：开播时先压住载体，等「音乐」确实出声再放行；偏差小于 30 ms 不处理，30 ms 到 1 s 用 `playbackRate` 微调（1 ± 0.05），超过 1 s 直接 seek；每次 play / resume / seek 之后 1 s 内不做校正。`externalPlaybackSession.ts` 跨歌曲持有控制器、保持引擎监听并把 Folia 音量同步给「音乐」，`externalPlaybackGuards.ts` 的 `involvesExternalPlayback` 供其他模块判断。渲染侧接线在 `src/hooks/useExternalPlaybackSync.ts`，资料库读取在 `src/hooks/useAppleMusicLibrary.ts`。
+  外部播放的歌曲不参与 Automix、预取音频、媒体缓存、视频导出、音频分析（含音频驱动的频段），EQ、效果器与输出设备也不作用于它们（设置里有对应说明）。载体 `<audio>` 绝不能设 `muted`，否则页面隐藏时 Chromium 会把时钟降到约 0.25 倍；Folia 的静音靠把「音乐」音量设为 0 实现。
 - `neteaseProvider.ts`：网易云 adapter，归一化到 Omni contract。
 - `kugouProvider.ts`：酷狗 adapter；请求细节在 `kugouTransport.ts`，具体接口需结合 `docs/ku-go-api-docs.md` 和 `skills/kugou-provider-alignment`。
 - `qqProvider.ts`：QQ 音乐 adapter；请求与 opaque session 细节在 `qqTransport.ts`，归一化在 `qqNormalize.ts`。集合身份一律用 mid，数字 `albumid` / `singer.id` 会被上游拒收（返回 HTTP 200 但 `code` 非 0，只表现成空白页）。后端由 `VITE_QQ_API_BASE` 指向的私有 QQ API 提供，未配置时该 provider 不可用；填相对路径（`/api/qq`）时走的是本仓库内置的 serverless 入口（`worker/qq.ts` / `api-ts/qq.ts`）。扫码通道由后端 `/login/channels` 声明；打开登录时 UI 会等待能力发现并使用同一份结果决定流程，只宣告一个通道时直接进入单步流程。旧后端没有这条路由时回落到硬编码的 `qq` / `wechat` 两条，暂时性探测失败允许后续重试。

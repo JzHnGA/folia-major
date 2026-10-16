@@ -19,6 +19,8 @@ import AudioEffectGrid from './equalizer/AudioEffectGrid';
 import EqualizerBandGrid from './equalizer/EqualizerBandGrid';
 import { buildEqualizerStyles } from './equalizer/equalizerStyles';
 import { useAudioSettingsStore } from '../../stores/useAudioSettingsStore';
+import { usePlaybackStore } from '../../stores/usePlaybackStore';
+import { omni } from '../../services/onlineMusic/omni';
 
 // src/components/panelTab/AudioEqualizerDialog.tsx
 // Provides the compact audio processing editor (ten EQ bands plus the effect chain) opened from the controls tab.
@@ -36,6 +38,8 @@ const AudioEqualizerDialog: React.FC<AudioEqualizerDialogProps> = ({ isDaylight,
     const isOpen = useAudioSettingsStore(state => state.isAudioEqualizerOpen);
     const close = useAudioSettingsStore(state => state.closeAudioEqualizer);
     const commitSettings = useAudioSettingsStore(state => state.handleSetAudioEqualizerSettings);
+    // The Music app renders these songs, so the EQ chain below never touches their sound.
+    const isExternalPlayback = usePlaybackStore(state => omni.isExternalPlaybackSong(state.currentSong));
     const [draft, setDraft] = useState<AudioEqualizerSettings>(settings);
     const draftRef = useRef(draft);
 
@@ -152,6 +156,11 @@ const AudioEqualizerDialog: React.FC<AudioEqualizerDialogProps> = ({ isDaylight,
         >
             {/* display:contents，布局一如从前；在的意义只是让这扇对话框自己也能被思索命中。 */}
             <div data-ponder="audio-equalizer" className="contents">
+            {isExternalPlayback && (
+                <p className={`mb-4 text-[11px] ${styles.inactiveText}`}>
+                    {t('appleMusic.audioSettingsHint')}
+                </p>
+            )}
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <button
                     type="button"

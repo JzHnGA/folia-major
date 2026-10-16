@@ -130,6 +130,16 @@ export const settingsCommands: CommandPaletteCommand[] = [
         // signing out has to close the command off while the palette is already open.
         { isAvailable: context => context?.settings.canReportNeteasePlayback() ?? true },
     ),
+    createToggleCommand(
+        'apple-music-spectrum-toggle',
+        'settings',
+        'Apple Music spectrum',
+        'Turn the system audio capture that drives the spectrum of Apple Music songs on or off',
+        ['music app spectrum', 'spectrum capture', 'system audio capture', 'audio visualizer', 'Apple Music 频谱', '系统音频', '音频可视化', '频谱采集'],
+        context => context.settings.toggleAppleMusicSpectrumCapture(),
+        // Same predicate the settings row is gated on: the switch only exists where Apple Music does.
+        { isAvailable: context => context?.settings.canUseAppleMusicSpectrumCapture() ?? true },
+    ),
     createSettingsAnchorCommand('settings-audio-output', 'Audio output', 'Jump to the audio output device and format settings', ['output device', 'audio device', 'sound card', '输出设备'], 'audioOutputSettings'),
     createSettingsAnchorCommand('settings-transition', 'Smart transition', 'Jump to the FOLIA transition settings', ['automix', 'crossfade', 'transition', '智能过渡', '转场'], 'transitionSettings'),
     createSettingsAnchorCommand('settings-local-lyrics-priority', 'Local song lyrics priority', 'Choose whether local songs prefer local or online lyrics', ['local lyrics priority', 'online lyrics first', 'local song lyrics', '本地歌曲歌词优先级', '在线优先', '本地歌词', 'bendigeciyouxianji', 'bdgcyxj'], 'lyrics'),

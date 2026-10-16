@@ -1,6 +1,44 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const lyricsMock = vi.hoisted(() => vi.fn());
+const hintsMock = vi.hoisted(() => vi.fn(async (_song?: unknown): Promise<unknown> => null));
+const isExternalMock = vi.hoisted(() => vi.fn((_song?: unknown) => false));
+const autoMatchMock = vi.hoisted(() => vi.fn());
+const saveLyricsStateMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/onlineMusic/omni', () => ({
+    omni: {
+        canPlaySong: () => true,
+        getAudioSource: vi.fn(async () => null),
+        getLyrics: lyricsMock,
+        getLyricMatchHints: hintsMock,
+        isExternalPlaybackSong: isExternalMock,
+    },
+}));
+
+vi.mock('@/services/onlineMusic/resourceCache', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/services/onlineMusic/resourceCache')>()),
+    getSongCacheWithLegacyMigration: vi.fn(async () => null),
+    hasCachedSongAudio: vi.fn(async () => false),
+}));
+
+vi.mock('@/utils/lyrics/autoMatchBestLyric', () => ({
+    autoMatchBestLyric: autoMatchMock,
+}));
+
+vi.mock('@/utils/onlineLyricsState', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/utils/onlineLyricsState')>()),
+    loadOnlineLyricsState: vi.fn(async () => null),
+    saveOnlineLyricsState: saveLyricsStateMock,
+}));
+
+vi.mock('@/services/automix/profileService', () => ({
+    ensureTrackProfile: vi.fn(),
+    setAnalysisScope: vi.fn(),
+}));
+
 import type { SongResult } from '@/types';
-import { clearPrefetchRuntime, getPrefetchWindowKey, getPrefetchedData, shouldRefreshPrefetchAfterQueueEdit, updatePrefetchedAudioUrl } from '@/services/prefetchService';
+import { clearPrefetchRuntime, getPrefetchWindowKey, getPrefetchedData, prefetchNearbySongs, shouldRefreshPrefetchAfterQueueEdit, updatePrefetchedAudioUrl } from '@/services/prefetchService';
 
 // test/unit/prefetchService.test.ts
 
@@ -94,5 +132,78 @@ describe('prefetch refresh after an in-place queue edit', () => {
 
     it('does not refresh a queue left with only the playing song', () => {
         expect(shouldRefreshPrefetchAfterQueueEdit(current, queue, [current])).toBe(false);
+    });
+});
+
+describe('prefetch lyric auto-match with provider match hints', () => {
+    const playing: SongResult = { ...song, id: 'playing', sourceRef: { kind: 'online', providerId: 'netease', mediaId: 'playing' } };
+    const appleSong: SongResult = {
+        id: 'apple-song',
+        name: 'Wo De Ai Mei Qian Zou',
+        artists: [{ id: 1, name: 'Nana Ou-Yang' }],
+        album: { id: 2, name: 'Wo De Ai Mei Qian Zou' },
+        durationMs: 199597,
+        sourceRef: { kind: 'online', providerId: 'apple-music', mediaId: '0123456789ABCDEF' },
+    };
+    const parsed = { lines: [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }], isWordByWord: false };
+    const hints = { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' };
+
+    // Runs one prefetch pass over the song after the playing one; the idle-callback fallback is a 100 ms timer.
+    const prefetchApple = async () => {
+        await prefetchNearbySongs(playing, [playing, appleSong], 'high');
+        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(0);
+    };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.stubGlobal('window', {});
+        clearPrefetchRuntime();
+        vi.clearAllMocks();
+        isExternalMock.mockReset();
+        isExternalMock.mockImplementation(candidate => (candidate as SongResult | undefined)?.id === appleSong.id);
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false });
+        hintsMock.mockReset();
+        hintsMock.mockResolvedValue(hints);
+        autoMatchMock.mockReset();
+    });
+
+    afterEach(() => {
+        clearPrefetchRuntime();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
+    it('searches with the hinted names first and keeps the lyrics it finds', async () => {
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsed, isPureMusic: false });
+        await prefetchApple();
+        expect(hintsMock).toHaveBeenCalledWith(appleSong);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(getPrefetchedData(appleSong)?.lyrics).toEqual(parsed);
+    });
+
+    it('falls back to the library names when the hinted search finds nothing', async () => {
+        autoMatchMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 2, source: 'netease', lyrics: parsed, isPureMusic: false });
+        await prefetchApple();
+        expect(autoMatchMock).toHaveBeenCalledTimes(2);
+        expect(autoMatchMock).toHaveBeenNthCalledWith(2, 'Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+        expect(getPrefetchedData(appleSong)?.lyrics).toEqual(parsed);
+    });
+
+    it('searches once with the library names when the provider has no hints', async () => {
+        hintsMock.mockResolvedValue(null);
+        autoMatchMock.mockResolvedValue(null);
+        await prefetchApple();
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+    });
+
+    it('stops at an instrumental verdict reached by the hinted search', async () => {
+        autoMatchMock.mockResolvedValueOnce({ isPureMusic: true }).mockResolvedValueOnce({ id: 2, source: 'netease', lyrics: parsed, isPureMusic: false });
+        await prefetchApple();
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(getPrefetchedData(appleSong)?.lyrics).toBeNull();
+        expect(getPrefetchedData(appleSong)?.lyricRaw?.isPureMusic).toBe(true);
     });
 });

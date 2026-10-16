@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const loadAudioSourceMock = vi.hoisted(() => vi.fn());
 const setAudioSrcMock = vi.hoisted(() => vi.fn());
+const releaseBlobUrlMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/onlinePlayback', () => ({
     loadOnlineSongAudioSource: loadAudioSourceMock,
     applyOnlineAudioSourceMetadata: (song: unknown) => song,
+}));
+vi.mock('@/services/playbackBlobUrls', () => ({
+    releasePlaybackBlobUrl: releaseBlobUrlMock,
 }));
 vi.mock('@/stores/usePlaybackStore', () => ({
     setAudioSrc: setAudioSrcMock,
@@ -38,7 +42,7 @@ const ref = <T,>(value: T) => ({ current: value });
 const streamUrl = (vkey: string) =>
     `http://isure.stream.qqmusic.qq.com/M800004Th6td4LaoZs004Th6td4LaoZs.mp3?guid=${vkey}&vkey=${vkey}&uin=1&fromtag=8`;
 
-const createController = (audioSrc: string) => {
+const createController = (audioSrc: string, blobUrlRef = ref<string | null>(null)) => {
     const lastAudioRecoverySourceRef = ref<string | null>(null);
     const audioRef = ref<HTMLAudioElement | null>({ currentTime: 0, currentSrc: audioSrc } as HTMLAudioElement);
     const shouldAutoPlayRef = ref(false);
@@ -49,7 +53,7 @@ const createController = (audioSrc: string) => {
         audioSrc,
         audioRef,
         currentSongRef: ref<string | number | null>(getPlaybackSongKey(song)),
-        blobUrlRef: ref<string | null>(null),
+        blobUrlRef,
         shouldAutoPlayRef,
         pendingResumeTimeRef: ref<number | null>(null),
         onlinePlaybackRecoveryRef: ref<Promise<boolean> | null>(null),
@@ -134,5 +138,19 @@ describe('online playback recovery bounds', () => {
         await expect(recovery).resolves.toBe(true);
         expect(setAudioSrcMock).toHaveBeenCalledWith(streamUrl('two'));
         expect(shouldAutoPlayRef.current).toBe(true);
+    });
+
+    // A blob URL the ref names may be a shared carrier another holder still has, so a refresh gives it back
+    // through the same path every other handover uses rather than revoking it outright.
+    it('releases the blob URL it replaces instead of revoking it', async () => {
+        const blobUrlRef = ref<string | null>('blob:old-carrier');
+        const { controller } = createController(streamUrl('one'), blobUrlRef);
+        loadAudioSourceMock.mockResolvedValue({ kind: 'ok', audioSrc: streamUrl('two') });
+
+        await expect(controller.recoverOnlinePlaybackSource({ failedSrc: streamUrl('one'), autoplay: true }))
+            .resolves.toBe(true);
+
+        expect(releaseBlobUrlMock).toHaveBeenCalledExactlyOnceWith('blob:old-carrier');
+        expect(blobUrlRef.current).toBeNull();
     });
 });

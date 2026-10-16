@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type React from 'react';
 import type { StatusMessage } from '../types';
+import { releasePlaybackBlobUrl } from '../services/playbackBlobUrls';
 import { setStatusMessage as setStatusMsg } from '../stores/useStatusMessageStore';
 import { useAppViewStore } from '../stores/useAppViewStore';
 
@@ -43,7 +44,8 @@ export const usePlaybackUiEffects = ({
     useEffect(() => {
         return () => {
             if (blobUrlRef.current) {
-                URL.revokeObjectURL(blobUrlRef.current);
+                // A shared silent carrier is counted, not owned: giving this reference back leaves it to its other holders.
+                releasePlaybackBlobUrl(blobUrlRef.current);
             }
             if (volumePreviewFrameRef.current !== null) {
                 cancelAnimationFrame(volumePreviewFrameRef.current);

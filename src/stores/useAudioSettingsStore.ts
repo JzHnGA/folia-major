@@ -35,6 +35,9 @@ export const NETEASE_SCROBBLE_KEY = 'folia_netease_scrobble';
 /** Whether pause fades out and resume fades in (services/playbackFade). On unless switched off. */
 export const PLAYBACK_FADE_KEY = 'folia_playback_fade_enabled';
 
+/** Whether an Apple Music song's spectrum follows system audio captured while it plays (macOS shows a recording indicator). */
+export const APPLE_MUSIC_SPECTRUM_CAPTURE_KEY = 'apple_music_spectrum_capture';
+
 /** Gigabytes of cached audio to keep. Zero is the listener asking for no ceiling at all. */
 export const DEFAULT_MEDIA_CACHE_LIMIT_GB = 5;
 
@@ -144,6 +147,8 @@ export type AudioSettingsState = {
     neteaseScrobbleEnabled: boolean;
     /** Short fade when pausing and resuming instead of cutting the sound. On by default. */
     playbackFadeEnabled: boolean;
+    /** Capture system audio while an Apple Music song plays so the spectrum follows Music.app. Off by default. */
+    appleMusicSpectrumCapture: boolean;
     audioOutputDeviceId: string;
     audioEqualizerSettings: AudioEqualizerSettings;
     isAudioEqualizerOpen: boolean;
@@ -158,6 +163,7 @@ export type AudioSettingsState = {
     handleToggleTranscodeFallback: (enable: boolean) => void;
     handleToggleNeteaseScrobble: (enable: boolean) => void;
     handleTogglePlaybackFade: (enable: boolean) => void;
+    setAppleMusicSpectrumCapture: (value: boolean) => void;
     handleSetAudioOutputDeviceId: (deviceId: string) => void;
     handleSetAudioEqualizerSettings: (settings: AudioEqualizerSettings) => void;
     handleApplyAudioSoundPreset: (modeId: AudioEqualizerModeId) => void;
@@ -181,6 +187,8 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
     // Off unless asked for: it writes to the listener's music account, so it is never a default.
     neteaseScrobbleEnabled: getStoredBoolean(NETEASE_SCROBBLE_KEY, false),
     playbackFadeEnabled: getStoredBoolean(PLAYBACK_FADE_KEY, true),
+    // Off unless asked for: capturing system audio makes macOS show its recording indicator.
+    appleMusicSpectrumCapture: getStoredBoolean(APPLE_MUSIC_SPECTRUM_CAPTURE_KEY, false),
     audioOutputDeviceId: readStoredAudioOutputDeviceId(),
     audioEqualizerSettings: readStoredAudioEqualizerSettings(),
     isAudioEqualizerOpen: false,
@@ -233,6 +241,10 @@ export const useAudioSettingsStore = create<AudioSettingsState>((set, get) => ({
     handleTogglePlaybackFade: (enable) => {
         setStoredBoolean(PLAYBACK_FADE_KEY, enable);
         set({ playbackFadeEnabled: enable });
+    },
+    setAppleMusicSpectrumCapture: (value) => {
+        setStoredBoolean(APPLE_MUSIC_SPECTRUM_CAPTURE_KEY, value);
+        set({ appleMusicSpectrumCapture: value });
     },
     handleSetAudioOutputDeviceId: (deviceId) => {
         set({ audioOutputDeviceId: deviceId });

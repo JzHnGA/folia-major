@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import { applyOnlineAudioSourceMetadata, loadOnlineSongAudioSource } from '../../../services/onlinePlayback';
+import { releasePlaybackBlobUrl } from '../../../services/playbackBlobUrls';
 import type { SongResult } from '../../../types';
 import type { AudioQualityPreference } from '../../../types/onlineMusic';
 import {
@@ -131,7 +132,7 @@ export const createOnlineRecoveryController = ({
                 }
 
                 if (blobUrlRef.current && blobUrlRef.current !== audioResult.blobUrl) {
-                    URL.revokeObjectURL(blobUrlRef.current);
+                    releasePlaybackBlobUrl(blobUrlRef.current);
                     blobUrlRef.current = null;
                 }
 

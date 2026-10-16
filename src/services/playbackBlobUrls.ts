@@ -1,14 +1,10 @@
+import { isUrlOnAudioElement } from '../utils/mediaElementSources';
+import { carrierRegistry } from './externalPlayback/carrierRegistry';
+
 // src/services/playbackBlobUrls.ts
 
 /** Blob URLs handed over but not yet safe to revoke - see `retireBlobUrl`. */
 let heldBlobUrls: string[] = [];
-
-/** True while any media element on the page still has this URL as its source. */
-const isSoundingOnADeck = (url: string) => {
-    if (typeof document === 'undefined') return false;
-    return Array.from(document.querySelectorAll('audio'))
-        .some(element => element.getAttribute('src') === url || element.currentSrc === url);
-};
 
 /**
  * Hands a track's blob URL over for revoking, and revokes only the ones no deck is using.
@@ -33,14 +29,24 @@ const isSoundingOnADeck = (url: string) => {
  * exactly as long as an element is sounding it, whichever way the app got there. Nothing leaks - the
  * next handover sweeps whatever has since been let go - and the list cannot outgrow the two decks
  * plus the track being handed over.
+ *
+ * A shared silent carrier is not kept here: the carrier registry counts everyone holding it (this caller,
+ * Automix's preroll) and applies the same deck check itself, so the hand-over only gives this caller's
+ * reference back.
  */
 export const retireBlobUrl = (nextBlobUrl: string | null) => {
+    const handedOver = nextBlobUrl && !carrierRegistry.releaseUrl(nextBlobUrl) ? nextBlobUrl : null;
     heldBlobUrls = heldBlobUrls.filter(url => {
-        if (url === nextBlobUrl || isSoundingOnADeck(url)) return true;
+        if (url === handedOver || isUrlOnAudioElement(url)) return true;
         URL.revokeObjectURL(url);
         return false;
     });
-    if (nextBlobUrl && !heldBlobUrls.includes(nextBlobUrl)) {
-        heldBlobUrls.push(nextBlobUrl);
+    if (handedOver && !heldBlobUrls.includes(handedOver)) {
+        heldBlobUrls.push(handedOver);
     }
+};
+
+/** Drops a blob URL nobody is using yet: a shared carrier gives one reference back, anything else is revoked. */
+export const releasePlaybackBlobUrl = (url: string) => {
+    if (!carrierRegistry.releaseUrl(url)) URL.revokeObjectURL(url);
 };

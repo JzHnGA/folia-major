@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DeckGainEnvelope } from '@/services/gainEnvelope';
 import {
     consumeProgrammaticPause,
     createPlaybackFadeController,
     markProgrammaticPause,
     PAUSE_DRAIN_MS,
     PLAYBACK_FADE_SECONDS,
+    playbackFade,
+    registerPlaybackFadeEnvelopeListener,
+    registerPlaybackFadeGraph,
 } from '@/services/playbackFade';
 import { useAudioSettingsStore } from '@/stores/useAudioSettingsStore';
 import { createFakeFadeGraph, type FakeFadeGraph } from './fakeFadeGraph';
@@ -22,10 +26,13 @@ const DRAIN_AND_RESTORE = DRAIN + 0.05;
 let graph: FakeFadeGraph;
 let enabled: boolean;
 let hasGraph: boolean;
+/** Every envelope the controller announced, in order. */
+let envelopes: DeckGainEnvelope[];
 
 const makeController = () => createPlaybackFadeController({
     getGraph: () => (hasGraph ? graph : null),
     isEnabled: () => enabled,
+    onEnvelope: envelope => { envelopes.push(envelope); },
 });
 
 /** Moves the audio clock and the timer clock together, as one wall-clock second does in the app. */
@@ -47,6 +54,7 @@ beforeEach(() => {
     graph = createFakeFadeGraph();
     enabled = true;
     hasGraph = true;
+    envelopes = [];
 });
 
 afterEach(() => {
@@ -457,5 +465,136 @@ describe('playbackFadeEnabled setting', () => {
         expect(useAudioSettingsStore.getState().playbackFadeEnabled).toBe(false);
         useAudioSettingsStore.getState().handleTogglePlaybackFade(true);
         expect(useAudioSettingsStore.getState().playbackFadeEnabled).toBe(true);
+    });
+});
+
+describe('envelope announcements', () => {
+    it('announces the fade-out it schedules and the return to unity after the drain', () => {
+        const fade = makeController();
+        fade.fadeOutThen(vi.fn());
+        expect(envelopes[0]).toEqual({ startAt: 0, seconds: D, points: [1, 0] });
+
+        advance(D + 0.02 + DRAIN_AND_RESTORE);
+        expect(envelopes.at(-1)).toMatchObject({ seconds: 0.03, points: [0, 1] });
+    });
+
+    it('announces the fade-in from silence', () => {
+        const fade = makeController();
+
+        const token = fade.prepareFadeIn();
+        expect(envelopes).toEqual([{ startAt: 0, seconds: 0, points: [0] }]);
+
+        advance(0.3);
+        fade.runFadeIn(token);
+        expect(envelopes).toHaveLength(2);
+        expect(envelopes[1].startAt).toBeCloseTo(0.3, 5);
+        expect(envelopes[1]).toMatchObject({ seconds: D, points: [0, 1] });
+    });
+
+    it('turns a pending pause around from the current gain', () => {
+        const fade = makeController();
+        fade.fadeOutThen(vi.fn());
+        advance(D / 2);
+
+        expect(fade.cancelPendingPause()).toBe(true);
+        const turnaround = envelopes.at(-1)!;
+        expect(turnaround.seconds).toBe(D);
+        expect(turnaround.points[0]).toBeCloseTo(0.5, 5);
+        expect(turnaround.points[1]).toBe(1);
+    });
+
+    it('announces the snap back to unity on cancel and on an aborted fade-in', () => {
+        const fade = makeController();
+        fade.fadeOutThen(vi.fn());
+        advance(D / 2);
+        envelopes.length = 0;
+
+        fade.cancel();
+        expect(envelopes).toHaveLength(1);
+        expect(envelopes[0]).toMatchObject({ seconds: 0, points: [1] });
+
+        envelopes.length = 0;
+        fade.abortFadeIn(fade.prepareFadeIn());
+        expect(envelopes.at(-1)).toMatchObject({ seconds: 0, points: [1] });
+    });
+
+    it('announces the half-faded flush and then the return to unity once it has drained', () => {
+        const fade = makeController();
+        fade.fadeOutThen(vi.fn());
+        advance(D / 2);
+        envelopes.length = 0;
+
+        fade.flush();
+        expect(envelopes).toHaveLength(0);
+        advance(DRAIN_AND_RESTORE);
+        expect(envelopes).toHaveLength(1);
+        expect(envelopes[0].seconds).toBe(0.03);
+        expect(envelopes[0].points[1]).toBe(1);
+    });
+
+    it('announces nothing when the fade cannot run', () => {
+        enabled = false;
+        const off = makeController();
+        expect(off.fadeOutThen(vi.fn())).toBe(false);
+        expect(off.prepareFadeIn()).toBeNull();
+
+        enabled = true;
+        hasGraph = false;
+        const bare = makeController();
+        expect(bare.fadeOutThen(vi.fn())).toBe(false);
+        expect(bare.prepareFadeIn()).toBeNull();
+
+        hasGraph = true;
+        graph.setState('suspended');
+        const suspended = makeController();
+        expect(suspended.fadeOutThen(vi.fn())).toBe(false);
+        expect(suspended.prepareFadeIn()).toBeNull();
+
+        advance(1);
+        expect(envelopes).toEqual([]);
+    });
+});
+
+describe('app-wide controller envelope forwarding', () => {
+    beforeEach(() => {
+        registerPlaybackFadeGraph(graph);
+    });
+
+    afterEach(() => {
+        registerPlaybackFadeEnvelopeListener(null);
+        registerPlaybackFadeGraph(null);
+        playbackFade.cancel();
+        vi.restoreAllMocks();
+    });
+
+    it('forwards to the most recently registered listener, and null unregisters', () => {
+        const first = vi.fn();
+        const second = vi.fn();
+
+        registerPlaybackFadeEnvelopeListener(first);
+        registerPlaybackFadeEnvelopeListener(second);
+        playbackFade.fadeOutThen(vi.fn());
+        expect(first).not.toHaveBeenCalled();
+        expect(second).toHaveBeenCalledWith({ startAt: 0, seconds: D, points: [1, 0] });
+
+        registerPlaybackFadeEnvelopeListener(null);
+        second.mockClear();
+        advance(D + 0.02 + DRAIN_AND_RESTORE);
+        expect(second).not.toHaveBeenCalled();
+    });
+
+    it('does not let a throwing listener stop the pause, and warns about it once', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerPlaybackFadeEnvelopeListener(() => { throw new Error('listener failed'); });
+        const pause = vi.fn();
+
+        expect(playbackFade.fadeOutThen(pause)).toBe(true);
+        advance(D + 0.02);
+
+        expect(pause).toHaveBeenCalledTimes(1);
+        expect(playbackFade.isFadingOut()).toBe(false);
+        advance(DRAIN_AND_RESTORE);
+        expect(gain()).toBe(1);
+        expect(warn).toHaveBeenCalledTimes(1);
     });
 });

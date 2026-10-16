@@ -7,6 +7,8 @@ import type { AudioBands, LyricData } from '../types';
 import { setCurrentLineIndex, setPlayerState } from '../stores/usePlaybackStore';
 import { selectDisplayLyrics, usePlaybackStore } from '../stores/usePlaybackStore';
 import { audioBands, audioPower, currentTime, lyricCurrentTime } from '../stores/motionSignals';
+import { omni } from '../services/onlineMusic/omni';
+import { resolveHasAnalyserSignal } from '../utils/visualizerSignal';
 
 // src/hooks/usePlaybackVisualizerBridge.ts
 
@@ -14,6 +16,8 @@ type UsePlaybackVisualizerBridgeParams = {
 
     audioRef: MutableRefObject<HTMLAudioElement | null>;
     analyserRef: MutableRefObject<AnalyserNode | null>;
+    /** Analyser fed by the system-audio capture (useAppleMusicSpectrumCapture); the only one that hears an external song. */
+    captureAnalyserRef: MutableRefObject<AnalyserNode | null>;
     animationFrameRef: MutableRefObject<number>;
     effectiveLoopMode: 'off' | 'all' | 'one';
     isNowPlayingStageActive: boolean;
@@ -49,6 +53,7 @@ type UsePlaybackVisualizerBridgeParams = {
 export function usePlaybackVisualizerBridge({
     audioRef,
     analyserRef,
+    captureAnalyserRef,
     animationFrameRef,
     effectiveLoopMode,
     isNowPlayingStageActive,
@@ -69,6 +74,9 @@ export function usePlaybackVisualizerBridge({
     const activePlaybackContext = usePlaybackStore(state => state.activePlaybackContext);
     const playerState = usePlaybackStore(state => state.playerState);
     const duration = usePlaybackStore(state => state.duration);
+    const currentSong = usePlaybackStore(state => state.currentSong);
+    // The utils layer cannot ask omni, so the answer is computed here and handed down as a boolean.
+    const isExternalPlayback = omni.isExternalPlaybackSong(currentSong);
     // The lyrics on screen, matching the deck getDisplayElement points at.
     const lyrics = usePlaybackStore(selectDisplayLyrics);
 
@@ -82,12 +90,25 @@ export function usePlaybackVisualizerBridge({
         // Mid-handover a deck can be loading while the other one is still sounding. The analyser
         // is downstream of both, so it has real signal: dropping to the idle breath here would put
         // a visible stutter at exactly the moment meant to be seamless.
-        const hasAudibleSignal = isActuallyPlaying || isTransitionAudible();
+        //
+        // An external song is the exception: its carrier <audio> is silent, so the analyser reads
+        // nothing. Only the bands fall back to the breath - the clock below still follows
+        // isActuallyPlaying, since the carrier is what keeps the lyrics moving.
+        //
+        // With the Apple Music spectrum setting on, the system-audio capture hears the song instead,
+        // and its analyser stands in for the main one.
+        const activeAnalyser = isExternalPlayback ? captureAnalyserRef.current : analyserRef.current;
+        const hasAudibleSignal = resolveHasAnalyserSignal({
+            isActuallyPlaying,
+            isTransitionAudible: isTransitionAudible(),
+            isExternalPlayback,
+            hasExternalCapture: isExternalPlayback && activeAnalyser !== null,
+        });
 
-        if (hasAudibleSignal && analyserRef.current) {
-            const bufferLength = analyserRef.current.frequencyBinCount;
+        if (hasAudibleSignal && activeAnalyser) {
+            const bufferLength = activeAnalyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
-            analyserRef.current.getByteFrequencyData(dataArray);
+            activeAnalyser.getByteFrequencyData(dataArray);
             audioBands.spectrum?.set(dataArray);
 
             const getEnergy = (minHz: number, maxHz: number): number => {
@@ -231,6 +252,7 @@ export function usePlaybackVisualizerBridge({
     }, [
         activePlaybackContext,
         analyserRef,
+        captureAnalyserRef,
         animationFrameRef,
         audioBands,
         audioPower,
@@ -256,6 +278,7 @@ export function usePlaybackVisualizerBridge({
         lyricCurrentTime,
         isTransitionAudible,
         getDisplayElement,
+        isExternalPlayback,
     ]);
 
     useEffect(() => {

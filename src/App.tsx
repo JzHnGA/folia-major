@@ -72,6 +72,7 @@ import { useAppNavigation } from './hooks/useAppNavigation';
 import { useNeteaseLibrary } from './hooks/useNeteaseLibrary';
 import { useKugouLibrary } from './hooks/useKugouLibrary';
 import { useQqLibrary } from './hooks/useQqLibrary';
+import { useAppleMusicLibrary } from './hooks/useAppleMusicLibrary';
 import { useBodianLibrary } from './hooks/useBodianLibrary';
 import { useLibraryAccountController } from './library/app/useLibraryAccountController';
 import { createLibraryAccountSwitchCleanupPort } from './library/app/createLibraryAccountPort';
@@ -89,8 +90,10 @@ import { useElectronWindowPlaybackHandoff } from './hooks/useElectronWindowPlayb
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
 import { usePlaybackAudioBridge } from './hooks/usePlaybackAudioBridge';
+import { useExternalPlaybackSync } from './hooks/useExternalPlaybackSync';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
 import { useAutomixDecks, type AutomixDeckId } from './services/automix/useAutomixDecks';
+import type { DeckGainEnvelope } from './services/gainEnvelope';
 import { usePlaybackInteractionBridge } from './hooks/usePlaybackInteractionBridge';
 import { usePersonalFmModeController } from './hooks/usePersonalFmModeController';
 import { PERSONAL_FM_MODE_COMMAND_ID } from './components/command-palette/commands/fmModeCommand';
@@ -102,6 +105,7 @@ import { usePlaybackQueueController } from './hooks/usePlaybackQueueController';
 import { usePlaybackTransportController } from './hooks/usePlaybackTransportController';
 import { useLocalLibraryCatalog } from './hooks/useLocalLibraryCatalog';
 import { usePlaybackVisualizerBridge } from './hooks/usePlaybackVisualizerBridge';
+import { useAppleMusicSpectrumCapture } from './hooks/useAppleMusicSpectrumCapture';
 import { useRandomVisualizerMode } from './hooks/useRandomVisualizerMode';
 import { useObsBrowserSourcePublisher } from './hooks/useObsBrowserSourcePublisher';
 import { useLyricApiPublisher } from './hooks/useLyricApiPublisher';
@@ -517,8 +521,15 @@ export default function App() {
 
     const persistLastPlaybackCache = useCallback(persistPlaybackCache, []);
 
+    // Mirrors the output volume to Music.app for Apple Music songs. Pointed at the external playback session
+    // further down, once useExternalPlaybackSync exists; a ref so syncOutputGain keeps its identity.
+    const externalVolumeMirrorRef = useRef<(volume: number) => void>(() => {});
+    // Automix's deck envelopes, for the same session: Automix is built before it, so they go through a ref too.
+    const deckEnvelopeRef = useRef<(deck: AutomixDeckId, envelope: DeckGainEnvelope) => void>(() => {});
+
     const syncOutputGain = useCallback((targetVolume: number, smoothing = 0.015) => {
         const clampedVolume = clampMediaVolume(targetVolume);
+        externalVolumeMirrorRef.current(clampedVolume);
 
         if (gainNodeRef.current && audioContextRef.current) {
             // Volume only. ReplayGain lives on each deck now, because during a blend the two
@@ -545,7 +556,10 @@ export default function App() {
 
         if (audioRef.current) {
             audioRef.current.volume = clampedVolume;
-            audioRef.current.muted = isMuted;
+            // An Apple Music carrier is never muted: mute already reaches Music.app as the mirrored volume 0, and
+            // Chromium slows a muted element's clock while the page is hidden. Read from the store so this callback
+            // keeps its identity across songs.
+            audioRef.current.muted = isMuted && !omni.isExternalPlaybackSong(usePlaybackStore.getState().currentSong);
         }
     }, [isMuted]);
 
@@ -739,24 +753,28 @@ export default function App() {
         logout: logoutQqLibrary,
     } = useQqLibrary();
     const { refresh: refreshBodianLibrary, logout: logoutBodianLibrary } = useBodianLibrary();
+    const { refresh: refreshAppleMusicLibrary, logout: logoutAppleMusicLibrary } = useAppleMusicLibrary();
     const onlineProviderRefreshers = useMemo<Partial<Record<OnlineProviderId, () => Promise<unknown>>>>(() => ({
         netease: refreshUserData,
         kugou: refreshKugouLibrary,
         qq: refreshQqLibrary,
         bodian: refreshBodianLibrary,
-    }), [refreshKugouLibrary, refreshQqLibrary, refreshBodianLibrary, refreshUserData]);
+        'apple-music': refreshAppleMusicLibrary,
+    }), [refreshKugouLibrary, refreshQqLibrary, refreshBodianLibrary, refreshAppleMusicLibrary, refreshUserData]);
     const onlineProviderLogouts = useMemo<Partial<Record<OnlineProviderId, () => Promise<void>>>>(() => ({
         netease: handleLogout,
         kugou: logoutKugouLibrary,
         qq: logoutQqLibrary,
         bodian: logoutBodianLibrary,
-    }), [handleLogout, logoutKugouLibrary, logoutQqLibrary, logoutBodianLibrary]);
+        'apple-music': logoutAppleMusicLibrary,
+    }), [handleLogout, logoutKugouLibrary, logoutQqLibrary, logoutBodianLibrary, logoutAppleMusicLibrary]);
 
     // 在线账户 controller（Library v2 · A4）：扫码登录、选平台、切换确认与登出都在 core，App 只交出 per-provider 的
-    // 刷新与登出，以及确认切换后的播放清理端口。端口读的三样（audio / automix 句柄、歌词写入）都是稳定引用，建一次。
+    // 刷新与登出，以及确认切换后的播放清理端口。端口读的几样（audio / automix 句柄、blob 地址 ref、歌词写入）都是稳定引用，建一次。
     const [providerSwitchCleanup] = useState(() => createLibraryAccountSwitchCleanupPort(() => ({
         audioRef,
         automixRef,
+        blobUrlRef,
         setLyrics: setLyricsStable,
     })));
     const accountController = useLibraryAccountController({
@@ -1145,6 +1163,7 @@ export default function App() {
         },
         onDeckPlayedOut: (song, src) => cachePlayedOutRef.current(song, src),
         getLocalStemBytes,
+        onDeckEnvelope: (deck, envelope) => deckEnvelopeRef.current(deck, envelope),
     });
 
     automixRef.current = automix;
@@ -1339,6 +1358,23 @@ export default function App() {
         }
     }, [audioSrc, audioRef, setDuration]);
 
+    // Apple Music songs: Music.app plays, the deck holds a silent carrier kept in step with it. Declared before the
+    // audio bridge so its hold is computed in the same render the bridge first sees the carrier's source, and its
+    // effect runs before the bridge's.
+    const externalPlayback = useExternalPlaybackSync({
+        audioRef,
+        shouldAutoPlayRef: shouldAutoPlay,
+        activeDeck: automix.activeDeck,
+        isLyricsLoading,
+        onPlaybackFailure: skipAfterPlaybackFailure,
+        audioContextRef,
+        decks: { getElement: automix.getDeckElement, deckSrc: automix.deckSrc },
+        transition: automix.transitionSongs,
+        cutTransition: () => automix.cutTransition('Music did not start in time'),
+    });
+    externalVolumeMirrorRef.current = externalPlayback.mirrorVolume;
+    deckEnvelopeRef.current = externalPlayback.handleDeckEnvelope;
+
     const { setupAudioAnalyzer, cacheSongAssets, cacheSongAssetsFor, adoptActiveDeckSource } = usePlaybackAudioBridge({
         audioRef,
         localSongs,
@@ -1350,7 +1386,7 @@ export default function App() {
         connectDecks: automix.connectDecks,
         getActiveChain: automix.getActiveChain,
         suppressAutoplayRef: automix.suppressAutoplayRef,
-        isAutoplayHeld: automix.autoplayHeld,
+        isAutoplayHeld: automix.autoplayHeld || externalPlayback.autoplayHeld,
         syncOutputGain,
         getTargetPlaybackVolume,
         getCoverUrl,
@@ -1495,9 +1531,13 @@ export default function App() {
         onLike: handleLike,
     });
 
+    // Apple Music songs sound from the Music app; this listens to system audio so their spectrum still moves.
+    const captureAnalyserRef = useAppleMusicSpectrumCapture({ audioContextRef });
+
     usePlaybackVisualizerBridge({
         audioRef,
         analyserRef,
+        captureAnalyserRef,
         isTransitionAudible: automix.isTransitionAudible,
         // The loop below is what actually drives the progress bar and the lyric read-head, sixty
         // times a second off whichever deck it is pointed at. Both have to be the held picture's,

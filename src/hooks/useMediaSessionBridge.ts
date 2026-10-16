@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import { PlayerState } from '../types';
 import type { SongResult } from '../types';
 import { getSongAlbumLabel, getSongArtistLabel, getSongCoverUrl } from '../services/onlineMusic/songMetadata';
+import { omni } from '../services/onlineMusic/omni';
 import {
     getSupportedMediaSessionArtworkUrl,
     isMediaSessionSourceReady,
@@ -143,6 +144,9 @@ export const useMediaSessionBridge = ({
                     artist: getSongArtistLabel(currentSong) || unknownArtistLabel,
                     album: getSongAlbumLabel(currentSong),
                     artworkUrl,
+                }, undefined, {
+                    // The carrier of an external song is nudged around 1x to chase Music.app; the panel should not drift with it.
+                    reportUnitRate: omni.isExternalPlaybackSong(currentSong),
                 });
             } catch (e) {
                 console.warn('[MediaSession] Failed to update metadata', e);

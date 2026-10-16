@@ -8,7 +8,7 @@ import { omni } from '../services/onlineMusic/omni';
 import { getCachedSongCoverUrl, hasCachedSongAudio } from '../services/onlineMusic/resourceCache';
 import { getPrefetchedData, invalidateAndRefetch, prefetchNearbySongs, refreshPrefetchAfterQueueEdit } from '../services/prefetchService';
 import { getLocalSong } from '../services/db';
-import { retireBlobUrl } from '../services/playbackBlobUrls';
+import { releasePlaybackBlobUrl, retireBlobUrl } from '../services/playbackBlobUrls';
 import type { ThemeCacheSongKey } from '../services/themeCache';
 import { loadOnlineLyricsState } from '../utils/onlineLyricsState';
 import { PlayerState, type StagePlayerQueueDiffOp, type StagePlayerQueueRequest, type StagePlayerSnapshot } from '../types';
@@ -569,7 +569,7 @@ export function usePlaybackQueueController({
             preloadedOnlineAudioResult = await loadOnlineSongAudioSource(song, audioQuality, prefetched);
             if (!isLatestPlaybackRequest()) {
                 if (preloadedOnlineAudioResult.kind === 'ok' && preloadedOnlineAudioResult.blobUrl) {
-                    URL.revokeObjectURL(preloadedOnlineAudioResult.blobUrl);
+                    releasePlaybackBlobUrl(preloadedOnlineAudioResult.blobUrl);
                 }
                 return;
             }

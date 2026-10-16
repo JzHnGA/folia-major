@@ -7,7 +7,8 @@ import { applyLocalLibraryEntityDisplay, buildUnifiedLocalSong } from '../../../
 import { buildNavidromeSourceRevision } from '../../../services/playbackRecovery/sourceRevision';
 import { getLocalLibraryCatalogSnapshot } from '../../../services/localLibraryEntityRepository';
 import { getNavidromeConfig, navidromeApi } from '../../../services/navidromeService';
-import { applyOnlineAudioSourceMetadata, loadOnlineSongAudioSource } from '../../../services/onlinePlayback';
+import { applyOnlineAudioSourceMetadata, loadOnlineSongAudioSource, loadOnlineSongLyrics } from '../../../services/onlinePlayback';
+import { releasePlaybackBlobUrl } from '../../../services/playbackBlobUrls';
 import type { ThemeCacheSongKey } from '../../../services/themeCache';
 import type { LyricData, LocalSong, SongResult, StatusMessage } from '../../../types';
 import type { NavidromeSong } from '../../../types/navidrome';
@@ -30,7 +31,7 @@ import { getCachedSongCoverUrl, getSongCacheWithLegacyMigration } from '../../..
 import { getSongCoverUrl } from '../../../services/onlineMusic/songMetadata';
 import { useOnlineProviderAccountStore } from '../../../stores/useOnlineProviderAccountStore';
 import { setStatusMessage as setStatusMsg } from '../../../stores/useStatusMessageStore';
-import { setActiveLocalLyricsSource, setAudioSrc, setCachedCoverUrl, setCurrentSong } from '../../../stores/usePlaybackStore';
+import { setActiveLocalLyricsSource, setAudioSrc, setCachedCoverUrl, setCurrentSong, usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { useLyricSettingsStore } from '../../../stores/useLyricSettingsStore';
 
 // src/components/app/playback/restorePlaybackSource.ts
@@ -58,7 +59,7 @@ const replaceBlobUrl = (
     nextBlobUrl: string,
 ) => {
     if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
+        releasePlaybackBlobUrl(blobUrlRef.current);
     }
     blobUrlRef.current = nextBlobUrl;
 };
@@ -265,6 +266,28 @@ export const restorePlaybackSourceForSong = async (
     const effectiveUserId = songProviderId
         ? (useOnlineProviderAccountStore.getState().accounts[songProviderId]?.user?.id ?? userId)
         : userId;
+    // An external-playback song (Music.app) has no lyrics of its own and omni.getLyrics returns none,
+    // so a cache miss goes through the shared auto-match instead.
+    if (omni.isExternalPlaybackSong(song)) {
+        await loadOnlineSongLyrics(song, null, effectiveUserId, {
+            isCurrent: () => isSamePlaybackSong(usePlaybackStore.getState().currentSong, song),
+            onLyrics: setLyrics,
+            onPureMusicChange: isPureMusic => {
+                setCurrentSong(prev => {
+                    if (!prev || !isSamePlaybackSong(prev, song)) return prev;
+                    return { ...prev, isPureMusic };
+                });
+            },
+            onStateChange: state => {
+                setCurrentSong(prev => {
+                    if (!prev || !isSamePlaybackSong(prev, song)) return prev;
+                    return { ...prev, onlineLyricsState: state ?? undefined };
+                });
+            },
+            onDone: () => {},
+        });
+        return true;
+    }
     const processed = await omni.getLyrics(song, { userId: effectiveUserId });
     const resolvedLyrics = resolveOnlineLyrics(onlineLyricsState, processed.lyrics);
     setCurrentSong(prev => {

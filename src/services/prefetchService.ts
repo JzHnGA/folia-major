@@ -17,8 +17,10 @@ import { getSongResourceCacheKey } from './onlineMusic/resourceKeys';
 import { getSongCacheWithLegacyMigration, hasCachedSongAudio } from './onlineMusic/resourceCache';
 import { toSafePlaybackUrl } from '../utils/appPlaybackHelpers';
 import { getProviderSongMetadata } from './onlineMusic/songMetadata';
+import { buildLyricMatchAttempts, runLyricMatchAttempts } from './onlineMusic/lyricMatchAttempts';
 import { ensureTrackProfile, setAnalysisScope } from './automix/profileService';
 import { modeNeedsBeatGrid } from './automix/transitionStrategy';
+import { involvesExternalPlayback } from './externalPlayback/externalPlaybackGuards';
 import { useLyricSettingsStore } from '../stores/useLyricSettingsStore';
 import { useAutomixSettingsStore } from '../stores/useAutomixSettingsStore';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
@@ -47,6 +49,8 @@ const MAX_PREFETCH_CACHE_SIZE = 200; // Evict least recently used entries beyond
  * try to fetch. Never awaited: a slow decode must not hold up the song after this one.
  */
 const analyseForAutomix = (song: SongResult, audioUrl: string | null | undefined) => {
+  // An external song never reaches Automix and its audio is only a silent carrier, so there is nothing to analyse.
+  if (involvesExternalPlayback(song)) return;
   const settingsAudioSettings = useAudioSettingsStore.getState();
   const settingsAutomixSettings = useAutomixSettingsStore.getState();
   const settingsLyricSettings = useLyricSettingsStore.getState();
@@ -212,7 +216,9 @@ const prefetchSong = async (
     };
 
     // Prefetch audio URL (if not cached or expired)
-    if (!data.audioUrl) {
+    // Skipped for an external song: its "audio" is a silent carrier minted at playback time, and
+    // resolving one here would only leave a stale blob URL behind.
+    if (!data.audioUrl && !involvesExternalPlayback(song)) {
         try {
             const audioExists = await hasCachedSongAudio(song);
             if (audioExists) {
@@ -279,30 +285,37 @@ const prefetchSong = async (
   const settingsLyricSettings = useLyricSettingsStore.getState();
                 const autoUseBest = settingsLyricSettings.autoUseBestLyric;
                 const preferredSource = settingsLyricSettings.preferredAlternativeLyricSource;
-                const shouldAutoMatch = autoUseBest && !onlineLyricsState?.hasOnlineOverride;
+                // An external-playback song (Music.app) has no lyrics of its own, so it is matched whatever the setting says.
+                const shouldAutoMatch = (autoUseBest || omni.isExternalPlaybackSong(song)) && !onlineLyricsState?.hasOnlineOverride;
 
                 if (shouldAutoMatch) {
                     try {
-                        const metadata = getProviderSongMetadata(song);
-                        const artistName = metadata.artists.map(a => a.name).join(', ');
-                        const bestMatch = await autoMatchBestLyric(song.name, artistName, metadata.durationMs, {
-                            album: metadata.album?.name,
-                            preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
-                            ...(sourceRef.providerId === 'netease' || sourceRef.providerId === 'kugou' || sourceRef.providerId === 'qq'
-                                ? { providerCandidate: {
-                                    providerId: sourceRef.providerId as 'netease' | 'kugou' | 'qq',
-                                    song,
-                                    lyricsResult: {
-                                        lyrics: parsedLyrics,
-                                        mainText: processed.mainLrc,
-                                        wordByWordText: processed.yrcLrc,
-                                        translationText: processed.transLrc,
-                                        isPureMusic: processed.isPureMusic,
-                                        chorusRanges: processed.chorusRanges,
-                                    },
-                                } }
-                                : {})
-                        });
+                        const providerCandidate = sourceRef.providerId === 'netease' || sourceRef.providerId === 'kugou' || sourceRef.providerId === 'qq'
+                            ? {
+                                providerId: sourceRef.providerId as 'netease' | 'kugou' | 'qq',
+                                song,
+                                lyricsResult: {
+                                    lyrics: parsedLyrics,
+                                    mainText: processed.mainLrc,
+                                    wordByWordText: processed.yrcLrc,
+                                    translationText: processed.transLrc,
+                                    isPureMusic: processed.isPureMusic,
+                                    chorusRanges: processed.chorusRanges,
+                                },
+                            }
+                            : undefined;
+                        // A provider may hint at better search names (Apple Music: the catalog's localized ones); they are tried before the song's own.
+                        const matchHints = await omni.getLyricMatchHints(song);
+                        const bestMatch = await runLyricMatchAttempts(
+                            buildLyricMatchAttempts(song, matchHints),
+                            attempt => autoMatchBestLyric(attempt.title, attempt.artist, attempt.durationMs, {
+                                album: attempt.album,
+                                preferredSource: settingsLyricSettings.preferredAlternativeLyricSource,
+                                ...(providerCandidate ? { providerCandidate } : {}),
+                            }),
+                            match => 'lyrics' in match && match.source !== sourceRef.providerId,
+                            match => match.isPureMusic === true,
+                        );
                         if (bestMatch && 'lyrics' in bestMatch && bestMatch.source !== sourceRef.providerId) {
                             const overrideState: OnlineLyricsState = {
                                 lyricsSource: 'online',

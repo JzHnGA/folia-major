@@ -9,6 +9,10 @@ const loadLyricsStateMock = vi.hoisted(() => vi.fn());
 const saveLyricsStateMock = vi.hoisted(() => vi.fn());
 const isUrlValidMock = vi.hoisted(() => vi.fn(() => true));
 const updatePrefetchedAudioUrlMock = vi.hoisted(() => vi.fn());
+const isExternalMock = vi.hoisted(() => vi.fn((_song?: unknown) => false));
+const hintsMock = vi.hoisted(() => vi.fn(async (_song?: unknown): Promise<unknown> => null));
+// The settings store mock reads this object, so a test flips one field instead of re-mocking the store.
+const lyricSettings = vi.hoisted(() => ({ autoUseBestLyric: true, preferredAlternativeLyricSource: 'qq' }));
 
 vi.mock('@/services/onlineMusic/resourceCache', () => ({
     getCachedSongAudioBlob: cachedAudioMock,
@@ -19,12 +23,14 @@ vi.mock('@/services/onlineMusic/omni', () => ({
     omni: {
         getAudioSource: sourceMock,
         getLyrics: lyricsMock,
+        isExternalPlaybackSong: isExternalMock,
+        getLyricMatchHints: hintsMock,
     },
 }));
 
 vi.mock('@/stores/useLyricSettingsStore', () => ({
     useLyricSettingsStore: {
-        getState: () => ({ autoUseBestLyric: true, preferredAlternativeLyricSource: 'qq' }),
+        getState: () => lyricSettings,
     },
 }));
 
@@ -61,6 +67,17 @@ import { OnlineProviderError } from '@/types/onlineMusic';
 
 // test/unit/onlinePlayback.test.ts
 
+// Runs before every describe's own beforeEach, so neither the external-song flag nor the lyric
+// settings can leak from one describe into the next (mockClear alone keeps a mockReturnValue).
+beforeEach(() => {
+    isExternalMock.mockReset();
+    isExternalMock.mockReturnValue(false);
+    hintsMock.mockReset();
+    hintsMock.mockResolvedValue(null);
+    lyricSettings.autoUseBestLyric = true;
+    lyricSettings.preferredAlternativeLyricSource = 'qq';
+});
+
 const song: SongResult = {
     id: 'online-song',
     name: 'Song',
@@ -75,6 +92,7 @@ describe('online audio ReplayGain plumbing', () => {
         vi.clearAllMocks();
         cachedAudioMock.mockResolvedValue(null);
         isUrlValidMock.mockReturnValue(true);
+        isExternalMock.mockReturnValue(false);
     });
 
     it.each(['preview-only', 'region-restricted', 'auth-required'] as const)('preserves %s for the queue and does not cache audio', async reason => {
@@ -138,6 +156,58 @@ describe('online audio ReplayGain plumbing', () => {
             expect(result.replayGain).toBeUndefined();
         }
         expect(updatePrefetchedAudioUrlMock).toHaveBeenCalledWith(song, 'https://audio.test/song.mp3', 'high', undefined);
+    });
+
+    it('hands an external carrier back as a blob to revoke and never stores it as a prefetched URL', async () => {
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockResolvedValue({ url: 'blob:carrier', fetchedAt: 1, quality: 'high' });
+
+        const result = await loadOnlineSongAudioSource(song, 'high', null);
+
+        expect(result).toEqual({ kind: 'ok', audioSrc: 'blob:carrier', blobUrl: 'blob:carrier', replayGain: undefined });
+        expect(updatePrefetchedAudioUrlMock).not.toHaveBeenCalled();
+    });
+
+    // The carrier registry is a module singleton, so these use songs no other case holds.
+    const externalSong = (id: string): SongResult => ({
+        ...song,
+        id,
+        sourceRef: { kind: 'online', providerId: 'apple', mediaId: id },
+    });
+
+    it('gives the same carrier to the same external song while it is held', async () => {
+        const shared = externalSong('shared-carrier');
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockResolvedValue({ url: 'blob:shared-carrier', fetchedAt: 1, quality: 'standard' });
+
+        const first = await loadOnlineSongAudioSource(shared, 'high', null);
+        const second = await loadOnlineSongAudioSource(shared, 'high', null);
+
+        expect(second).toEqual(first);
+        expect(first).toMatchObject({ kind: 'ok', audioSrc: 'blob:shared-carrier', blobUrl: 'blob:shared-carrier' });
+        expect(sourceMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('never reads the audio cache or the prefetched URL for an external song', async () => {
+        const external = externalSong('uncached-carrier');
+        isExternalMock.mockReturnValue(true);
+        cachedAudioMock.mockResolvedValue(new Blob(['cached']));
+        sourceMock.mockResolvedValue({ url: 'blob:uncached-carrier', fetchedAt: 1, quality: 'standard' });
+        const prefetched = { audioUrl: 'https://audio.test/prefetched.flac', audioUrlFetchedAt: Date.now() } as any;
+
+        const result = await loadOnlineSongAudioSource(external, 'high', prefetched);
+
+        expect(result).toMatchObject({ kind: 'ok', audioSrc: 'blob:uncached-carrier' });
+        expect(cachedAudioMock).not.toHaveBeenCalled();
+    });
+
+    it('reports an external song whose carrier cannot be minted as unavailable', async () => {
+        isExternalMock.mockReturnValue(true);
+        sourceMock.mockRejectedValueOnce(new OnlineProviderError('not-playable', 'No carrier', 'apple'));
+
+        await expect(loadOnlineSongAudioSource(externalSong('unmintable-carrier'), 'high', null))
+            .resolves.toEqual({ kind: 'unavailable', reason: 'not-playable' });
+        expect(updatePrefetchedAudioUrlMock).not.toHaveBeenCalled();
     });
 });
 
@@ -313,5 +383,180 @@ describe('instrumental tracks, once auto-match has settled them', () => {
         expect(merged.lyricsSource).toBe('imported');
         expect(merged.importedLyrics).toBe(imported);
         expect(merged.matchedIsPureMusic).toBe(true);
+    });
+});
+
+describe('lyric auto-match for external-playback songs', () => {
+    const appleSong: SongResult = {
+        id: 'apple-song',
+        name: 'Apple Song',
+        artists: [{ id: 1, name: 'Artist' }],
+        album: { id: 2, name: 'Album' },
+        durationMs: 215000,
+        sourceRef: { kind: 'online', providerId: 'apple-music', mediaId: '0123456789ABCDEF' },
+    };
+    const neteaseSong: SongResult = {
+        ...song,
+        id: 'netease-song',
+        sourceRef: { kind: 'online', providerId: 'netease', mediaId: 'netease-song' },
+    };
+    const parsedFixture = {
+        lines: [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }],
+        isWordByWord: false,
+    };
+    const callbacks = {
+        isCurrent: () => true,
+        onLyrics: vi.fn(),
+        onDone: vi.fn(),
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        songCacheMock.mockResolvedValue(null);
+        loadLyricsStateMock.mockResolvedValue(null);
+        // An ordinary provider song brings its own lyrics, so the "setting off" case has something to show.
+        lyricsMock.mockResolvedValue({
+            lyrics: parsedFixture,
+            mainText: '[00:00.00]line',
+            wordByWordText: null,
+            translationText: null,
+            isPureMusic: false,
+            chorusRanges: [],
+        });
+    });
+
+    it('auto-matches an external-playback song even when auto-use-best-lyric is off', async () => {
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(true);
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false });
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledWith(appleSong.name, 'Artist', appleSong.durationMs, expect.objectContaining({ album: 'Album', providerCandidate: undefined }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('still respects the setting for ordinary provider songs', async () => {
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(false);
+        await loadOnlineSongLyrics(neteaseSong, null, null, callbacks);
+        expect(autoMatchMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps previously matched lyrics authoritative for an external song', async () => {
+        // The cache early-return is untouched: a stored match is shown as-is, with no second search.
+        lyricSettings.autoUseBestLyric = false;
+        isExternalMock.mockReturnValue(true);
+        songCacheMock.mockResolvedValue(parsedFixture);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).not.toHaveBeenCalled();
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+});
+
+describe('lyric auto-match with provider match hints', () => {
+    const appleSong: SongResult = {
+        id: 'apple-song',
+        name: 'Wo De Ai Mei Qian Zou',
+        artists: [{ id: 1, name: 'Nana Ou-Yang' }],
+        album: { id: 2, name: 'Wo De Ai Mei Qian Zou' },
+        durationMs: 199597,
+        sourceRef: { kind: 'online', providerId: 'apple-music', mediaId: '0123456789ABCDEF' },
+    };
+    const parsedFixture = {
+        lines: [{ startTime: 0, endTime: 1, fullText: 'line', words: [] }],
+        isWordByWord: false,
+    };
+    const hints = { title: '我的爱没前奏', artist: '欧阳娜娜', album: '我的爱没前奏' };
+    const callbacks = {
+        isCurrent: () => true,
+        onLyrics: vi.fn(),
+        onDone: vi.fn(),
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        songCacheMock.mockResolvedValue(null);
+        loadLyricsStateMock.mockResolvedValue(null);
+        isExternalMock.mockReturnValue(true);
+        lyricsMock.mockResolvedValue({ lyrics: null, isPureMusic: false });
+        hintsMock.mockResolvedValue(hints);
+        autoMatchMock.mockReset();
+    });
+
+    it('searches with the hinted names first', async () => {
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(hintsMock).toHaveBeenCalledWith(appleSong);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('releases the audio before the hints have been looked up, and still matches with them afterwards', async () => {
+        let resolveHints!: (value: typeof hints) => void;
+        hintsMock.mockImplementation(() => new Promise(resolve => { resolveHints = resolve; }));
+        autoMatchMock.mockResolvedValue({ id: 1, source: 'qq', lyrics: parsedFixture, isPureMusic: false });
+
+        const loading = loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        await vi.waitFor(() => expect(hintsMock).toHaveBeenCalledTimes(1));
+        // The lookup is still outstanding: playback was released and nothing has been searched yet.
+        expect(callbacks.onDone).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).not.toHaveBeenCalled();
+
+        resolveHints(hints);
+        await loading;
+        expect(autoMatchMock).toHaveBeenCalledWith('我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('never asks the provider for hints before it has released the audio', async () => {
+        const order: string[] = [];
+        callbacks.onDone.mockImplementation(() => { order.push('done'); });
+        hintsMock.mockImplementation(async () => { order.push('hints'); return hints; });
+        autoMatchMock.mockResolvedValue(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(order.slice(0, 2)).toEqual(['done', 'hints']);
+        callbacks.onDone.mockReset();
+    });
+
+    it('falls back to the song names when the hinted search finds nothing', async () => {
+        autoMatchMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 2, source: 'netease', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(2);
+        expect(autoMatchMock).toHaveBeenNthCalledWith(1, '我的爱没前奏', '欧阳娜娜', 199597, expect.objectContaining({ album: '我的爱没前奏' }));
+        expect(autoMatchMock).toHaveBeenNthCalledWith(2, 'Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+        expect(callbacks.onLyrics).toHaveBeenLastCalledWith(parsedFixture);
+    });
+
+    it('does not take lyrics the song\'s own provider answered as a match, and keeps searching', async () => {
+        autoMatchMock
+            .mockResolvedValueOnce({ id: 1, source: 'apple-music', lyrics: parsedFixture, isPureMusic: false })
+            .mockResolvedValueOnce({ id: 2, source: 'kugou', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(2);
+        expect(saveLyricsStateMock).toHaveBeenCalledWith(appleSong, expect.objectContaining({ matchedLyricsSource: 'kugou' }));
+    });
+
+    it('searches once with the song names when the provider has no hints', async () => {
+        hintsMock.mockResolvedValue(null);
+        autoMatchMock.mockResolvedValue(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou' }));
+    });
+
+    it('searches once when the hints read the same as the song names, using the hinted album', async () => {
+        hintsMock.mockResolvedValue({ title: 'wo de ai mei qian zou', artist: 'Nana Ou-Yang', album: 'Wo De Ai Mei Qian Zou (Single)' });
+        autoMatchMock.mockResolvedValue(null);
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(autoMatchMock).toHaveBeenCalledWith('Wo De Ai Mei Qian Zou', 'Nana Ou-Yang', 199597, expect.objectContaining({ album: 'Wo De Ai Mei Qian Zou (Single)' }));
+    });
+
+    it('stops at an instrumental verdict reached by the hinted search and records it', async () => {
+        autoMatchMock.mockResolvedValueOnce({ isPureMusic: true }).mockResolvedValueOnce({ id: 2, source: 'kugou', lyrics: parsedFixture, isPureMusic: false });
+        await loadOnlineSongLyrics(appleSong, null, null, callbacks);
+        expect(autoMatchMock).toHaveBeenCalledTimes(1);
+        expect(saveLyricsStateMock).toHaveBeenCalledWith(appleSong, markOnlineLyricsPureMusic(null));
     });
 });

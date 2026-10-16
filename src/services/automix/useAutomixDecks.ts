@@ -6,6 +6,8 @@ import type { AudioQualityPreference } from '../../types/onlineMusic';
 import type { PlaybackRecoveryTarget } from '../../types/playbackRecovery';
 import { getPlaybackSongKey, isNavidromePlaybackSong, resolveNavidromePlaybackCarrier } from '../../utils/appPlaybackGuards';
 import { getPrefetchedData } from '../prefetchService';
+import { externalSideOf, involvesExternalPlayback } from '../externalPlayback/externalPlaybackGuards';
+import { carrierRegistry, createCarrierSlot, type CarrierSlot } from '../externalPlayback/carrierRegistry';
 import { getTrackProfile, recordPlayedTail } from './profileService';
 import { refreshModelAvailability } from './modelAvailability';
 import { canSeparateStems, ensureStems, getStemsByKey, setWantedStems, stemWindowKey } from './stems';
@@ -13,6 +15,7 @@ import { connectAutomixDeck, type AutomixDeckChain } from './crossfadeGraph';
 import {
     createAutomixSession,
     AUTOMIX_ARM_LEAD_SEC,
+    EXTERNAL_PREROLL_SEC,
     type AutomixDeckId,
     type AutomixSession,
 } from './automixSession';
@@ -21,6 +24,7 @@ import type { TransitionSettings } from './transitionStrategy';
 import { usePlaybackStore, type TransitionDisplay } from '../../stores/usePlaybackStore';
 import { useAudioSettingsStore } from '../../stores/useAudioSettingsStore';
 import { playbackFade } from '../playbackFade';
+import type { DeckGainEnvelope } from '../gainEnvelope';
 import { getPlaybackRepresentation } from '../playbackRecovery/representationRegistry';
 import { buildNavidromeSourceRevision } from '../playbackRecovery/sourceRevision';
 
@@ -38,6 +42,12 @@ export type { TransitionDisplay };
 // without a sample-alignment click.
 
 export type { AutomixDeckId };
+
+/** The pair a transition is about, from arm to settle: who fades out on which deck, and who arrives on which. */
+export interface AutomixTransitionSongs {
+    tail: { deck: AutomixDeckId; song: SongResult };
+    incoming: { deck: AutomixDeckId; song: SongResult };
+}
 
 /**
  * Whether a player state means "the listener stopped this", as opposed to the player merely
@@ -188,6 +198,11 @@ type UseAutomixDecksParams = {
      * unreachable local file. Resolved by App, which owns the local library.
      */
     getLocalStemBytes?: (song: SongResult) => Promise<ArrayBuffer | null>;
+    /**
+     * Told about every gain envelope the session writes onto a deck's fade, after the write - see
+     * `AutomixSessionPorts.onDeckEnvelope`. Read through a ref, because the ports are built once.
+     */
+    onDeckEnvelope?: (deck: AutomixDeckId, envelope: DeckGainEnvelope) => void;
 };
 
 export function useAutomixDecks({
@@ -201,6 +216,7 @@ export function useAutomixDecks({
     onAdvanceTrack,
     onDeckPlayedOut,
     getLocalStemBytes,
+    onDeckEnvelope,
 }: UseAutomixDecksParams) {
     // Read here rather than passed in. Plain reads of the same store App.tsx was reading from, so
     // the values are identical within a render - this does not touch the advance ordering the note
@@ -246,6 +262,9 @@ export function useAutomixDecks({
     // State rather than a ref on purpose: lifting the hold has to re-run the audio bridge's
     // autoplay effect, and only a render does that.
     const [autoplayHeld, setAutoplayHeld] = useState(false);
+    // State for the same reason: the external playback session re-binds Music's song to a deck when this moves.
+    // Set at the arm, cleared by the settle every ending goes through.
+    const [transitionSongs, setTransitionSongs] = useState<AutomixTransitionSongs | null>(null);
 
     const elementsRef = useRef<Record<AutomixDeckId, HTMLAudioElement | null>>({ A: null, B: null });
     const chainsRef = useRef<Partial<Record<AutomixDeckId, AutomixDeckChain>>>({});
@@ -295,6 +314,8 @@ export function useAutomixDecks({
         const song = deckSongRef.current[deck];
         const history = chainsRef.current[deck]?.analyser.levelHistory();
         if (!element || !song || !history) return;
+        // The silent carrier of an external song would file a tail of pure silence under that song.
+        if (involvesExternalPlayback(song)) return;
         recordPlayedTail(song, history.db, history.hopSec, element.duration);
     }, []);
     // The session's ports are built once, before this exists, and must not close over a stale copy.
@@ -308,6 +329,10 @@ export function useAutomixDecks({
     playedOutRef.current = onDeckPlayedOut;
     const localBytesRef = useRef(getLocalStemBytes);
     localBytesRef.current = getLocalStemBytes;
+    const deckEnvelopeRef = useRef(onDeckEnvelope);
+    deckEnvelopeRef.current = onDeckEnvelope;
+    /** A throwing envelope listener is reported once, not on every ramp. */
+    const deckEnvelopeWarnedRef = useRef(false);
     /** Whether the picture is currently held. See `getDisplayElement`. */
     const displayHeldRef = useRef(false);
     /** The pair the picture is made of, kept current so the capture above can be synchronous. */
@@ -376,6 +401,18 @@ export function useAutomixDecks({
      */
     const stemSongsRef = useRef<{ from: SongResult | null; to: SongResult | null }>({ from: null, to: null });
 
+    /**
+     * Holds the shared carrier of an arriving external song while the idle deck is warmed with it.
+     *
+     * The carrier is the same URL `playSong` will put in `audioSrc` at the arm, which is what keeps the
+     * handover from touching the warmed deck's src - see `resolveDeckSrc`. Let go at every settle and on
+     * unmount, so the slot never pins a carrier past the transition it was taken for.
+     */
+    // Built once, like the session below: a slot made on every render would only be thrown away.
+    const warmSlotRef = useRef<CarrierSlot | null>(null);
+    if (!warmSlotRef.current) warmSlotRef.current = createCarrierSlot(carrierRegistry);
+    const warmSlot = warmSlotRef.current;
+
     const sessionRef = useRef<AutomixSession | null>(null);
     if (!sessionRef.current) {
         sessionRef.current = createAutomixSession({
@@ -420,6 +457,8 @@ export function useAutomixDecks({
                     // the OTHER deck is now playing. Dropping it here stops that deck from loading
                     // the current track a second time.
                     setWarmSrc(null);
+                    warmSlot.want(null);
+                    setTransitionSongs(null);
                     scheduleStallCheck();
                 }
             },
@@ -429,6 +468,17 @@ export function useAutomixDecks({
             // was made: separation runs on its own clock and a window that lands inside that gap
             // is still worth using.
             getStems: (key, role) => getStemsByKey(key, role),
+            // Called from inside the ramps of an arm, a blend and a settle: whatever follows the envelope must never
+            // throw into them, so a failure is logged once and dropped.
+            onDeckEnvelope: (deck, envelope) => {
+                try {
+                    deckEnvelopeRef.current?.(deck, envelope);
+                } catch (error) {
+                    if (deckEnvelopeWarnedRef.current) return;
+                    deckEnvelopeWarnedRef.current = true;
+                    console.warn('[Automix] a deck envelope listener failed', error);
+                }
+            },
         });
     }
     const session = sessionRef.current;
@@ -449,6 +499,8 @@ export function useAutomixDecks({
 
     const registerDeckA = useCallback((element: HTMLAudioElement | null) => bindDeck('A', element), [bindDeck]);
     const registerDeckB = useCallback((element: HTMLAudioElement | null) => bindDeck('B', element), [bindDeck]);
+
+    const getDeckElement = useCallback((deck: AutomixDeckId) => elementsRef.current[deck], []);
 
     const deckSrc = useCallback(
         (deck: AutomixDeckId) => resolveDeckSrc({ deck, activeDeck, audioSrc, tailSrc, warmSrc }),
@@ -560,7 +612,10 @@ export function useAutomixDecks({
         // The longest blend, plus the lead it is armed ahead of. Everything this function does
         // happens inside that window, warming included - which gives the idle deck the better part
         // of ten seconds to buffer before anything is asked of it.
-        if (duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC) return;
+        //
+        // Wider by the preroll, which only an arriving external song uses; every other change is held to the
+        // narrower window again below, once it is known which side is external.
+        if (duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC + EXTERNAL_PREROLL_SEC) return;
 
         if (!isEnabled) return report('disabled', 'off - the Blend icon at the end of the volume row switches it on');
         // The report keys carry the mode: switching strategy mid-track otherwise reads as the same
@@ -570,6 +625,15 @@ export function useAutomixDecks({
 
         const nextSong = resolveNextQueueSong(playQueue, currentSong, loopMode);
         if (!nextSong) return report(`${audioSrc}:queue-end`, 'nothing queued after this track');
+        // Music.app plays the external song, so there is no second deck to blend and no audio to warm one with
+        // (the <audio> only carries silence). Checked before the warm step below so no deck is ever repointed.
+        // Only when BOTH sides are external: the Music app plays one song at a time, so two of them cannot
+        // overlap. With exactly one, Folia's deck fades the other track and the Music app's volume follows the
+        // carrier deck's envelope - a plain crossfade, see planForExternalPair.
+        const side = externalSideOf(currentSong, nextSong);
+        if (side === 'both') return report(`${audioSrc}:external`, 'external playback engine on both sides, hard cut');
+        // Anything but an arriving external song warms and arms exactly when it always did.
+        if (side !== 'to' && duration - time > AUTOMIX_MAX_OVERLAP_SEC + AUTOMIX_ARM_LEAD_SEC) return;
 
         // Nothing below applies while a transition is already in flight - `requestTransition` returns null
         // on sight - and the write underneath it is not free. This function runs on every timeupdate, the
@@ -598,7 +662,10 @@ export function useAutomixDecks({
             )
             ? recoveredRepresentation.url
             : null;
-        const nextWarmSrc = recoveredWarmSrc || (prefetched?.audioUrl && prefetched.audioUrl !== 'CACHED_IN_DB'
+        // An arriving external song has no audio to prefetch; its deck is warmed with its shared carrier
+        // instead, null until the carrier has been minted. Anything else lets the slot go.
+        const carrier = warmSlot.want(side === 'to' ? nextSong : null);
+        const nextWarmSrc = side === 'to' ? carrier : recoveredWarmSrc || (prefetched?.audioUrl && prefetched.audioUrl !== 'CACHED_IN_DB'
             ? prefetched.audioUrl
             : null);
         const idleDeck = activeDeck === 'A' ? 'B' : 'A';
@@ -620,17 +687,25 @@ export function useAutomixDecks({
             settings: transition,
             nextKey: getPlaybackSongKey(nextSong),
             fromKey: getPlaybackSongKey(currentSong),
+            external: side,
         });
         if (!plan) return;
 
         if (session.getPhase() === 'armed') {
+            // This closure is still the render from before the arm, so `activeDeck` is the deck fading out.
+            setTransitionSongs(current => (
+                current?.tail.deck === activeDeck && current.tail.song === currentSong
+                && current.incoming.deck === idleDeck && current.incoming.song === nextSong
+                    ? current
+                    : { tail: { deck: activeDeck, song: currentSong }, incoming: { deck: idleDeck, song: nextSong } }
+            ));
             report(`${audioSrc}:${modeTag}armed`, `blending ${plan.overlap}s - ${plan.reason}`);
         } else if (plan.kind !== 'fade') {
             report(`${audioSrc}:${modeTag}cut`, `plain cut - ${plan.reason}`);
         } else if (time >= plan.outStart) {
             report(`${audioSrc}:${modeTag}unwired`, `wanted a ${plan.overlap}s blend but the decks are not on the audio graph`);
         }
-    }, [activeDeck, audioQuality, audioSrc, currentSong, duration, isEnabled, loopMode, lyrics, playQueue, report, session, transition]);
+    }, [activeDeck, audioQuality, audioSrc, currentSong, duration, isEnabled, loopMode, lyrics, playQueue, report, session, transition, warmSlot]);
 
     /**
      * Reads the ref rather than the `currentSong` prop, and that is the whole correctness of it.
@@ -679,6 +754,9 @@ export function useAutomixDecks({
      */
     const cancelBlendKeepingTail = useCallback(() => session.abort(true), [session]);
 
+    /** Makes the blend in flight a hard cut, for a reason only the caller can see. See `cutTransition` in the session. */
+    const cutTransition = useCallback((reason: string) => session.cutTransition(reason), [session]);
+
     // Both decks are measured continuously while playing, not only once a blend is imminent: the
     // tempo estimate needs seconds of history behind it, and by the time a transition is planned
     // there is none left to gather. One timer for both decks, and only while there is sound.
@@ -720,6 +798,8 @@ export function useAutomixDecks({
         if (!canSeparateStems()) return;
 
         const next = resolveNextQueueSong(playQueue, currentSong, loopMode);
+        // Stems are separated from the audio the deck plays; for an external song that is a silent carrier.
+        if (involvesExternalPlayback(currentSong, next)) return;
         stemSongsRef.current = { from: currentSong, to: next };
         // The same pair, told to the cache: it decides what to throw away when it runs out of room,
         // and without this it can only go by age - which is how it came to evict the window a
@@ -804,7 +884,8 @@ export function useAutomixDecks({
     useEffect(() => () => {
         if (stallTimerRef.current !== null) window.clearTimeout(stallTimerRef.current);
         session.dispose();
-    }, [session]);
+        warmSlot.want(null);
+    }, [session, warmSlot]);
 
     return {
         activeDeck,
@@ -830,5 +911,8 @@ export function useAutomixDecks({
         isTransitionAudible,
         abortTransition,
         cancelBlendKeepingTail,
+        transitionSongs,
+        getDeckElement,
+        cutTransition,
     };
 }

@@ -6,10 +6,12 @@ import {
     type AutomixDeckId,
     type AutomixSessionPorts,
 } from '@/services/automix/automixSession';
+import type { DeckGainEnvelope } from '@/services/gainEnvelope';
 import { AUTOMIX_MIN_OVERLAP_SEC, type TransitionTrack } from '@/services/automix/transitionPlanner';
 import { DEFAULT_TRANSITION_SETTINGS } from '@/services/automix/transitionStrategy';
 import { type TrackProfile } from '@/services/automix/trackProfile';
 import { makeProfile } from './trackProfileFixture';
+import { buildCrossfadeCurves, crossoverFor } from '@/services/automix/signalAnalysis';
 import { shouldDrawCue, subscribeToTransitionCue, type TransitionCue } from '@/services/automix/transitionCue';
 import {
     asElement,
@@ -60,6 +62,8 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
     const tailSrcChanges: (string | null)[] = [];
     const autoplayHolds: boolean[] = [];
     const advanceTrack = vi.fn();
+    /** Every gain envelope the session announced, in order, for the Apple Music mirror to consume. */
+    const envelopes: { deck: AutomixDeckId; envelope: DeckGainEnvelope }[] = [];
 
     /** Every stem lookup the session makes, so a test can check WHICH pair it asked about. */
     const stemAsks: { key: string | null; role: 'tail' | 'head' }[] = [];
@@ -75,6 +79,7 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
         // Always empty, so every other test here keeps taking the master crossfade it was written
         // against. Only the keys are under test.
         getStems: (key, role) => { stemAsks.push({ key, role }); return null; },
+        onDeckEnvelope: (deck, envelope) => { envelopes.push({ deck, envelope }); },
     };
 
     const session = createAutomixSession(ports);
@@ -100,7 +105,7 @@ const createHarness = (readings: Partial<Record<AutomixDeckId, FakeAnalyserReadi
     );
 
     return {
-        session, elements, chains, context, stemAsks,
+        session, elements, chains, context, stemAsks, envelopes,
         activeDeckChanges, tailSrcChanges, autoplayHolds, advanceTrack, arm,
     };
 };
@@ -860,5 +865,331 @@ describe('automix session, transition styles', () => {
         expect(plan?.style).toBe('plainBlend');
         harness.session.handleActiveDeckPlaying('local:next-song');
         expect(harness.chains.A.toneParams[0].events).toHaveLength(0);
+    });
+});
+
+describe('automix session, deck envelopes', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.spyOn(console, 'log').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    const last = (harness: ReturnType<typeof createHarness>, deck: AutomixDeckId) => (
+        harness.envelopes.filter(entry => entry.deck === deck).at(-1)?.envelope
+    );
+
+    it('announces the incoming deck going silent at arm', () => {
+        const harness = createHarness();
+
+        harness.arm();
+
+        expect(last(harness, 'B')).toEqual({ startAt: 0, seconds: 0, points: [0] });
+    });
+
+    it('announces both crossfade curves exactly as scheduled', () => {
+        const harness = createHarness();
+        harness.arm();
+
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        const curve = lastCurve(harness.chains.A.fadeNode)!;
+        expect(last(harness, 'A')).toEqual({
+            startAt: curve.time, seconds: curve.duration, points: Array.from(curve.curve),
+        });
+        expect(last(harness, 'B')!.points).toEqual(Array.from(lastCurve(harness.chains.B.fadeNode)!.curve));
+    });
+
+    it('announces the outgoing deck first, then the incoming one', () => {
+        const harness = createHarness();
+        harness.arm();
+        const before = harness.envelopes.length;
+
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        // Deck A is the tail once B has taken the active role at arm.
+        expect(harness.envelopes.slice(before).map(entry => entry.deck)).toEqual(['A', 'B']);
+    });
+
+    it('announces the refusal ramps', () => {
+        const harness = createHarness();
+        harness.arm();
+
+        harness.session.handleActiveDeckPlaying('local:some-other-song');
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.05 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(0);
+        expect(last(harness, 'B')).toMatchObject({ seconds: 0.05 });
+        expect(last(harness, 'B')!.points.at(-1)).toBe(1);
+    });
+
+    it('announces unity on both decks when the transition settles', () => {
+        const harness = createHarness();
+        harness.arm();
+        harness.session.handleActiveDeckPlaying('local:next-song');
+
+        vi.advanceTimersByTime(5_200);
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.03 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(1);
+        expect(last(harness, 'B')).toMatchObject({ seconds: 0.03 });
+        expect(last(harness, 'B')!.points.at(-1)).toBe(1);
+    });
+
+    it('announces unity for a deck that starts outside a transition', () => {
+        const harness = createHarness();
+
+        harness.session.handleActiveDeckPlaying(null);
+
+        expect(last(harness, 'A')).toMatchObject({ seconds: 0.02 });
+        expect(last(harness, 'A')!.points.at(-1)).toBe(1);
+    });
+
+    // A session built by hand, to say something the shared harness cannot: that the port is truly
+    // optional, and that it is told only after the audio graph has been written.
+    const bareSession = (onDeckEnvelope?: AutomixSessionPorts['onDeckEnvelope']) => {
+        const elements = { A: createFakeElement(100, 95), B: createFakeElement(100, 0) };
+        const chains = { A: createFakeChain(), B: createFakeChain() };
+        const context = createFakeContext();
+        const session = createAutomixSession({
+            getContext: () => context,
+            getElement: deck => asElement(elements[deck]),
+            getChain: deck => chains[deck],
+            onActiveDeckChange: () => { },
+            onTailSrcChange: () => { },
+            onAutoplayHoldChange: () => { },
+            advanceTrack: () => { },
+            onDeckEnvelope,
+        });
+        session.requestTransition({
+            time: 95,
+            audioSrc: 'outgoing.mp3',
+            from: BLENDABLE_FROM,
+            to: BLENDABLE_TO,
+            settings: DEFAULT_TRANSITION_SETTINGS,
+            nextKey: 'local:next-song',
+            fromKey: 'local:this-song',
+        });
+        return { session, chains };
+    };
+
+    it('runs a whole blend without the port', () => {
+        const { session, chains } = bareSession();
+
+        session.handleActiveDeckPlaying('local:next-song');
+        vi.advanceTimersByTime(5_200);
+
+        expect(session.getPhase()).toBe('idle');
+        expect(finalTarget(chains.A.fadeNode)).toBe(1);
+    });
+
+    it('announces an envelope only after the gain has been written', () => {
+        let written: boolean | null = null;
+        const { session, chains } = bareSession((deck, envelope) => {
+            if (deck === 'A' && envelope.seconds > 1) written = lastCurve(chains.A.fadeNode) !== null;
+        });
+
+        session.handleActiveDeckPlaying('local:next-song');
+
+        expect(written).toBe(true);
+    });
+});
+
+describe('automix session, one side played by an external engine', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.spyOn(console, 'log').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    // Automix with performance on, so a plan that came out of either automix move would show it. A
+    // mixed pair must ignore both and take the crossfade slider's four seconds. BLENDABLE_FROM has no
+    // profile, so a four second crossfade ends where the file does: outStart = 96.
+    const MIXED = { mode: 'automix' as const, crossfadeMaxSec: 4, performance: true };
+
+    const last = (harness: ReturnType<typeof createHarness>, deck: AutomixDeckId) => (
+        harness.envelopes.filter(entry => entry.deck === deck).at(-1)?.envelope
+    );
+
+    it('plans a mixed pair as a plain crossfade of the crossfade setting', () => {
+        const h = createHarness();
+
+        // A two second lead-in on the arriving side would move the entry if its profile were read.
+        const plan = h.arm({ time: 92.5, external: 'to', settings: MIXED, to: withIntro({ leadIn: 2 }) });
+
+        expect(plan).toMatchObject({
+            kind: 'fade', style: 'plainBlend', overlap: 4, outStart: 96, inStart: 0, stretch: 1, echoThrow: false,
+        });
+        expect(plan?.expansion).toBeUndefined();
+        expect(plan?.reason).toMatch(/^external engine on one side, /);
+        expect(h.stemAsks).toHaveLength(0);
+    });
+
+    it('keeps the profile of the side Folia plays', () => {
+        // The arriving track is Folia's: its measured two second lead-in still moves the entry.
+        const plan = createHarness().arm({ time: 95, external: 'from', settings: MIXED, to: withIntro({ leadIn: 2 }) });
+        expect(plan).toMatchObject({ kind: 'fade', style: 'plainBlend', overlap: 4, outStart: 96, inStart: 1.9 });
+
+        // The leaving track is Folia's: five seconds of trailing silence move the blend in front of it.
+        const padded = createHarness().arm({
+            time: 85,
+            external: 'to',
+            settings: MIXED,
+            from: { ...BLENDABLE_FROM, profile: makeProfile({ duration: 100, leadOut: 5 }) },
+        });
+        expect(padded).toMatchObject({ kind: 'fade', overlap: 4, outStart: 91 });
+    });
+
+    it('arms an arriving external song the preroll ahead and holds the autoplay over it', () => {
+        const h = createHarness();
+
+        h.arm({ time: 92.4, external: 'to', settings: MIXED });
+        expect(h.session.getPhase()).toBe('idle');
+
+        h.arm({ time: 92.5, external: 'to', settings: MIXED });
+        expect(h.session.getPhase()).toBe('armed');
+        expect(h.autoplayHolds).toEqual([true]);
+
+        // Released a quarter second before the blend is due, the preroll included.
+        vi.advanceTimersByTime((96 - 92.5 - 0.25) * 1000 - 100);
+        expect(h.autoplayHolds).toEqual([true]);
+        vi.advanceTimersByTime(200);
+        expect(h.autoplayHolds).toEqual([true, false]);
+    });
+
+    it('arms a leaving external song with the ordinary lead', () => {
+        const h = createHarness();
+
+        h.arm({ time: 92.5, external: 'from', settings: MIXED });
+        expect(h.session.getPhase()).toBe('idle');
+
+        h.arm({ time: 95, external: 'from', settings: MIXED });
+        expect(h.session.getPhase()).toBe('armed');
+    });
+
+    it('blends a mixed pair without balance, bands, echo, a tempo bend or a beat snap', () => {
+        // Every one of these readings would move an ordinary blend: a 20dB imbalance, a beat to snap to.
+        const h = createHarness({ A: { loudnessDb: -10, bpm: 120, nextBeatIn: 0.1 }, B: { loudnessDb: -30 } });
+        h.arm({ time: 95, external: 'from', settings: MIXED });
+        h.elements.A.currentTime = 96;
+        // The sync controller's nudge on the carrier must survive the blend.
+        h.elements.A.playbackRate = 1.05;
+
+        h.session.handleActiveDeckPlaying('local:next-song');
+        vi.advanceTimersByTime(300);
+
+        expect(lastCurve(h.chains.A.fadeNode)?.duration).toBe(4);
+        expect(Array.from(lastCurve(h.chains.A.fadeNode)!.curve))
+            .toEqual(Array.from(buildCrossfadeCurves(crossoverFor(null)).out));
+        expect(h.chains.A.trimNode.events).toHaveLength(0);
+        for (const deck of ['A', 'B'] as const) {
+            h.chains[deck].toneParams.forEach(param => expect(param.events).toHaveLength(0));
+        }
+        expect(h.chains.A.throwParam.events).toHaveLength(0);
+        expect(h.elements.A.playbackRate).toBe(1.05);
+    });
+
+    it('refuses an armed blend once it is cut', () => {
+        const h = createHarness();
+        h.arm({ time: 92.5, external: 'to', settings: MIXED });
+
+        h.session.cutTransition('Music did not start');
+        vi.advanceTimersByTime(3_300);
+        h.session.handleActiveDeckPlaying('local:next-song');
+
+        expect(lastCurve(h.chains.B.fadeNode)).toBeNull();
+        expect(finalTarget(h.chains.A.fadeNode)).toBe(0);
+        expect(finalTarget(h.chains.B.fadeNode)).toBe(1);
+        // Announced too, so the Music app's volume follows the cut rather than a blend that never ran.
+        expect(last(h, 'A')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'A')!.points.at(-1)).toBe(0);
+        expect(last(h, 'B')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'B')!.points.at(-1)).toBe(1);
+
+        vi.advanceTimersByTime(200);
+        expect(h.session.getPhase()).toBe('idle');
+    });
+
+    it('cuts a running blend at once', () => {
+        const h = createHarness();
+        h.arm({ time: 95, external: 'from', settings: MIXED });
+        h.elements.A.currentTime = 96;
+        h.session.handleActiveDeckPlaying('local:next-song');
+        expect(h.session.getPhase()).toBe('fading');
+
+        h.session.cutTransition('the Music app was taken over');
+
+        expect(last(h, 'A')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'A')!.points.at(-1)).toBe(0);
+        expect(last(h, 'B')).toMatchObject({ seconds: 0.05 });
+        expect(last(h, 'B')!.points.at(-1)).toBe(1);
+
+        vi.advanceTimersByTime(200);
+        expect(h.session.getPhase()).toBe('idle');
+        expect(h.elements.A.pause).toHaveBeenCalled();
+
+        // The four second blend's own cleanup was cancelled, so nothing settles a second time.
+        vi.advanceTimersByTime(5_000);
+        expect(h.tailSrcChanges.filter(src => src === null)).toHaveLength(1);
+    });
+
+    it('ignores a cut with no transition', () => {
+        const h = createHarness();
+
+        h.session.cutTransition('Music did not start');
+
+        expect(h.chains.A.fadeNode.events).toHaveLength(0);
+        expect(h.chains.B.fadeNode.events).toHaveLength(0);
+        expect(h.envelopes).toHaveLength(0);
+        // Still a trace: a preroll failure that lands after the blend settled is this case.
+        expect(console.log).toHaveBeenCalledWith('[Automix] cutting the blend, Music did not start (nothing to cut)');
+    });
+
+    it('names the lead a clipped blend actually had', () => {
+        const clippedLine = () => vi.mocked(console.log).mock.calls
+            .map(([message]) => String(message))
+            .find(message => message.startsWith('[Automix] blend clipped'));
+
+        // Into an external song the lead includes the preroll.
+        const mixed = createHarness();
+        mixed.arm({ time: 92.5, external: 'to', settings: MIXED });
+        mixed.elements.A.currentTime = 97;
+        mixed.session.handleActiveDeckPlaying('local:next-song');
+        expect(clippedLine()).toContain('(its 3.5s of lead started later than that)');
+
+        vi.mocked(console.log).mockClear();
+
+        // Anywhere else it is the ordinary lead, worded exactly as before.
+        const ordinary = createHarness();
+        ordinary.arm();
+        ordinary.elements.A.currentTime = 96;
+        ordinary.session.handleActiveDeckPlaying('local:next-song');
+        expect(clippedLine()).toBe(
+            `[Automix] blend clipped to 4s of the planned 5s: the handover point went by 1.00s before this deck spoke`
+            + ` (its ${AUTOMIX_ARM_LEAD_SEC}s of lead started later than that)`,
+        );
+    });
+
+    it('does not carry a cut over to the next transition', () => {
+        const h = createHarness();
+        h.arm({ time: 92.5, external: 'to', settings: MIXED });
+        h.session.cutTransition('Music did not start');
+        // The listener paused before the deck ever spoke: the cut belonged to that transition.
+        h.session.abort();
+
+        h.elements.B.currentTime = 96;
+        h.arm({ time: 96, audioSrc: 'second.mp3', external: 'from', settings: MIXED, nextKey: 'local:third-song' });
+        h.session.handleActiveDeckPlaying('local:third-song');
+
+        expect(h.session.getPhase()).toBe('fading');
+        expect(lastCurve(h.chains.B.fadeNode)?.duration).toBe(4);
     });
 });

@@ -308,6 +308,12 @@ export type CommandPaletteSettingsContext = {
      */
     canReportNeteasePlayback: () => boolean;
     toggleNeteaseScrobble: () => void;
+    /**
+     * Whether the Apple Music spectrum switch exists on this build - macOS desktop, where the Apple
+     * Music provider is registered. A getter, and the settings row gates on the same predicate.
+     */
+    canUseAppleMusicSpectrumCapture: () => boolean;
+    toggleAppleMusicSpectrumCapture: () => void;
     voiceInputPauseSupported: boolean;
     /** Lab switch for the experimental mod system; gates the `mods` command. */
     modSystemEnabled: boolean;

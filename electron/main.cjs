@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, screen, dialog, shell, nativeImage, desktopCapturer, Menu, Tray, nativeTheme, powerSaveBlocker, safeStorage, protocol, crashReporter, net: electronNet } = require('electron');
+const { app, BrowserWindow, ipcMain, session, screen, dialog, shell, nativeImage, desktopCapturer, webContents: electronWebContents, Menu, Tray, nativeTheme, powerSaveBlocker, safeStorage, protocol, crashReporter, net: electronNet } = require('electron');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -31,6 +31,9 @@ const { createVoiceInputPauseMonitor } = require('./voiceInputPause.cjs');
 const { createDisplaySleepBlocker } = require('./displaySleepBlocker.cjs');
 const { createLyricApi } = require('./lyricApi.cjs');
 const { createLocalCoverAssetStore, getLocalCoverAssetDirectory } = require('./localCoverAssets.cjs');
+const { createMusicAppBridge } = require('./appleMusic/musicAppBridge.cjs');
+const { createArtworkIndex } = require('./appleMusic/artworkIndex.cjs');
+const { createDisplayMediaHandler, createSystemAudioCaptureGate } = require('./appleMusic/systemAudioLoopback.cjs');
 const {
   compareVersions,
   getReleaseUrl,
@@ -2343,6 +2346,53 @@ const localCoverAssetStore = createLocalCoverAssetStore({
   },
 });
 
+// --- Apple Music (macOS Music.app bridge) ---
+let appleMusicBridgeInstance = null;
+let appleMusicArtworkIndexInstance = null;
+
+// Track -> cover asset index in its own file (not the settings store, which is cloned to the renderer).
+// Created on first use because app.getPath('userData') is only valid after app ready.
+function getAppleMusicArtworkIndex() {
+  if (!appleMusicArtworkIndexInstance) {
+    const getIndexPath = () => path.join(app.getPath('userData'), 'apple-music-artwork-index.json');
+    appleMusicArtworkIndexInstance = createArtworkIndex({
+      read: () => JSON.parse(fs.readFileSync(getIndexPath(), 'utf8')),
+      // Written through a temp file so a crash mid-write cannot leave a truncated index behind.
+      write: (entries) => {
+        const target = getIndexPath();
+        const temp = `${target}.tmp`;
+        fs.writeFileSync(temp, JSON.stringify(entries));
+        fs.renameSync(temp, target);
+      },
+    });
+  }
+  return appleMusicArtworkIndexInstance;
+}
+
+// Created on first use (not at startup) so the Music bridge costs nothing until Apple Music is used;
+// null off macOS, where the Music app does not exist.
+function getAppleMusicBridge() {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
+  if (!appleMusicBridgeInstance) {
+    appleMusicBridgeInstance = createMusicAppBridge({
+      spawn,
+      onState: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('apple-music-state', state);
+        }
+      },
+      artwork: {
+        has: (assetId) => localCoverAssetStore.has(assetId),
+        write: (assetId, bytes, mime) => localCoverAssetStore.write(assetId, bytes, mime),
+      },
+      artworkIndex: getAppleMusicArtworkIndex(),
+    });
+  }
+  return appleMusicBridgeInstance;
+}
+
 function getAudioCacheBaseName(cacheKey) {
   return crypto.createHash('sha256').update(cacheKey).digest('hex');
 }
@@ -2801,6 +2851,16 @@ function isAudioMediaPermission(permission, details) {
   return mediaType === 'audio' || mediaType === 'unknown' || typeof mediaType === 'undefined';
 }
 
+// getDisplayMedia may be gated by this permission before the display-media handler runs. Only macOS installs that
+// handler (setupAppleMusicSystemAudioLoopbackHandler), and the allowance exists only while Folia's own capture
+// request is in flight (the gate is armed), so a script that did not arm it is refused here as well. The handler
+// still limits the grant to the trusted main window's top frame.
+function isDisplayCapturePermission(permission) {
+  return process.platform === 'darwin'
+    && permission === 'display-capture'
+    && appleMusicSystemAudioCaptureGate.isArmed();
+}
+
 function isAllowedMainWindowPermission(permission, details) {
   return (
     isFileSystemPermission(permission) ||
@@ -2808,6 +2868,7 @@ function isAllowedMainWindowPermission(permission, details) {
     isClipboardWritePermission(permission) ||
     isSpeakerSelectionPermission(permission) ||
     isAudioMediaPermission(permission, details) ||
+    isDisplayCapturePermission(permission) ||
     permission === 'unknown'
   );
 }
@@ -2891,6 +2952,28 @@ function setupFileSystemAccessPermissionHandlers() {
 
     callback(true);
   });
+}
+
+// One-shot arming for the Apple Music spectrum's system audio capture: the renderer arms it over IPC right before
+// its own getDisplayMedia call, and the display-media handler consumes it. Without it, no script in the main
+// renderer (a mod's client code, say) can get silent screen and system audio. Also read by the 'display-capture'
+// permission check above.
+const appleMusicSystemAudioCaptureGate = createSystemAudioCaptureGate();
+
+// macOS only: lets the main window's renderer hear system audio (Music.app's output) for the Apple Music
+// spectrum. getDisplayMedia needs the "Screen & System Audio Recording" permission; without it getSources
+// rejects and the handler answers with an empty grant, so the renderer sees a failed capture.
+function setupAppleMusicSystemAudioLoopbackHandler() {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  session.defaultSession.setDisplayMediaRequestHandler(createDisplayMediaHandler({
+    isTrustedMainWindowContents,
+    getWebContentsFromFrame: (frame) => electronWebContents.fromFrame(frame),
+    getScreenSources: () => desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+    gate: appleMusicSystemAudioCaptureGate,
+  }));
 }
 
 function setupCorsBypassHandlers() {
@@ -5169,6 +5252,7 @@ app.whenReady().then(async () => {
   }
 
   setupFileSystemAccessPermissionHandlers();
+  setupAppleMusicSystemAudioLoopbackHandler();
   setupCorsBypassHandlers();
   localCoverAssetStore.registerProtocolHandler(protocol, electronNet);
   // Transcode fallback is an optional degradation path; a failure preparing it must never keep
@@ -5439,6 +5523,16 @@ app.on('before-quit', () => {
     }
   }
   void discordPresence.destroy();
+  // Apple Music: stop the Music app only if Folia started the current track. Not awaited so quitting is never
+  // delayed; dispose() kills the osascript child that has to carry the stop command out, so it waits for the stop.
+  const appleMusicBridge = getAppleMusicBridge();
+  if (appleMusicBridge) {
+    void appleMusicBridge.stopIfOwned().finally(() => appleMusicBridge.dispose());
+  }
+  // Persist any covers recorded since the last debounced write.
+  if (appleMusicArtworkIndexInstance) {
+    appleMusicArtworkIndexInstance.flush();
+  }
   void qqBackend.stop();
   void lyricApi.stop();
 });
@@ -5928,7 +6022,13 @@ ipcMain.handle('remove-local-cover-asset', async (_event, assetId) => {
 });
 
 ipcMain.handle('clear-local-cover-assets', async () => {
-  return localCoverAssetStore.clear();
+  const result = await localCoverAssetStore.clear();
+  // The Apple Music cover index must not outlive the cover files it points at. It is created here when
+  // missing so an index file left by an earlier session is emptied too (it only exists on macOS).
+  if (process.platform === 'darwin') {
+    getAppleMusicArtworkIndex().clear();
+  }
+  return result;
 });
 
 // 内嵌后端的端口、状态、重启、诊断快照与主动自检（electron/loginBackendIpc.cjs）。
@@ -5948,6 +6048,40 @@ ipcMain.handle('bodian-api-request', (event, operation, params) => {
     return { ok: false, error: { code: 'unavailable', message: 'Untrusted Bodian request' } };
   }
   return bodianApiBridge.request(operation, params);
+});
+
+ipcMain.handle('apple-music-request', (event, op, args) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to control the Music app.');
+  }
+
+  const bridge = getAppleMusicBridge();
+  if (!bridge) {
+    return { ok: false, error: { code: 'unavailable', message: 'Apple Music requires macOS' } };
+  }
+  return bridge.request(op, args);
+});
+
+ipcMain.handle('apple-music-set-monitoring', (event, active) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to change Music app state monitoring.');
+  }
+
+  getAppleMusicBridge()?.setMonitoring(Boolean(active));
+});
+
+// Arms the one-shot gate that lets the next display-media request of this window through (see the gate above).
+ipcMain.handle('apple-music-arm-system-audio', (event) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to arm system audio capture.');
+  }
+
+  if (process.platform !== 'darwin') {
+    return false;
+  }
+
+  appleMusicSystemAudioCaptureGate.arm(event.sender.id);
+  return true;
 });
 
 ipcMain.handle('window-minimize', () => {

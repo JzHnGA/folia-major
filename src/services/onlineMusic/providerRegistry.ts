@@ -6,6 +6,8 @@ import { neteaseProvider } from './neteaseProvider';
 import { kugouProvider } from './kugouProvider';
 import { qqProvider } from './qqProvider';
 import { bodianProvider } from './bodianProvider';
+import { appleMusicProvider } from './appleMusicProvider';
+import { isAppleMusicBridgeAvailable } from './appleMusicTransport';
 
 // src/services/onlineMusic/providerRegistry.ts
 
@@ -82,3 +84,5 @@ registerOnlineMusicProvider(neteaseProvider);
 registerOnlineMusicProvider(kugouProvider);
 registerOnlineMusicProvider(qqProvider);
 registerOnlineMusicProvider(bodianProvider);
+// Only the macOS desktop app can drive the Music app; everywhere else the provider does not exist.
+if (isAppleMusicBridgeAvailable()) registerOnlineMusicProvider(appleMusicProvider);

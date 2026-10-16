@@ -1,3 +1,4 @@
+import type { DeckGainEnvelope } from '../gainEnvelope';
 import { createDeckAnalyser, type DeckAnalyser } from './deckAnalyser';
 import {
     buildBandCurves,
@@ -173,6 +174,25 @@ export const rampGain = (context: AudioContext, gain: GainNode, value: number, s
     }
     gain.gain.setValueAtTime(gain.gain.value, now);
     gain.gain.linearRampToValueAtTime(value, now + seconds);
+};
+
+/**
+ * rampGain, and a description of the move it just wrote.
+ *
+ * The starting level is read before rampGain touches the schedule, because that is the level the ramp
+ * leaves from; the writes themselves are rampGain's, untouched.
+ */
+export const rampGainEnvelope = (
+    context: AudioContext,
+    gain: GainNode,
+    value: number,
+    seconds = 0,
+): DeckGainEnvelope => {
+    const startAt = context.currentTime;
+    const from = gain.gain.value;
+    rampGain(context, gain, value, seconds);
+    const span = Math.max(0, seconds);
+    return { startAt, seconds: span, points: span > 0 ? [from, value] : [value] };
 };
 
 /** Same as rampGain, in the unit the balance correction is actually reasoning in. */
@@ -603,6 +623,59 @@ export const scheduleStemWindow = (
     }
 };
 
+/** What scheduleCrossfadeEnvelopes wrote to each deck, oldest first, and whether the curves were accepted. */
+export interface ScheduledCrossfade {
+    ok: boolean;
+    outgoing: DeckGainEnvelope[];
+    incoming: DeckGainEnvelope[];
+}
+
+/**
+ * scheduleCrossfade, reporting every envelope it wrote.
+ *
+ * On success each side lists the instant hold (only when there is one) and then the curve, the very
+ * array handed to the engine; on a refusal each side lists the short ramp it fell back to. The
+ * parameter writes are exactly scheduleCrossfade's - nothing here reads a param but the fallback.
+ */
+export const scheduleCrossfadeEnvelopes = (
+    context: AudioContext,
+    outgoing: GainNode,
+    incoming: GainNode,
+    seconds: number,
+    crossover = 0.5,
+    hold = 0,
+    /** Fraction of the blend both tracks stay held at level. 0 is a plain crossfade. */
+    together = 0,
+): ScheduledCrossfade => {
+    const curves = buildCrossfadeCurves(crossover, together);
+    const now = context.currentTime;
+    const startAt = now + Math.max(0, hold);
+    try {
+        outgoing.gain.cancelScheduledValues(now);
+        incoming.gain.cancelScheduledValues(now);
+        const outgoingEnvelopes: DeckGainEnvelope[] = [];
+        const incomingEnvelopes: DeckGainEnvelope[] = [];
+        if (hold > 0) {
+            outgoing.gain.setValueAtTime(1, now);
+            incoming.gain.setValueAtTime(0, now);
+            outgoingEnvelopes.push({ startAt: now, seconds: 0, points: [1] });
+            incomingEnvelopes.push({ startAt: now, seconds: 0, points: [0] });
+        }
+        outgoing.gain.setValueCurveAtTime(curves.out, startAt, seconds);
+        incoming.gain.setValueCurveAtTime(curves.in, startAt, seconds);
+        outgoingEnvelopes.push({ startAt, seconds, points: Array.from(curves.out) });
+        incomingEnvelopes.push({ startAt, seconds, points: Array.from(curves.in) });
+        return { ok: true, outgoing: outgoingEnvelopes, incoming: incomingEnvelopes };
+    } catch (error) {
+        console.warn('[Automix] Crossfade rejected by the audio engine, cutting instead', error);
+        return {
+            ok: false,
+            outgoing: [rampGainEnvelope(context, outgoing, 0, 0.05)],
+            incoming: [rampGainEnvelope(context, incoming, 1, 0.05)],
+        };
+    }
+};
+
 /**
  * Schedules both halves of one blend on the audio clock.
  *
@@ -628,24 +701,4 @@ export const scheduleCrossfade = (
     hold = 0,
     /** Fraction of the blend both tracks stay held at level. 0 is a plain crossfade. */
     together = 0,
-): boolean => {
-    const curves = buildCrossfadeCurves(crossover, together);
-    const now = context.currentTime;
-    const startAt = now + Math.max(0, hold);
-    try {
-        outgoing.gain.cancelScheduledValues(now);
-        incoming.gain.cancelScheduledValues(now);
-        if (hold > 0) {
-            outgoing.gain.setValueAtTime(1, now);
-            incoming.gain.setValueAtTime(0, now);
-        }
-        outgoing.gain.setValueCurveAtTime(curves.out, startAt, seconds);
-        incoming.gain.setValueCurveAtTime(curves.in, startAt, seconds);
-        return true;
-    } catch (error) {
-        console.warn('[Automix] Crossfade rejected by the audio engine, cutting instead', error);
-        rampGain(context, outgoing, 0, 0.05);
-        rampGain(context, incoming, 1, 0.05);
-        return false;
-    }
-};
+): boolean => scheduleCrossfadeEnvelopes(context, outgoing, incoming, seconds, crossover, hold, together).ok;
