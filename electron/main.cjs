@@ -33,7 +33,7 @@ const { createLyricApi } = require('./lyricApi.cjs');
 const { createLocalCoverAssetStore, getLocalCoverAssetDirectory } = require('./localCoverAssets.cjs');
 const { createMusicAppBridge } = require('./appleMusic/musicAppBridge.cjs');
 const { createArtworkIndex } = require('./appleMusic/artworkIndex.cjs');
-const { createDisplayMediaHandler } = require('./appleMusic/systemAudioLoopback.cjs');
+const { createDisplayMediaHandler, createSystemAudioCaptureGate } = require('./appleMusic/systemAudioLoopback.cjs');
 const {
   compareVersions,
   getReleaseUrl,
@@ -2852,10 +2852,13 @@ function isAudioMediaPermission(permission, details) {
 }
 
 // getDisplayMedia may be gated by this permission before the display-media handler runs. Only macOS installs that
-// handler (setupAppleMusicSystemAudioLoopbackHandler), and the handler itself still limits the grant to the
-// trusted main window's top frame, so allowing the permission there does not widen what can be captured.
+// handler (setupAppleMusicSystemAudioLoopbackHandler), and the allowance exists only while Folia's own capture
+// request is in flight (the gate is armed), so a script that did not arm it is refused here as well. The handler
+// still limits the grant to the trusted main window's top frame.
 function isDisplayCapturePermission(permission) {
-  return process.platform === 'darwin' && permission === 'display-capture';
+  return process.platform === 'darwin'
+    && permission === 'display-capture'
+    && appleMusicSystemAudioCaptureGate.isArmed();
 }
 
 function isAllowedMainWindowPermission(permission, details) {
@@ -2951,6 +2954,12 @@ function setupFileSystemAccessPermissionHandlers() {
   });
 }
 
+// One-shot arming for the Apple Music spectrum's system audio capture: the renderer arms it over IPC right before
+// its own getDisplayMedia call, and the display-media handler consumes it. Without it, no script in the main
+// renderer (a mod's client code, say) can get silent screen and system audio. Also read by the 'display-capture'
+// permission check above.
+const appleMusicSystemAudioCaptureGate = createSystemAudioCaptureGate();
+
 // macOS only: lets the main window's renderer hear system audio (Music.app's output) for the Apple Music
 // spectrum. getDisplayMedia needs the "Screen & System Audio Recording" permission; without it getSources
 // rejects and the handler answers with an empty grant, so the renderer sees a failed capture.
@@ -2963,6 +2972,7 @@ function setupAppleMusicSystemAudioLoopbackHandler() {
     isTrustedMainWindowContents,
     getWebContentsFromFrame: (frame) => electronWebContents.fromFrame(frame),
     getScreenSources: () => desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+    gate: appleMusicSystemAudioCaptureGate,
   }));
 }
 
@@ -6058,6 +6068,20 @@ ipcMain.handle('apple-music-set-monitoring', (event, active) => {
   }
 
   getAppleMusicBridge()?.setMonitoring(Boolean(active));
+});
+
+// Arms the one-shot gate that lets the next display-media request of this window through (see the gate above).
+ipcMain.handle('apple-music-arm-system-audio', (event) => {
+  if (!isTrustedMainWindowContents(event.sender)) {
+    throw new Error('Untrusted renderer attempted to arm system audio capture.');
+  }
+
+  if (process.platform !== 'darwin') {
+    return false;
+  }
+
+  appleMusicSystemAudioCaptureGate.arm(event.sender.id);
+  return true;
 });
 
 ipcMain.handle('window-minimize', () => {

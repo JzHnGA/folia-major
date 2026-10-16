@@ -146,6 +146,7 @@ contextBridge.exposeInMainWorld('electron', {
     appleMusic: {
         request: (op, args) => ipcRenderer.invoke('apple-music-request', op, args),
         setMonitoring: (active) => ipcRenderer.invoke('apple-music-set-monitoring', active),
+        armSystemAudioCapture: () => ipcRenderer.invoke('apple-music-arm-system-audio'),
         onState: (callback) => {
             const listener = (_event, state) => callback(state);
             ipcRenderer.on('apple-music-state', listener);

@@ -907,6 +907,8 @@ declare global {
           args?: Record<string, unknown>,
         ) => Promise<import('./services/onlineMusic/appleMusicTransport').AppleMusicBridgeResult>;
         setMonitoring: (active: boolean) => Promise<void>;
+        /** Arms the main process for this window's next getDisplayMedia call; resolves false off macOS. */
+        armSystemAudioCapture?: () => Promise<boolean>;
         onState: (callback: (state: import('./types/onlineMusic').ExternalPlaybackState) => void) => () => void;
       };
       kugouRequest: (

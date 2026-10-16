@@ -88,7 +88,16 @@ const unmount = () => {
     committed = [];
 };
 
-const newCapture = () => ({ analyser: { id: 'capture' } as unknown as AnalyserNode, stop: vi.fn() });
+// A capture whose track the test can end, the way the user stopping the share from the menu bar does.
+const newCapture = () => {
+    let listener: (() => void) | null = null;
+    return {
+        analyser: { id: 'capture' } as unknown as AnalyserNode,
+        stop: vi.fn(),
+        onEnded: (next: () => void) => { listener = next; },
+        end: () => listener?.(),
+    };
+};
 
 describe('useAppleMusicSpectrumCapture', () => {
     beforeEach(() => {
@@ -161,22 +170,49 @@ describe('useAppleMusicSpectrumCapture', () => {
         expect(result!.current).toBeNull();
     });
 
-    it('waits for the AudioContext to exist before capturing', async () => {
+    it('clears the ref without a denial notice when the user ends the capture from the system', async () => {
+        const running = newCapture();
+        capture.start.mockResolvedValue(running);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        render();
+        await flush();
+        expect(result!.current).toBe(running.analyser);
+
+        running.end();
+
+        expect(result!.current).toBeNull();
+        expect(running.stop).toHaveBeenCalledTimes(1);
+        expect(status.setStatusMessage).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith('[AppleMusicSpectrum] system audio capture ended');
+        warn.mockRestore();
+    });
+
+    it('waits for the AudioContext to exist before capturing, without re-rendering', async () => {
         audioContextRef.current = null;
         render();
         await flush();
         expect(capture.start).not.toHaveBeenCalled();
 
-        // The context is created lazily on first play; a short poll re-reads the ref.
-        vi.advanceTimersByTime(500);
-        expect(runtime.stateSetters).toBeGreaterThan(0);
-
+        // The context is created lazily on first play; the controller re-reads the ref on its own timer, so no
+        // component state changes and nothing re-renders while waiting.
         capture.start.mockResolvedValue(newCapture());
         audioContextRef.current = { id: 'context' } as unknown as AudioContext;
-        render();
+        vi.advanceTimersByTime(500);
         await flush();
 
         expect(capture.start).toHaveBeenCalledTimes(1);
+        expect(capture.start).toHaveBeenCalledWith(audioContextRef.current);
+        expect(runtime.stateSetters).toBe(0);
+    });
+
+    it('stops waiting for the AudioContext on unmount', async () => {
+        audioContextRef.current = null;
+        render();
+        await flush();
+
+        unmount();
+
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     // Runs last on purpose: the notice flag is module-level, so only the first failure of the file can show it.

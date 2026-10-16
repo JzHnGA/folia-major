@@ -10,6 +10,9 @@ import type { SystemAudioCapture } from './systemAudioCapture';
  */
 export const SPECTRUM_CAPTURE_STOP_GRACE_MS = 2000;
 
+/** How often the controller re-reads the AudioContext while a capture is wanted but the context does not exist yet. */
+export const SPECTRUM_CONTEXT_POLL_MS = 500;
+
 export type SpectrumCaptureConditions = {
     enabled: boolean;
     isExternal: boolean;
@@ -27,6 +30,11 @@ export type SpectrumCaptureControllerDeps = {
     /** Hands the running capture's analyser to the visualizer, or null when there is none. */
     publish: (analyser: AnalyserNode | null) => void;
     onFailure: (error: unknown) => void;
+    /**
+     * Reads the AudioContext when `update` has none. The context is created lazily on first play and lives in a ref,
+     * so nothing announces it; with this the controller polls for it itself instead of the UI re-rendering.
+     */
+    getContext?: () => AudioContext | null;
 };
 
 export type SpectrumCaptureUpdate = {
@@ -42,11 +50,21 @@ type CaptureSlot = {
 };
 
 // Starts the capture when conditions hold and stops it after the grace period when they lapse.
-// A failed start is not retried until the setting is switched off and on again.
-export function createSpectrumCaptureController({ start, publish, onFailure }: SpectrumCaptureControllerDeps) {
+// A failed start, or a capture the user ended from the system, is not retried until the setting is switched off and
+// on again. While everything but the AudioContext is in place it polls getContext (at most one timer at a time).
+export function createSpectrumCaptureController({ start, publish, onFailure, getContext }: SpectrumCaptureControllerDeps) {
     let slot: CaptureSlot | null = null;
     let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    let contextTimer: ReturnType<typeof setTimeout> | null = null;
     let failed = false;
+    let lastUpdate: SpectrumCaptureUpdate | null = null;
+
+    const clearContextTimer = () => {
+        if (contextTimer !== null) {
+            clearTimeout(contextTimer);
+            contextTimer = null;
+        }
+    };
 
     const clearStopTimer = () => {
         if (stopTimer !== null) {
@@ -79,6 +97,14 @@ export function createSpectrumCaptureController({ start, publish, onFailure }: S
                 }
                 pending.capture = capture;
                 publish(capture.analyser);
+                // The track ends on its own when the user stops sharing from the menu bar or revokes the permission.
+                // That was a deliberate act, so it neither retries nor shows the denial notice.
+                capture.onEnded(() => {
+                    if (slot !== pending) return;
+                    failed = true;
+                    console.warn('[AppleMusicSpectrum] system audio capture ended');
+                    stopNow();
+                });
             } catch (error) {
                 if (slot !== pending) return;
                 slot = null;
@@ -88,25 +114,52 @@ export function createSpectrumCaptureController({ start, publish, onFailure }: S
         })();
     };
 
-    return {
-        update({ enabled, isExternal, isPlaying, context }: SpectrumCaptureUpdate) {
-            if (!enabled) {
-                failed = false;
-                stopNow();
+    // Re-reads the context on a timer while one is wanted but missing; the tick re-runs the last update with it.
+    const scheduleContextPoll = () => {
+        if (contextTimer !== null || !getContext) return;
+        contextTimer = setTimeout(() => {
+            contextTimer = null;
+            const context = getContext();
+            if (context && lastUpdate) {
+                update({ ...lastUpdate, context });
                 return;
             }
-
-            if (context && shouldCaptureSystemAudio({ enabled, isExternal, isPlaying, hasContext: true })) {
-                clearStopTimer();
-                if (slot && slot.context !== context) stopNow();
-                if (!slot && !failed) begin(context);
-                return;
-            }
-
-            if (slot && stopTimer === null) {
-                stopTimer = setTimeout(stopNow, SPECTRUM_CAPTURE_STOP_GRACE_MS);
-            }
-        },
-        dispose: stopNow,
+            scheduleContextPoll();
+        }, SPECTRUM_CONTEXT_POLL_MS);
     };
+
+    function update(next: SpectrumCaptureUpdate) {
+        const { enabled, isExternal, isPlaying, context } = next;
+        lastUpdate = next;
+        const wanted = shouldCaptureSystemAudio({ enabled, isExternal, isPlaying, hasContext: true });
+        // Re-decided on every update: the poll only lives while the context is the single missing condition.
+        if (context || !wanted) clearContextTimer();
+
+        if (!enabled) {
+            failed = false;
+            stopNow();
+            return;
+        }
+
+        if (context && wanted) {
+            clearStopTimer();
+            if (slot && slot.context !== context) stopNow();
+            if (!slot && !failed) begin(context);
+            return;
+        }
+
+        if (slot && stopTimer === null) {
+            stopTimer = setTimeout(stopNow, SPECTRUM_CAPTURE_STOP_GRACE_MS);
+        }
+
+        if (!context && wanted) scheduleContextPoll();
+    }
+
+    function dispose() {
+        clearContextTimer();
+        lastUpdate = null;
+        stopNow();
+    }
+
+    return { update, dispose };
 }

@@ -19,9 +19,6 @@ type UseAppleMusicSpectrumCaptureParams = {
     audioContextRef: MutableRefObject<AudioContext | null>;
 };
 
-// The AudioContext is created on first play and lives in a ref, so nothing re-renders when it appears.
-const CONTEXT_POLL_MS = 500;
-
 // The denial notice is shown once per app session; a failed start is not retried until the setting is toggled again.
 let hasShownCaptureFailureNotice = false;
 
@@ -40,25 +37,20 @@ export function useAppleMusicSpectrumCapture({
     const isExternal = usePlaybackStore(state => omni.isExternalPlaybackSong(state.currentSong));
     const isPlaying = usePlaybackStore(state => state.playerState === PlayerState.PLAYING);
     const captureAnalyserRef = useRef<AnalyserNode | null>(null);
-    const [, setContextPollTick] = useState(0);
     const context = audioContextRef.current;
 
+    // The AudioContext is created on first play and lives in a ref, so nothing re-renders when it appears; the
+    // controller polls getContext for it itself while a capture is wanted, instead of this hook re-rendering App.
     const [controller] = useState(() => createSpectrumCaptureController({
         start: audioContext => startSystemAudioCapture(audioContext),
         publish: analyser => { captureAnalyserRef.current = analyser; },
         onFailure: reportCaptureFailure,
+        getContext: () => audioContextRef.current,
     }));
 
     useEffect(() => {
         controller.update({ enabled, isExternal, isPlaying, context });
     }, [controller, enabled, isExternal, isPlaying, context]);
-
-    // Polls only while a capture is wanted but the context is not there yet, to re-read the ref.
-    useEffect(() => {
-        if (context || !enabled || !isExternal || !isPlaying) return;
-        const timer = setTimeout(() => setContextPollTick(tick => tick + 1), CONTEXT_POLL_MS);
-        return () => clearTimeout(timer);
-    });
 
     useEffect(() => () => controller.dispose(), [controller]);
 
