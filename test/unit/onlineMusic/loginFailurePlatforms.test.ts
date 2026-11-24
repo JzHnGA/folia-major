@@ -176,7 +176,7 @@ describe('NetEase', () => {
         vi.stubGlobal('fetch', answers({ data: { unikey: 'qr-key', qrimg: 'qr.png' } }));
         const started = omni.startLogin('netease');
         await vi.advanceTimersByTimeAsync(31_000);
-        await expect(started).resolves.toEqual({ key: 'qr-key', imageUrl: 'qr.png' });
+        await expect(started).resolves.toEqual({ key: 'qr-key', imageUrl: 'qr.png', codeUrl: 'https://music.163.com/login?codekey=qr-key' });
         expect(vi.getTimerCount()).toBe(0);
 
         // Reading who is signed in is not a request a sign-in waits for: it is sent without a limit.

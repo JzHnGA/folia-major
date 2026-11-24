@@ -1,5 +1,7 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
+import { NO_SAFE_SIDES } from './cameraPath';
 import { type MotionValue } from 'framer-motion';
 import * as THREE from 'three';
 import { type Line } from '../../../types';
@@ -20,6 +22,7 @@ import {
     resolveCameraDrift,
     resolveHoldSettle,
     resolveReadHeadTruck,
+    resolveSafeFrameAspect,
     resolveShotOffset,
     smoothDamp,
 } from './cameraPath';
@@ -56,6 +59,8 @@ interface CameraRigProps {
      * flight: the camera captures its current pose and flies an eased Bezier arc to the incoming scene's
      * opening pose over TRANSITION_DURATION, then hands back to the normal follow. 0 = no transition. */
     transitionEpoch: number;
+    /** Previews are small scaled boxes nowhere near the island: frame them as if there were no safe area. */
+    ignoreSafeArea?: boolean;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -169,7 +174,15 @@ const CameraRig: React.FC<CameraRigProps> = ({
     activeLineWidthRef,
     motion,
     transitionEpoch,
+    ignoreSafeArea = false,
 }) => {
+    // Read every frame inside useFrame, so kept in a ref rather than re-rendering the rig.
+    const liveSafeSides = useSafeAreaSidesPx();
+    const safeSides = ignoreSafeArea ? NO_SAFE_SIDES : liveSafeSides;
+    const safeSidesRef = useRef(safeSides);
+    useEffect(() => {
+        safeSidesRef.current = safeSides;
+    }, [safeSides]);
     // Cinematic transition flight: on an epoch change the camera snapshots its current pose and flies a
     // bowed eased arc to the incoming scene's live follow pose over TRANSITION_DURATION, then releases
     // back to the normal SmoothDamp follow (which continues seamlessly from the arrival pose).
@@ -235,7 +248,10 @@ const CameraRig: React.FC<CameraRigProps> = ({
         const camera = state.camera as THREE.PerspectiveCamera;
         const aspect = camera.isPerspectiveCamera ? camera.aspect : 1;
         const fov = camera.isPerspectiveCamera ? camera.fov : 55;
-        const visibleHalf = frameHalfWidth(DIORAMA_HERO_DISTANCE, fov, aspect) * DIORAMA_SAFE_FRAME_FRACTION;
+        // The word-following truck stays inside the part of the frame clear of the landscape safe areas.
+        const sides = safeSidesRef.current;
+        const safeAspect = resolveSafeFrameAspect(aspect, state.size.width, sides.left, sides.right);
+        const visibleHalf = frameHalfWidth(DIORAMA_HERO_DISTANCE, fov, safeAspect) * DIORAMA_SAFE_FRAME_FRACTION;
 
         // Local frame of the current line on the winding path. Everything below is composed in it.
         const frame = resolved ? resolved.frame : getFrame([], 0);

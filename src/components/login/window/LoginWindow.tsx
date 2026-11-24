@@ -117,7 +117,9 @@ export const LoginWindow: React.FC<LoginWindowProps> = ({
     const colour = { '--login-pc': mark?.color ?? 'var(--st-t3)', '--login-on-pc': mark?.onColor ?? 'var(--st-win)' } as React.CSSProperties;
     // 窗口从按下去的那一边出来：走那段距离的三成。
     const from = useMemo(() => (origin && !still ? { x: (origin.x - window.innerWidth / 2) * 0.3, y: (origin.y - window.innerHeight / 2) * 0.3 } : null), [origin, still]);
-    const arrival = useMarkArrival(isOpen, still ? null : origin, providerId, providerLabel);
+    // 窄版面（手机）上窗口是从下面出来的那一种，标题里那个记号落定的位置不能照宽版面算，
+    // 记号走过去会走一段怪路：窄版面不走，记号直接显在标题里。
+    const arrival = useMarkArrival(isOpen, still || narrow ? null : origin, providerId, providerLabel);
     const fades = `st-t-fast transition-opacity ${quiet ? 'opacity-0' : ''}`;
 
     return (

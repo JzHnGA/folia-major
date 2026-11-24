@@ -939,7 +939,7 @@ test.describe('[bravais-only] the narrow home seam layout', () => {
         expect(alpha === undefined || Number(alpha) === 1).toBe(true);
         expect(await menu.evaluate(node => getComputedStyle(node).boxShadow)).not.toBe('none');
     });
-    // fb8：「⋯」里的「回到播放页」与左上角返回同一个判断——没有当前歌曲时不显示（点了会进空的播放页），有了才出现、点了回播放页。
+    // fb8：「⋯」里的「回到播放页」——没有当前歌曲时不显示（点了会进空的播放页），有了才出现、点了回播放页。
     test('the more menu offers back to the player only while a song is loaded', async ({ page }) => {
         const more = seam(page).locator('.bravais-seam-tools [data-bravais-seam-action="more"]');
         const menu = seam(page).locator('[data-bravais-seam-menu]');

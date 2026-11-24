@@ -225,7 +225,12 @@ const VisualizerHarmonyOverlay: React.FC<VisualizerHarmonyOverlayProps> = ({
                         y: { duration: 0.2, ease: 'easeOut' },
                     }}
                     className="pointer-events-none absolute left-0 right-0 z-30 flex flex-col items-center gap-1.5 px-5 text-center"
-                    style={{ top: harmonyTopPx }}
+                    // 左右让开横屏的灵动岛 / 刘海（没有安全区时仍是 px-5）。
+                    style={{
+                        top: harmonyTopPx,
+                        paddingLeft: 'max(1.25rem, env(safe-area-inset-left))',
+                        paddingRight: 'max(1.25rem, env(safe-area-inset-right))',
+                    }}
                 >
                     <div
                         className={`relative isolate flex max-w-full flex-col items-center gap-1.5 ${harmonySubtitleBackground ? 'px-4 py-2' : ''}`}

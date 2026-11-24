@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { USER_GUIDE_AUTO_OPEN_VERSION } from '../components/modal/userGuideContent';
+import { isNightstandSupported } from '../components/nightstand/nightstandPlatform';
 import { skipsStartupExperience } from '../dev/devLaunchFlags';
 import { hasOnboardingLibrarySuiteChoice } from '../library/app/librarySuiteChoice';
 import { requestPlaybackEntryViewPrompt, usePlaybackEntryViewStore } from '../stores/usePlaybackEntryViewStore';
@@ -85,7 +86,9 @@ export const useStartupExperienceGate = () => {
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? null : __APP_VERSION__;
 
     // Dev shortcut (devLaunchFlags.ts): nothing opens and nothing is marked seen, so turning it off brings the sequence back.
-    const nextStep = skipsStartupExperience ? null : resolveStartupExperienceStep({
+    // Nightstand (iOS shell / ?nightstand=1) likewise skips the whole desktop-oriented onboarding sequence
+    // (release notes, playback-entry choice, Ponder gate) so the wall and the clock are never covered.
+    const nextStep = (skipsStartupExperience || isNightstandSupported()) ? null : resolveStartupExperienceStep({
         isCurrentRelease: Boolean(appVersion && USER_GUIDE_AUTO_OPEN_VERSION === appVersion),
         hasSeenPonder: lastSeenPonderVersion !== null,
         hasFinishedThisRelease: Boolean(appVersion && lastSeenPonderVersion === appVersion),

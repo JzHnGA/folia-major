@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
     Disc3,
     EyeOff,
@@ -78,6 +79,14 @@ const BravaisSeamHomeTools: React.FC<{
     /** 一起挪进菜单的动作入口（在中段时为 null），排在直达入口后面。 */
     menuEntries?: readonly BravaisHomeEntry[] | null;
 }> = ({ home, compact, onExpand, menuShortcuts, onOpenShortcut, menuEntries }) => {
+    const { t } = useTranslation();
+    // 直达入口在菜单里用种类的短名（与缝里的直达入口一致），平台给的长卡名留给 title / aria-label：
+    // 「Daily Recommendations」这类长名放不进窄缝的菜单宽度，会被裁掉。
+    const shortcutName = (shortcut: BravaisHomeShortcut) => (
+        shortcut.special === 'fm-station' && shortcut.label
+            ? shortcut.label
+            : t(`libraryBravaisHome.special.${shortcut.special}`)
+    );
     const menuOpen = useBravaisHomeUiStore(state => state.popover === 'menu');
     const dockRef = useRef<HTMLDivElement>(null);
     const moreRef = useRef<HTMLButtonElement>(null);
@@ -163,8 +172,9 @@ const BravaisSeamHomeTools: React.FC<{
                             return (
                                 <button key={shortcut.special} type="button" role="menuitem" className="is-shortcut"
                                     data-bravais-seam-action={`shortcut-${shortcut.special}`} data-bravais-shortcut={shortcut.special}
+                                    aria-label={shortcut.label} title={shortcut.label}
                                     onClick={() => runItem(() => (onOpenShortcut ? onOpenShortcut(shortcut) : shortcut.open()))}>
-                                    <Icon aria-hidden />{shortcut.label}
+                                    <Icon aria-hidden />{shortcutName(shortcut)}
                                 </button>
                             );
                         })}

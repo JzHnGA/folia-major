@@ -19,10 +19,17 @@ type TooltipProps = {
     text?: string;
     /** For the element that wraps the children. */
     className?: string;
+    /**
+     * Each new value opens the label for a few seconds, as a tap would on a touch screen where there
+     * is no hover: a part that does nothing right now uses it to say why (Button / Toggle disabledReason).
+     */
+    flash?: number;
     children: React.ReactNode;
 };
 
-export const Tooltip: React.FC<TooltipProps> = ({ text, className, children }) => {
+const FLASH_MS = 3200;
+
+export const Tooltip: React.FC<TooltipProps> = ({ text, className, flash, children }) => {
     const { isDaylight } = useSettingsKitTheme();
     const reduced = useKitReducedMotion();
     const anchorRef = useRef<HTMLSpanElement>(null);
@@ -38,6 +45,13 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, className, children }) =
         setShown(false);
     }, []);
     useEffect(() => () => window.clearTimeout(timerRef.current), []);
+    // A flash: shown at once, taken down after a few seconds (or earlier by the usual ways).
+    useEffect(() => {
+        if (!flash) return;
+        window.clearTimeout(timerRef.current);
+        setShown(true);
+        timerRef.current = window.setTimeout(() => setShown(false), FLASH_MS);
+    }, [flash]);
     // A text that is taken away takes the label with it; it does not come back by itself.
     useEffect(() => {
         if (!text) hide();

@@ -107,7 +107,7 @@ describe('hifi commands', () => {
         const { context, settings } = contextFor({ enabled: false, confirmed: false });
         await command('hifi-toggle').execute('', context);
         expect(settings.setHifiEnabled).not.toHaveBeenCalled();
-        expect(settings.openSettings).toHaveBeenCalledExactlyOnceWith('options', 'playback', null, 'hifiEngine');
+        expect(settings.openSettings).toHaveBeenCalledExactlyOnceWith('playback', null, 'hifiEngine');
     });
 
     it('switches on once the warning was accepted', async () => {
@@ -126,7 +126,7 @@ describe('hifi commands', () => {
         const { context, settings } = contextFor();
         expect(command('hifi-settings').settingsTarget).toEqual({ subview: 'playback', anchorId: 'hifiEngine' });
         await command('hifi-settings').execute('', context);
-        expect(settings.openSettings).toHaveBeenCalledExactlyOnceWith('options', 'playback', null, 'hifiEngine');
+        expect(settings.openSettings).toHaveBeenCalledExactlyOnceWith('playback', null, 'hifiEngine');
         expect(sectionForSettingsSubview('playback')).toBe('playback');
         // The page is on the web too; only the engine group is the desktop app's.
         expect(getAvailableSettingsSectionIds({ isElectron: false })).toContain('playback');
@@ -180,7 +180,7 @@ describe('hifi commands', () => {
         const done = contextFor({ canInstall: true });
         expect(await download.execute('', done.context)).toBe(true);
         expect(done.settings.installHifiRuntime).toHaveBeenCalledOnce();
-        expect(done.settings.openSettings).toHaveBeenCalledExactlyOnceWith('options', 'playback', null, 'hifiEngine');
+        expect(done.settings.openSettings).toHaveBeenCalledExactlyOnceWith('playback', null, 'hifiEngine');
         await settle();
         expect(done.shared.setStatusMsg).toHaveBeenCalledExactlyOnceWith({ type: 'success', text: 'mpv 0.41.0 · downloaded by Folia' });
     });

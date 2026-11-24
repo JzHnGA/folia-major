@@ -58,11 +58,20 @@ export const PANEL_SLIM_ROOM = PANEL_SLIM_FROM_BOTTOM[0];
  */
 export const PANEL_SLIM_SHIFT = 160;
 
-/** 面板里一条纸的框（窗口坐标）：slot 是 'band'（顶上那条）或细纸带的第几格（0 上、1 下）。 */
-export const panelPaperFrame = (slot: 'band' | number, viewWidth: number, viewHeight: number): PaperFrame => {
+/** 面板贴哪条边：触屏上小舌头在右缘时面板贴右缘（纸改从左边探出），其余贴左缘。 */
+export type PanelDock = 'left' | 'right';
+
+/** 面板的左边在窗口里的 x：贴左缘是 0，贴右缘是窗口宽减面板宽。 */
+export const panelLeftFor = (viewWidth: number, dock: PanelDock = 'left') => (
+    dock === 'right' ? viewWidth - panelWidthFor(viewWidth) : 0
+);
+
+/** 面板里一条纸的框（窗口坐标）：slot 是 'band'（顶上那条）或细纸带的第几格（0 上、1 下）。贴右缘时纸从面板左边探出。 */
+export const panelPaperFrame = (slot: 'band' | number, viewWidth: number, viewHeight: number, dock: PanelDock = 'left'): PaperFrame => {
     const width = panelWidthFor(viewWidth) + PANEL_PROTRUDE;
-    if (slot === 'band') return { top: PANEL_BAND_TOP, left: 0, width, height: PANEL_BAND_HEIGHT };
-    return { top: viewHeight - PANEL_SLIM_FROM_BOTTOM[Math.max(0, Math.min(1, slot))], left: 0, width, height: PANEL_SLIM_HEIGHT };
+    const left = dock === 'right' ? viewWidth - width : 0;
+    if (slot === 'band') return { top: PANEL_BAND_TOP, left, width, height: PANEL_BAND_HEIGHT };
+    return { top: viewHeight - PANEL_SLIM_FROM_BOTTOM[Math.max(0, Math.min(1, slot))], left, width, height: PANEL_SLIM_HEIGHT };
 };
 
 /** 窗口的宽高（跟着窗口变）。 */

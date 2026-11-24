@@ -1,5 +1,6 @@
 import { Line } from '../../../types';
 import { getLineRenderHints, getLineTransitionTiming } from '../../../utils/lyrics/renderHints';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import type { CameraViewTarget, FumeArticleLayout, FumeBlock, ViewportSize } from './fumeTypes';
 import { clamp, easeInOutCubic, mix } from './fumeMath';
 import { resolvePrintedGraphemeCount } from './fumeReveal';
@@ -13,6 +14,22 @@ export const CAMERA_SCALE_MAX = 2.24;
 export const OVERVIEW_CAMERA_SOURCE = -2;
 
 const FUME_CAMERA_TELEPORT_TRIGGER_SCREENS = 2.75;
+
+const NO_SAFE_SIDES: SafeAreaSides = { left: 0, right: 0 };
+
+/**
+ * The horizontal span the reading should stay inside: the viewport minus the side safe areas (the
+ * Dynamic Island / notch on a landscape iPhone). The camera's look point is projected to `centerX`, so
+ * the write-head and the overview land clear of the island while the page itself still runs full-bleed.
+ * With no insets this is exactly the old `width * 0.5` centre and the full width.
+ */
+export const resolveFumeSafeSpan = (viewport: ViewportSize, safeSides: SafeAreaSides = NO_SAFE_SIDES) => {
+    // Clamp so a bogus inset on a tiny viewport can never leave a negative span.
+    const left = clamp(safeSides.left, 0, viewport.width * 0.4);
+    const right = clamp(safeSides.right, 0, viewport.width * 0.4);
+    const width = Math.max(viewport.width - left - right, 1);
+    return { left, right, width, centerX: left + width * 0.5 };
+};
 
 export const resolveSteppedBlockFocusPoint = (
     block: FumeBlock,
@@ -263,10 +280,14 @@ export const resolveOverviewFlightBridge = ({
 export const resolveArticleOverviewCamera = (
     article: FumeArticleLayout,
     viewport: ViewportSize,
+    safeSides: SafeAreaSides = NO_SAFE_SIDES,
 ): CameraViewTarget => {
+    // Fit into the safe width only; centring in the safe span comes from the stage projecting the
+    // camera to the safe centre, so the shot's world centre stays the content's centre.
+    const safeWidth = resolveFumeSafeSpan(viewport, safeSides).width;
     if (article.blocks.length === 0) {
         const fitScale = Math.min(
-            viewport.width / Math.max(article.width, 1),
+            safeWidth / Math.max(article.width, 1),
             viewport.height / Math.max(article.height, 1),
         );
 
@@ -289,12 +310,12 @@ export const resolveArticleOverviewCamera = (
         maxY = Math.max(maxY, block.y + block.height);
     }
 
-    const paddingX = clamp(viewport.width * 0.2, 120, 280);
+    const paddingX = clamp(safeWidth * 0.2, 120, 280);
     const paddingY = clamp(viewport.height * 0.2, 96, 220);
     const framedWidth = Math.max(maxX - minX + paddingX * 2, 1);
     const framedHeight = Math.max(maxY - minY + paddingY * 2, 1);
     const fitScale = Math.min(
-        viewport.width / framedWidth,
+        safeWidth / framedWidth,
         viewport.height / framedHeight,
     );
 

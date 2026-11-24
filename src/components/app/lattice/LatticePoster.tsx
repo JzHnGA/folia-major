@@ -26,6 +26,7 @@ import { LATTICE_TILE_ATTR, MORPH_SHADE_ATTR } from '../../collectionFlight';
 import { ENTRANCE_LIFT, LEAVING } from './tileMotion';
 import { useFlightBackTo } from './wallFlight';
 import { isWallDoubleClickOn, noteWallPress } from '../../wall/wallDoubleClick';
+import { WALL_FLIP_FLAT, flatFlipScaleX } from '../../wall/wallFlip';
 
 // Renders one poster and its expanded Player Chrome controls. A poster of the explore page that
 // is a collection (album, playlist, artist, mix) has one button there instead, which opens its page.
@@ -128,10 +129,17 @@ const arePosterPropsEqual = (previous: LatticePosterProps, next: LatticePosterPr
  */
 const handoffTransform = (transform: TransformProperties, generated: string) => {
     const rotate = transform.rotateY;
-    if (rotate === undefined || parseFloat(String(rotate)) === 0) return generated;
+    const degrees = rotate === undefined ? 0 : parseFloat(String(rotate));
+    if (!degrees) return generated;
     const length = (value: unknown) => (value === undefined ? '0px' : typeof value === 'number' ? `${value}px` : String(value));
     const factor = (value: unknown) => (value === undefined ? '1' : String(value));
-    return `translateX(${length(transform.x)}) translateY(${length(transform.y)}) perspective(${WALL_HANDOFF_PERSPECTIVE_PX}px) `
+    const translate = `translateX(${length(transform.x)}) translateY(${length(transform.y)})`;
+    // iOS 壳：同一个角度画成 X 方向压扁，没有 3D 项，海报不升层（wall/wallFlip.ts 说明了为什么）。
+    if (WALL_FLIP_FLAT) {
+        const scaleX = parseFloat(factor(transform.scaleX)) * flatFlipScaleX(degrees);
+        return `${translate} scale(${factor(transform.scale)}) scaleX(${scaleX.toFixed(4)}) scaleY(${factor(transform.scaleY)})`;
+    }
+    return `${translate} perspective(${WALL_HANDOFF_PERSPECTIVE_PX}px) `
         + `scale(${factor(transform.scale)}) scaleX(${factor(transform.scaleX)}) scaleY(${factor(transform.scaleY)}) `
         + `rotateY(${typeof rotate === 'number' ? `${rotate}deg` : String(rotate)})`;
 };

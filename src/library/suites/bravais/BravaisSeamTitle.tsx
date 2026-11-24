@@ -1,5 +1,6 @@
 import React, { useCallback, useId, useRef } from 'react';
 import { shouldToggleSeamFromTitle } from './bravaisSeamTitleClick';
+import { useBravaisSpineTitleFit } from './useBravaisSpineTitleFit';
 
 // src/library/suites/bravais/BravaisSeamTitle.tsx
 // 缝里可点的竖排标题（设计稿 §5「开口等级」）：完整信息条的标题区域（上下一对引号 + 竖排大标题）点一下收成书脊，
@@ -39,6 +40,10 @@ type BravaisSeamTitleAreaProps = {
 export const BravaisSeamTitleArea: React.FC<BravaisSeamTitleAreaProps> = ({ title, fontSize, label, onCollapse, row = false }) => {
     const titleId = useId();
     const handlers = useBravaisSeamTitleClick(onCollapse);
+    // 竖排标题只排一列：横屏等高不够时字号按标题区域收缩，免得折出第二列被缝宽裁掉（BravaisSeamSpineTitle
+    // 同一套）。横排（row）的标题由横条自己的两行截断，不参与这个收缩。
+    const titleWrapRef = useRef<HTMLSpanElement>(null);
+    const fittedFontSize = useBravaisSpineTitleFit({ slotRef: titleWrapRef, text: title, basePx: fontSize, enabled: !row });
     return (
         <button
             type="button"
@@ -51,8 +56,8 @@ export const BravaisSeamTitleArea: React.FC<BravaisSeamTitleAreaProps> = ({ titl
             {...handlers}
         >
             <span className="bravais-seam-quote" aria-hidden>{row ? '“' : '”'}</span>
-            <span className="bravais-seam-vtitle-wrap">
-                <span id={titleId} className="bravais-seam-vtitle" data-bravais-seam-title style={{ fontSize }}>{title}</span>
+            <span ref={titleWrapRef} className="bravais-seam-vtitle-wrap">
+                <span id={titleId} className="bravais-seam-vtitle" data-bravais-seam-title style={{ fontSize: row ? fontSize : fittedFontSize }}>{title}</span>
             </span>
             <span className="bravais-seam-quote is-closing" aria-hidden>{row ? '”' : '“'}</span>
         </button>

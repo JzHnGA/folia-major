@@ -15,6 +15,7 @@ import { createLineArt, showLineArtLayer, type LineArtLayer } from './lineart/li
 import { buildShotIconArts } from './lineart/themeIcons';
 import { keywordBurstColor, prepareLumiereKeywords } from './text/keywordColors';
 import { createLyricEcho } from './text/lyricEcho';
+import type { FrameSafeSides } from './text/lineWrap';
 import { createLyricWindow, type WindowTypography } from './text/lyricWindow';
 import { CHAMPAGNE, hexOf, mixRgb, rgbOf, scaleRgb, WHITE, type Rgb } from './color';
 import { createLumiereCamera, lumiereTypographyOfLine, resolveLumiereLeadShot } from './lumiereUnitLayout';
@@ -53,6 +54,8 @@ export interface SceneShot {
 export interface LumiereSceneOptions {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）：歌词的放字范围让开灵动岛 / 刘海。不给 = 0。 */
+    safeSides?: FrameSafeSides;
     resolution: number;
     seed: string;
     theme: Theme;
@@ -290,6 +293,7 @@ export const createLumiereScene = (pixi: PixiModule, options: LumiereSceneOption
     const window = createLyricWindow(pixi, {
         width,
         height,
+        safeSides: options.safeSides,
         lines: options.lines,
         font: resolveThemeFontStack(options.theme),
         weight: resolveThemeFontWeight(options.theme, 500),

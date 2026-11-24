@@ -165,6 +165,7 @@ const sessionOf = (providerId: string, patch: Partial<LibraryLoginSessionSnapsho
     selectedMethodId: null,
     inBrowser: IN_BROWSER.has(providerId),
     codeImage: '',
+    codeUrl: '',
     canReopenLoginPage: providerId === 'spotify',
     failure: null,
     selfCheck: null,

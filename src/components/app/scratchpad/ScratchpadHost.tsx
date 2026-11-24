@@ -6,7 +6,7 @@ import { ListPlus, NotebookPen, Play, Star, Trash2 } from 'lucide-react';
 import type { SongResult } from '../../../types';
 import { groupScratchpadEntries, scratchpadGroupKey, useScratchpadStore, type ScratchpadEntry, type ScratchpadTab } from '../../../stores/useScratchpadStore';
 import { usePlaybackStore } from '../../../stores/usePlaybackStore';
-import { useScratchpadSettingsStore } from '../../../stores/useScratchpadSettingsStore';
+import { useScratchpadSettingsStore, type ScratchpadHandleSide } from '../../../stores/useScratchpadSettingsStore';
 import { PRIMARY_MODIFIER_LABEL } from '../../../utils/platform';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { openAddSongsToPlaylist } from '../../../stores/useAddToPlaylistStore';
@@ -16,6 +16,8 @@ import ScratchpadCanvas, { type CanvasGroup, type CanvasSide } from './Scratchpa
 import ScratchpadHistory from './ScratchpadHistory';
 import ScratchpadQueue from './ScratchpadQueue';
 import ScratchpadEdge from './ScratchpadEdge';
+import ScratchpadTouchTab from './ScratchpadTouchTab';
+import { useMediaQuery } from '../../../hooks/useMediaQuery';
 import ScratchpadPanel from './ScratchpadPanel';
 import ScratchpadSheet, { ScratchpadBandActions } from './ScratchpadSheet';
 import ScratchpadOverview from './ScratchpadOverview';
@@ -23,7 +25,7 @@ import { NOTE_SPACING } from './canvasLayout';
 import { SCRATCHPAD_TABS, scratchpadLookVars } from './scratchpadLook';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
 import { SCRATCHPAD_TILT_DEG } from './scratchpadTilt';
-import { useSlimOrder } from './scratchpadPaper';
+import { useSlimOrder, type PanelDock } from './scratchpadPaper';
 import './scratchpad.css';
 
 // src/components/app/scratchpad/ScratchpadHost.tsx
@@ -111,19 +113,29 @@ const hasOpenModal = () => document.querySelector('[aria-modal="true"]') !== nul
  * 从展开整页回来：在原位、晚一点淡入（整页的卡片先淡掉、纱淡下去，信息条快落回它顶上那条时它才出来），
  * 不和还没收起的整页叠在一起（用户看到过的中间状态）。平时开合是从左边滑进滑出。
  */
-type PanelMotionCustom = { toSheet: boolean; returning?: boolean };
+type PanelMotionCustom = { toSheet: boolean; returning?: boolean; from?: ScratchpadHandleSide };
 const PANEL_EASE = [0.22, 1, 0.36, 1] as const;
+/** 面板从哪条边进出：触屏上跟着小舌头所在的那条边（右边从右滑进、底边从下往上弹），其余从左边。 */
+const panelOffset = (from: ScratchpadHandleSide = 'left') => {
+    switch (from) {
+        case 'right': return { x: 32, y: 0 };
+        case 'top': return { x: 0, y: -64 };
+        case 'bottom': return { x: 0, y: 64 };
+        case 'left': return { x: -32, y: 0 };
+    }
+};
 const PANEL_VARIANTS = {
-    away: { x: -32, opacity: 0 },
-    returning: { x: 0, opacity: 0 },
+    away: (custom: PanelMotionCustom) => ({ ...panelOffset(custom.from), opacity: 0 }),
+    returning: { x: 0, y: 0, opacity: 0 },
     shown: (custom: PanelMotionCustom) => ({
         x: 0,
+        y: 0,
         opacity: 1,
         transition: custom.returning ? { duration: 0.18, delay: 0.18 } : { duration: 0.2, ease: PANEL_EASE },
     }),
     gone: (custom: PanelMotionCustom) => (custom.toSheet
         ? { opacity: 0, transition: { duration: 0.16, delay: 0.04 } }
-        : { x: -32, opacity: 0, transition: { duration: 0.2, ease: PANEL_EASE } }),
+        : { ...panelOffset(custom.from), opacity: 0, transition: { duration: 0.2, ease: PANEL_EASE } }),
 };
 
 /**
@@ -159,6 +171,15 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
     const queueLength = usePlaybackStore(state => state.playQueue.length);
     // 设置里能把把手整个藏起来（抽屉照常用 Ctrl / ⌘ + J、命令面板开合），也能把它挪到左缘的别的高度。
     const showHandle = useScratchpadSettingsStore(state => state.showHandle);
+    const handleSide = useScratchpadSettingsStore(state => state.handleSide);
+    const moveHintSeen = useScratchpadSettingsStore(state => state.moveHintSeen);
+    const placeHandle = useScratchpadSettingsStore(state => state.placeHandle);
+    const markMoveHintSeen = useScratchpadSettingsStore(state => state.markMoveHintSeen);
+    // 没有指针悬停的触屏（手机）：左缘悬停展开的标签用不上，换成能拖到任意一条边的小舌头（ScratchpadTouchTab）。
+    const isTouchOnly = useMediaQuery('(hover: none) and (pointer: coarse)');
+    // 面板从点开它的那条边出来：只有触屏的小舌头能挪到别的边，桌面的把手一直在左缘。
+    const panelFrom: ScratchpadHandleSide = isTouchOnly ? handleSide : 'left';
+    const panelDock: PanelDock = panelFrom === 'right' ? 'right' : 'left';
     const handlePosition = useScratchpadSettingsStore(state => state.handlePosition);
     // 把手常驻时的样子（米白小条 / 细竖线 / 小圆点 / 几何体），指针进来一律展开成完整的米白标签。
     const handleStyle = useScratchpadSettingsStore(state => state.handleStyle);
@@ -533,7 +554,22 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
             className={`scratchpad-root${isDaylight ? ' is-daylight' : ''}${isCovered ? ' is-covered' : ''}${calm ? ' is-calm' : ''}`}
             style={lookVars}
         >
-            {!isOpen && !isHandleHidden && showHandle && (
+            {!isOpen && !isHandleHidden && showHandle && isTouchOnly && (
+                <ScratchpadTouchTab
+                    side={handleSide}
+                    position={handlePosition}
+                    count={entries.length}
+                    pulsing={pulsing}
+                    label={handleLabel}
+                    moveHint={t('scratchpad.moveHint')}
+                    showMoveHint={!moveHintSeen}
+                    onOpen={toggleOpen}
+                    onPlace={placeHandle}
+                    onMoveHintSeen={markMoveHintSeen}
+                    handleRef={handleRef}
+                />
+            )}
+            {!isOpen && !isHandleHidden && showHandle && !isTouchOnly && (
                 <ScratchpadEdge
                     handleStyle={handleStyle}
                     position={handlePosition}
@@ -550,16 +586,18 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
             {/* 左缘的面板与展开整页各是一层：展开、收回时两层同时在场——展开时纱淡上来，这一页的信息条从面板顶上那条长出来、
                 纸转过去，面板在纱底下待一会儿再淡掉；收回时信息条缩回面板顶上那条、纸转回来、纱淡掉，面板已经在原位等着
                 （ScratchpadSheet 的文件头）。 */}
-            <AnimatePresence custom={{ toSheet: isExpanded } satisfies PanelMotionCustom}>
+            <AnimatePresence custom={{ toSheet: isExpanded, from: panelFrom } satisfies PanelMotionCustom}>
                 {isOpen && !isExpanded && (
                     <motion.aside
                         key="scratchpad-panel"
-                        className="scratchpad-drawer is-panel"
+                        className={`scratchpad-drawer is-panel is-from-${panelFrom}`}
                         data-page={tab}
                         data-testid="scratchpad-drawer"
                         data-ponder="scratchpad"
+                        // 抽屉里的横向拖动（拿卡片排序、画布手势）不当作切歌手势。
+                        data-player-swipe-ignore
                         aria-label={t('scratchpad.title')}
-                        custom={{ toSheet: isExpanded, returning: panelReturns && !calm } satisfies PanelMotionCustom}
+                        custom={{ toSheet: isExpanded, returning: panelReturns && !calm, from: panelFrom } satisfies PanelMotionCustom}
                         variants={PANEL_VARIANTS}
                         initial={panelReturns && !calm ? 'returning' : 'away'}
                         animate="shown"
@@ -577,6 +615,7 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
                             expandDisabled={tab === 'notes' && entries.length === 0}
                             onExpand={() => setExpanded(true)}
                             expandRef={toggleCanvasRef}
+                            dock={panelDock}
                         >
                             {tabPanel}
                         </ScratchpadPanel>
@@ -592,6 +631,7 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
                         data-page={tab}
                         data-testid="scratchpad-drawer"
                         data-ponder="scratchpad"
+                        data-player-swipe-ignore
                         aria-label={t('scratchpad.title')}
                         // 整页自己不淡入：纱、纸、信息条各管各的（ScratchpadSheet）。收回时等信息条落回面板顶上那条、纸转回来，
                         // 最后一下才淡掉（那时条与面板那条叠在一处，看不出来）；也给里面各层的退场兜个底。
@@ -599,6 +639,7 @@ const ScratchpadHost: React.FC<ScratchpadHostProps> = ({ isDaylight, playback, q
                         onKeyDown={handleKeyDown}
                     >
                         <ScratchpadSheet
+                            dock={panelDock}
                             tab={tab}
                             notesCount={entries.length}
                             queueCount={queueLength}

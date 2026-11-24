@@ -62,7 +62,7 @@ type PonderState = {
     seenTargetIds: ReadonlySet<string>;
     ponderHintVisibility: PonderHintVisibility;
     showPonderTouchButton: boolean;
-    /** 思索导航页开着没有。帮助页那颗按钮开的就是它。 */
+    /** 思索导航页开着没有。 */
     isNavigationOpen: boolean;
 
     setHoveredTargetId: (targetId: PonderTargetId | null) => void;

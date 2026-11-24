@@ -86,7 +86,7 @@ test('edits the video layer from the player page settings', async ({ page }) => 
     await page.evaluate(async () => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options', 'player', null, 'videoLayerSettings');
+        useSettingsModalStore.getState().openSettings('player', null, 'videoLayerSettings');
     });
 
     const section = page.locator('[data-settings-anchor="videoLayerSettings"]');

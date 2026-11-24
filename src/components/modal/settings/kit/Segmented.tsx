@@ -6,7 +6,7 @@ import { useRowAria } from './Row';
 // src/components/modal/settings/kit/Segmented.tsx
 // A choice between two to four short options, all of them in view. The raised mark under the
 // chosen one slides to a new choice. It is as wide as its options need, or, asked to fill, as wide
-// as the place it is in.
+// as the place it is in. Options that do not fit on one line wrap, and each line's options grow to fill it.
 
 type SegmentedProps<T extends string> = {
     /** The chosen value; none is marked when it is not among the options. */
@@ -30,7 +30,7 @@ export const Segmented = <T extends string>({ value, options, onChange, fill, di
             role="group"
             {...useRowAria()}
             aria-disabled={disabled || undefined}
-            className={`${fill ? 'flex w-full' : 'inline-flex max-w-full flex-wrap'} min-h-8 rounded-lg bg-[var(--st-fill)] p-0.5${disabled ? ' pointer-events-none opacity-40' : ''}`}
+            className={`${fill ? 'flex w-full' : 'inline-flex max-w-full flex-wrap gap-y-0.5'} min-h-8 rounded-lg bg-[var(--st-fill)] p-0.5${disabled ? ' pointer-events-none opacity-40' : ''}`}
         >
             {options.map(option => {
                 const selected = option.value === value;
@@ -43,7 +43,7 @@ export const Segmented = <T extends string>({ value, options, onChange, fill, di
                         onClick={() => {
                             if (!selected) onChange(option.value);
                         }}
-                        className={`st-t-fast relative h-7 whitespace-nowrap rounded-md text-[13px] transition-colors disabled:cursor-not-allowed ${fill ? 'min-w-0 flex-1 px-1.5' : 'px-3'}${option.disabled ? ' opacity-40' : ''} ${selected ? 'text-[color:var(--st-t1)]' : 'text-[color:var(--st-t2)] enabled:hover:text-[color:var(--st-t1)]'}`}
+                        className={`st-t-fast relative h-7 whitespace-nowrap rounded-md text-[13px] transition-colors disabled:cursor-not-allowed ${fill ? 'min-w-0 flex-1 px-1.5' : 'grow px-3'}${option.disabled ? ' opacity-40' : ''} ${selected ? 'text-[color:var(--st-t1)]' : 'text-[color:var(--st-t2)] enabled:hover:text-[color:var(--st-t1)]'}`}
                     >
                         {selected && (
                             // One element shared by the options: framer-motion moves it from the old

@@ -1,10 +1,89 @@
 
 
 export default {
+  "carplay": {
+    "forYou": "为你推荐",
+    "dailySongs": "每日推荐",
+    "dailySongsDetail": "每天为你挑选的新歌",
+    "playlists": "歌单",
+    "songCount_one": "{{count}} 首",
+    "songCount_other": "{{count}} 首",
+    "signInOnPhone": "请在手机上打开 Ecria 并登录网易云",
+    "emptyList": "这个列表里没有歌"
+  },
+  "mobileTutorial": {
+    "skip": "跳过",
+    "back": "上一步",
+    "next": "下一步",
+    "done": "开始使用",
+    "step": "第 {{current}} / {{total}} 步",
+    "open": "查看新手教程",
+    "demo": {"song": "午夜列车", "nextSong": "黄金时刻", "artist": "夜行者 · 城市灯火", "query": "午夜…", "lyric1": "在城市的灯火下", "lyric2": "我们一直唱着", "lyric3": "直到天亮"},
+    "steps": {
+      "welcome": {"title": "欢迎来到 Ecria", "body": "资料库会变成一面封面墙，每首歌的歌词都有自己的舞台。接下来花一分钟带你转一圈，随时可以跳过。"},
+      "tabs": {"title": "信息条", "body": "这些是资料库的各个页面。地方不够时每个页签只留一个字——看它们依次展开，显示完整名称。点一个字就会打开那一页。"},
+      "search": {"title": "搜索", "body": "点搜索按钮直接打字，歌曲、歌单和专辑边打边出现。点一条结果就开始播放。"},
+      "wallPlay": {"title": "在墙上直接播放", "body": "点封面上的播放键，歌就在原地放起来——卡片上显示正在播放，你还留在墙上。想换成播放后跳到别处，可以在「设置 › 播放页」里改。"},
+      "barTap": {"title": "底部播放条", "body": "这条一直显示正在放的歌。点它进入歌词可视化；已经在那里时，点一下把它展开。"},
+      "barSwipe": {"title": "划一下切歌", "body": "在播放条上往左划是下一首，往右划是上一首，不用先展开。在播放页上，整个屏幕左右划都可以。"},
+      "barExpand": {"title": "上滑看更多", "body": "把播放条往上推，能看到歌手、专辑和播放按钮。往下划回去，或者点别处，它就收起。"},
+      "scratchpad": {"title": "速记簿", "body": "想待会再听的歌都收在这里。点一下边上的小标签打开；按住拖动，可以把它放到屏幕任意边缘。"},
+      "tools": {"title": "队列与工具", "body": "播放队列、设置，以及装着其他功能的「⋯」菜单都在这里。"},
+      "account": {"title": "账户", "body": "登录网易云，或在这里切换在线平台。"},
+      "sync": {"title": "账户同步", "body": "用 Google 登录后，可以把外观、床头钟小组件和喜欢的歌曲加密备份到云端。随时可在「设置 › 账户与安全」里开启。", "action": "前往账户同步", "visitHint": "点高亮的「使用 Google 登录」登录，然后点「下一步」继续。"},
+      "faceId": {"title": "Face ID 锁定", "body": "打开「要求 Face ID」后，每次启动或在后台超过 5 分钟后都要刷脸才能进入；多任务界面里只显示封面，不显示你的资料库。", "action": "设置 Face ID", "visitHint": "打开高亮的「要求 Face ID」开关，然后点「下一步」继续。"},
+      "nightstand": {"title": "横过来就是床头钟", "body": "歌词可视化在横屏里打开。把手机横放，它就变成带大字歌词的床头钟，屏幕一直亮着。"},
+      "widgets": {"title": "把床头钟改成你的", "body": "在床头钟里点右上角的按钮进入编辑：把一张卡拖到另一张上就能换位，拖卡片的角改大小，点 − 把它收起来。收起的卡放在右侧托盘里。"},
+      "finish": {"title": "都准备好了", "body": "挑一张封面，按下播放吧。想再看一遍，打开设置，点「查看新手教程」。"}
+    }
+  },
+  "nightstand": {
+    "customizeTitle": "自定义小组件",
+    "widgetClock": "时钟",
+    "widgetWeather": "天气",
+    "widgetCalendar": "日历",
+    "widgetHitokoto": "一言",
+    "widgetAlbumArt": "专辑封面",
+    "styleLabel": "卡片样式",
+    "styleGlass": "玻璃",
+    "styleSolid": "实心",
+    "styleMinimal": "极简",
+    "layoutLabel": "排列",
+    "layoutRow": "横排",
+    "layoutGrid": "网格",
+    "weatherLocating": "定位中…",
+    "weatherUnavailable": "天气不可用",
+    "weatherClear": "晴",
+    "weatherPartly": "多云",
+    "weatherCloudy": "阴",
+    "weatherFog": "雾",
+    "weatherDrizzle": "毛毛雨",
+    "weatherRain": "雨",
+    "weatherSnow": "雪",
+    "weatherThunder": "雷暴",
+    "hitokotoUnavailable": "一言不可用",
+    "editDone": "完成",
+    "editHint": "把卡片拖到别的卡片上换位 · 拖动或点按右下角手柄改大小",
+    "hiddenWidgets": "已隐藏",
+    "styleAndLayout": "样式与排列",
+    "resizeHandle": "拖动调整大小",
+    "calendarAllDay": "全天",
+    "calendarNoEvents": "今天没有日程",
+    "calendarNoAccess": "在系统设置里允许访问日历后显示日程",
+    "sizeSmall": "小",
+    "sizeMedium": "中",
+    "sizeLarge": "大",
+    "clockLunar": "农历{{date}}",
+    "clockWeek": "第 {{week}} 周",
+    "clockDayOfYear": "今年第 {{day}} 天",
+    "weatherHighLow": "最高 {{high}}° 最低 {{low}}°",
+    "weatherToday": "今天"
+  },
   "appleMusic": {
     "libraryPlaylistName": "全部歌曲"
   },
   "scratchpad": {
+    "moveHint": "按住拖动，可以放到屏幕任意边缘",
     "title": "速记簿",
     "count_one": "{{count}} 首",
     "count_other": "{{count}} 首",
@@ -464,8 +543,8 @@ export default {
     "closeToQuit": "关闭窗口将退出应用",
     "wallpaperModeOn": "已开启壁纸模式",
     "wallpaperModeOff": "已关闭壁纸模式",
-    "macWallpaperInputMonitoringNeeded": "壁纸模式需要“输入监控”权限：请在 系统设置 → 隐私与安全性 → 输入监控 中勾选 Folia，然后重新开启壁纸模式",
-    "macWallpaperAccessibilitySuggested": "开着台前调度时，点壁纸也会被当成点桌面，把窗口收到一边。在 系统设置 → 隐私与安全性 → 辅助功能 中允许 Folia 并重启 Folia 后就不会了，桌面图标照常能点",
+    "macWallpaperInputMonitoringNeeded": "壁纸模式需要“输入监控”权限：请在 系统设置 → 隐私与安全性 → 输入监控 中勾选 Ecria，然后重新开启壁纸模式",
+    "macWallpaperAccessibilitySuggested": "开着台前调度时，点壁纸也会被当成点桌面，把窗口收到一边。在 系统设置 → 隐私与安全性 → 辅助功能 中允许 Ecria 并重启 Ecria 后就不会了，桌面图标照常能点",
     "macWallpaperAutohideDockOn": "已开启：自动隐藏 Dock 栏",
     "macWallpaperAutohideDockOff": "已关闭：不再自动隐藏 Dock 栏",
     "voiceInputPauseOn": "语音输入时暂停已开启",
@@ -481,7 +560,7 @@ export default {
     "autoPlayOnLaunchOn": "启动后将自动续播上次的歌曲",
     "autoPlayOnLaunchOff": "启动后将恢复上次的歌曲并保持暂停",
     "openHomeOnLaunch": "启动后将默认进入首页",
-    "gpuPreferenceChanged": "渲染显卡已更改，重启 Folia 后生效",
+    "gpuPreferenceChanged": "渲染显卡已更改，重启 Ecria 后生效",
     "backgroundThrottlingOn": "已开启后台节流",
     "backgroundThrottlingOff": "已关闭后台节流",
     "visualizerSwitched": "已切换到{{mode}}歌词",
@@ -529,7 +608,7 @@ export default {
     "mainWindowTitlebarAlwaysShown": "主窗口标题栏控制按钮将始终显示",
     "mainWindowTitlebarAutoHidden": "主窗口标题栏控制按钮将悬停显示",
     "playerHeaderBlurOn": "播放页顶栏已加上模糊背景",
-    "restartToApplyWindowChrome": "窗口按钮样式将在重启 Folia 后生效",
+    "restartToApplyWindowChrome": "窗口按钮样式将在重启 Ecria 后生效",
     "playerHeaderBlurOff": "播放页顶栏模糊背景已关闭",
     "cursorAutoHideOn": "鼠标指针将随控制栏一起隐藏",
     "cursorAutoHideOff": "控制栏隐藏时鼠标指针将保持显示",
@@ -619,9 +698,9 @@ export default {
     "providerLibraryUnavailable": "{{provider}} 暂未提供歌单库。",
     "songUnavailable": "歌曲已下架",
     "externalPlayerMovedOn": "播放器已换到其他歌曲，已暂停",
-    "externalVideoExportUnavailable": "这首歌由平台自己的播放器播放，声音不经过 Folia，无法导出视频。",
+    "externalVideoExportUnavailable": "这首歌由平台自己的播放器播放，声音不经过 Ecria，无法导出视频。",
     "externalBypassTitle": "这首歌由平台自己的播放器播放",
-    "externalBypassBody": "声音不经过 Folia，这里的均衡器和音效不会改变你听到的声音。设置会保留，播放其他歌曲时照常生效。",
+    "externalBypassBody": "声音不经过 Ecria，这里的均衡器和音效不会改变你听到的声音。设置会保留，播放其他歌曲时照常生效。",
     "externalReplayGainBypassed": "由平台自己的播放器播放，不应用 ReplayGain",
     "songUnavailableAlternativeTitle": "可播放其他版本",
     "songUnavailableAlternativeDescription": "当前歌曲已下架，{{typeDesc}}。是否改为播放其他版本？",
@@ -640,6 +719,8 @@ export default {
     "queueShuffled": "播放队列已打乱",
     "loopShuffleHint": "想找随机播放吗？",
     "loopShuffleHintAction": "点这里了解",
+    "shareLinkCopied": "链接已复制",
+    "shareFailed": "分享失败",
     "queueCleared": "播放队列已清空",
     "queueUpdated": "已添加到播放队列",
     "queueBatchRemoved": "已从队列移除 {{count}} 首歌曲",
@@ -837,8 +918,8 @@ export default {
       "playback-fm-mode": { "title": "私人 FM 模式", "description": "切换私人 FM 的模式或场景" },
       "playback-station-mode": { "title": "电台模式", "description": "切换正在播的电台的模式或场景" },
       "playback-recommendation-preferences": { "title": "偏好设置", "description": "调整保存在账号上、影响推荐的偏好" },
-      "settings-help": { "title": "打开帮助", "description": "打开帮助和快捷键" },
       "ponder-current-page": { "title": "思索当前页面", "description": "打开当前页面的交互式介绍" },
+      "ponder-navigation": { "title": "打开帮助", "description": "浏览全部交互教程" },
       "provider-playback-setup": { "title": "平台播放设置", "description": "打开当前平台的播放配置清单" },
       "settings-options": { "title": "打开选项", "description": "打开设置中心" },
       "settings-now-playing-card-position": { "title": "调整卡片位置", "description": "拖动正在播放卡片到新的位置" },
@@ -863,9 +944,9 @@ export default {
       "settings-local-lyrics-priority": { "title": "本地歌曲歌词优先级", "description": "选择本地歌曲优先使用本地或在线歌词" },
       "settings-local-lyric-format-order": { "title": "本地歌词文件格式优先级", "description": "调整同名歌词文件按哪种格式优先选用" },
       "settings-integration": { "title": "集成设置", "description": "打开 Stage、Now Playing 和 Navidrome 设置" },
-      "automix-toggle": { "title": "智能过渡", "description": "开启或关闭 FOLIA 智能过渡" },
-      "transition-mode-crossfade": { "title": "过渡模式：Folia Crossfade", "description": "使用简单的一淡出一淡入交叉淡化" },
-      "transition-mode-automix": { "title": "过渡模式：Folia Automix", "description": "分析两首曲目并自动混音" },
+      "automix-toggle": { "title": "智能过渡", "description": "开启或关闭 ECRIA 智能过渡" },
+      "transition-mode-crossfade": { "title": "过渡模式：Ecria Crossfade", "description": "使用简单的一淡出一淡入交叉淡化" },
+      "transition-mode-automix": { "title": "过渡模式：Ecria Automix", "description": "分析两首曲目并自动混音" },
       "transition-performance-toggle": { "title": "过渡表现模式", "description": "切换更激进的过渡（需要人声分离模型）" },
       "settings-discord-presence": { "title": "Discord 播放状态", "description": "打开 Discord Rich Presence 设置" },
       "lyric-staff-policy-cycle": { "title": "开头制作人员信息", "description": "轮换歌词开头署名块的处理方式" },
@@ -879,7 +960,7 @@ export default {
       "settings-r2-sync": { "title": "同步服务设置", "description": "打开同步服务设置" },
       "sync-now": { "title": "立即同步", "description": "同步 AI 主题" },
       "export-lyric-cache": { "title": "导出歌词缓存", "description": "把本机所有歌词打包成 .fia 和增强型 LRC 的 zip" },
-      "export-current-lyrics-fia": { "title": "导出当前歌词为 .fia", "description": "以 Folia 无损格式保存这首歌的歌词，含你保存的分词" },
+      "export-current-lyrics-fia": { "title": "导出当前歌词为 .fia", "description": "以 Ecria 无损格式保存这首歌的歌词，含你保存的分词" },
       "export-current-lyrics-lrc": { "title": "导出当前歌词为 LRC", "description": "保存为其他播放器也能读的增强型 LRC" },
       "settings-local-library-watch": { "title": "本地文件夹监视设置", "description": "打开已导入本地文件夹的自动扫描设置" },
       "local-library-auto-scan-toggle": { "title": "自动扫描本地文件夹", "description": "开启或关闭已导入本地文件夹的自动重新扫描" },
@@ -887,7 +968,7 @@ export default {
       "settings-update-channel": { "title": "更新通道", "description": "选择桌面端发布通道" },
       "desktop-toggle-voice-input-pause": { "title": "语音输入时暂停", "description": "切换语音输入时自动暂停播放" },
       "desktop-toggle-prevent-display-sleep": { "title": "播放时阻止休眠", "description": "播放音乐时保持显示器唤醒" },
-      "desktop-toggle-background-throttling": { "title": "后台节流", "description": "切换 Folia 最小化或隐藏时节流渲染、停下歌词动画" },
+      "desktop-toggle-background-throttling": { "title": "后台节流", "description": "切换 Ecria 最小化或隐藏时节流渲染、停下歌词动画" },
       "settings-graphics": { "title": "图形设置", "description": "打开静态模式、帧率限制、Linux 发光修复和降低动态效果" },
       "settings-gpu-preference": { "title": "渲染显卡设置", "description": "跳到选择渲染显卡的设置" },
       "gpu-preference-auto": { "title": "渲染显卡：自动", "description": "由系统决定用哪张显卡渲染，重启后生效" },
@@ -1008,11 +1089,11 @@ export default {
       "hifi-settings": { "title": "播放引擎设置", "description": "打开播放引擎设置：Web Audio 或 mpv，以及 mpv 的输出设备、独占模式和 DSD" },
       "hifi-exclusive-toggle": { "title": "HiFi 独占模式", "description": "开关 HiFi 是否独占输出设备，不让系统混音器插手" },
       "hifi-navidrome-toggle": { "title": "Navidrome 走 HiFi", "description": "开关 Navidrome 歌曲是否走 HiFi：从服务器取原文件，不转码" },
-      "hifi-software-volume-toggle": { "title": "HiFi 软件音量", "description": "开关是否让 Folia 的音量滑杆调 mpv 的音量；开着时不再是原生直通" },
+      "hifi-software-volume-toggle": { "title": "HiFi 软件音量", "description": "开关是否让 Ecria 的音量滑杆调 mpv 的音量；开着时不再是原生直通" },
       "hifi-redetect-mpv": { "title": "重新检测 mpv", "description": "重新查找 HiFi 用的 mpv，比如装好或更新之后" },
-      "hifi-download-mpv": { "title": "下载或更新 mpv", "description": "下载推荐给 HiFi 用的 mpv，或更新 Folia 下载的那份；进度显示在 播放引擎设置里" },
+      "hifi-download-mpv": { "title": "下载或更新 mpv", "description": "下载推荐给 HiFi 用的 mpv，或更新 Ecria 下载的那份；进度显示在 播放引擎设置里" },
       "hifi-signal-path": { "title": "HiFi 信号链路", "description": "查看当前歌曲如何送到 DAC，以及是否保持原生直通" },
-      "settings-transition": { "title": "智能过渡", "description": "直接跳到 FOLIA 智能过渡设置" },
+      "settings-transition": { "title": "智能过渡", "description": "直接跳到 ECRIA 智能过渡设置" },
       "settings-navidrome": { "title": "Navidrome 服务器", "description": "直接跳到 Navidrome 服务器连接设置" },
       "settings-stage-mode": { "title": "Stage 模式", "description": "直接跳到 Stage 外部播放器设置" },
       "settings-media-cache": { "title": "媒体缓存", "description": "直接跳到已下载音频的缓存" },
@@ -1035,6 +1116,7 @@ export default {
       "playback-loop": { "title": "切换循环", "description": "切换循环模式" },
       "playback-like": { "title": "收藏当前歌曲", "description": "把当前歌曲加入收藏，或取消收藏" },
       "playback-add-to-playlist": { "title": "添加到歌单", "description": "把当前歌曲放进你的某个歌单" },
+      "playback-share": { "title": "分享当前歌曲", "description": "分享当前歌曲，附上它的页面链接" },
       "scratchpad-toggle": { "title": "打开 / 收起速记簿", "description": "从左边拉出速记簿：先放着、待会再听或再整理的歌" },
       "scratchpad-collect-current": { "title": "把当前歌曲记进速记簿", "description": "不动播放队列，先把这首记下来" },
       "scratchpad-handle-toggle": { "title": "显示 / 隐藏速记簿悬浮标签", "description": "窗口左缘那道打开速记簿的把手" },
@@ -1316,10 +1398,10 @@ export default {
     "scopeOnlineDesc": "播放过的在线歌曲缓存下来的歌词",
     "scopeLocal": "本地曲库",
     "scopeLocalDesc": "本地歌曲在线匹配到的歌词，按音频文件名和原目录导出，解压后可直接放回歌曲旁边",
-    "formatFia": ".fia（Folia 无损）",
-    "formatFiaDesc": "完整保留逐字时间轴、翻译、背景和声和你保存的分词，可以直接导回 Folia",
+    "formatFia": ".fia（Ecria 无损）",
+    "formatFiaDesc": "完整保留逐字时间轴、翻译、背景和声和你保存的分词，可以直接导回 Ecria",
     "formatLrc": "增强型 LRC",
-    "formatLrcDesc": "其他播放器也能读；背景和声、分词等 Folia 专有信息会丢失",
+    "formatLrcDesc": "其他播放器也能读；背景和声、分词等 Ecria 专有信息会丢失",
     "includeTranslationDesc": "翻译写成与原文同一时间戳的下一行",
     "includeRomanizationDesc": "罗马音写在翻译之后",
     "resolveOnline": "联网补全歌名",
@@ -1349,7 +1431,7 @@ export default {
     "descriptionExportOnly": "把这首歌当前显示的歌词存成文件。",
     "importHeading": "导入",
     "importChoose": "选择歌词文件",
-    "importFormats": "lrc、vtt、ttml、qrc、yrc、krc、txt，或 Folia 导出的 .fia",
+    "importFormats": "lrc、vtt、ttml、qrc、yrc、krc、txt，或 Ecria 导出的 .fia",
     "exportHeading": "导出这首歌",
     "batchTitle": "批量导出本机歌词",
     "batchDesc": "在命令面板里一次导出所有缓存的歌词"
@@ -1393,7 +1475,7 @@ export default {
     "market": "模组市场",
     "trustRevoked": "该模组的文件在你上次确认之后发生了变化，已自动禁用。请确认来源无误后重新启用。",
     "devSourceHint": "开发目录中的模组：确认后修改文件不会撤销授权（仅开发版）。",
-    "platformReadHint": "可以用你在 Folia 登录的账号读取{{platforms}}上的数据，例如听歌记录（实验接口 platform.raw）。",
+    "platformReadHint": "可以用你在 Ecria 登录的账号读取{{platforms}}上的数据，例如听歌记录（实验接口 platform.raw）。",
     "platformWriteHint": "还可以用你的账号改动{{platforms}}账号里的内容，例如点赞、歌单和关注。",
     "queueReplaced": "「{{name}}」替换了播放队列",
     "queueReplaceUndo": "撤销",
@@ -1468,8 +1550,8 @@ export default {
     "faultNoticeOpen": "去看看",
     "faultNoticeMute": "出错和启动慢都不再提示",
     "faultNoticeSwitch": "这个模组出错或启动慢时提示我",
-    "skippedThisRun": "这次没有启动。下次打开 Folia 时照常启动。",
-    "startSkippedBanner": "这次模组都没有启动。下次打开 Folia 时照常启动。",
+    "skippedThisRun": "这次没有启动。下次打开 Ecria 时照常启动。",
+    "startSkippedBanner": "这次模组都没有启动。下次打开 Ecria 时照常启动。",
     "cost": {
       "title": "用了多少时间",
       "start": "启动用了 {{seconds}} 秒",
@@ -1485,7 +1567,7 @@ export default {
       "noFailures": "没有出错",
       "main": "后台部分一共用了 {{total}} 毫秒，最长一次 {{longest}} 毫秒",
       "slow": "慢",
-      "slowHint": "这个模组启动慢，或者运行时用的时间多。Folia 不会因此关掉它。"
+      "slowHint": "这个模组启动慢，或者运行时用的时间多。Ecria 不会因此关掉它。"
     },
     "commandUnavailable": "该模组命令已不可用。",
     "cancelExport": "取消",
@@ -1519,7 +1601,7 @@ export default {
       "install-too-many-files": "模组包文件数量超出限制（最多 2000 个）",
       "install-main-missing": "模组包缺少 mod.json 中声明的 main 文件",
       "install-client-missing": "模组包缺少 mod.json 中声明的 client 文件",
-      "host-version-mismatch": "该模组使用内部接口，不支持当前 Folia 版本",
+      "host-version-mismatch": "该模组使用内部接口，不支持当前 Ecria 版本",
       "enable-failed": "启用模组失败：{{value}}",
       "mod-not-found": "未找到该模组",
       "mod-content-unverifiable": "无法校验模组文件（文件过多或过大），出于安全考虑不予启用",
@@ -1775,7 +1857,7 @@ export default {
     "audioUnplayable": "音频无法播放",
     "refused": "请求被{{provider}}拒绝",
     "noteCheckNetwork": "请检查网络",
-    "noteRestartApp": "请重启 Folia",
+    "noteRestartApp": "请重启 Ecria",
     "noteRetryLater": "请稍后重试",
     "noteSignIn": "请重新登录",
     "noteUnknown": "未知错误",
@@ -1789,7 +1871,7 @@ export default {
     "openSetup": "播放设置"
   },
   "home": {
-    "welcome": "欢迎使用 Folia",
+    "welcome": "欢迎使用 Ecria",
     "lattice": "队列拼贴",
     "latticeLabel": "队列拼贴",
     "latticeExplore": "探索拼贴",
@@ -1843,7 +1925,7 @@ export default {
     "loginCaseSpotifyDenied": "请在 Spotify 页面点“同意”",
     "loginCaseSpotifyPort": "端口 5588 已被占用",
     "loginCaseYtmUnfinished": "请登录后再关闭浏览器",
-    "loginCaseQqRestart": "请重启 Folia 后重试",
+    "loginCaseQqRestart": "请重启 Ecria 后重试",
     "loginCaseQqWrongScanApp": "用 QQ 音乐 App 扫码的话，请改选「QQ 音乐 App 扫码」；也可以用手机 QQ 扫这个二维码",
     "loginCaseQqWrongScanAppMobileOnly": "这里的 QQ 扫码只能用手机 QQ 扫，请用手机 QQ 扫这个二维码",
     "loginCaseQqDeviceLimit": "请打开 QQ 音乐 App，进入「设置」，滑到最下面点「设备管理」，移除不用的设备后再扫码",
@@ -1874,14 +1956,15 @@ export default {
     "restartBackend": "重启后端服务",
     "restartingBackend": "正在重启…",
     "retryQr": "刷新二维码",
+    "openLoginInApp": "在 App 中确认登录",
     "qrTipsTitle": "可以先试试",
-    "qrTipRestart": "重启 Folia，再重新扫码。",
-    "qrTipSwitchNetwork": "换一个网络（例如手机热点），再重启 Folia。",
+    "qrTipRestart": "重启 Ecria，再重新扫码。",
+    "qrTipSwitchNetwork": "换一个网络（例如手机热点），再重启 Ecria。",
     "qrDeviceLimit": "这个 QQ 音乐账号的登录设备数已达上限，需要先移除旧设备。",
     "qrDeviceLimitTipsTitle": "先清理登录设备",
     "qrDeviceLimitTipRemove": "打开 QQ 音乐官方客户端，进入「设置 → 设备管理」（在设置页最下面），移除不再使用的登录设备。",
     "qrDeviceLimitTipQuota": "QQ 音乐限制同时登录的设备数：免费用户 1 台，绿钻 3 台，超级会员 5 台。",
-    "qrDeviceLimitTipRescan": "移除后回到 Folia，重新扫码登录。",
+    "qrDeviceLimitTipRescan": "移除后回到 Ecria，重新扫码登录。",
     "qrDiagnosticsToggle": "还是不行？把诊断信息发给我们",
     "qrDiagnosticsToggleElsewhere": "还是不行？查看诊断信息",
     "qrDiagnosticsPrompt": "复制诊断信息反馈给我们，能帮助定位原因。",
@@ -1889,20 +1972,20 @@ export default {
     "qrDiagnosticsDisclosure": "诊断信息包含：应用与系统版本、网卡与 IP 地址、代理设置、登录请求的记录与错误原文、网络检查结果。不含账号密码、cookie 和 token。",
     "qrDiagnosticsCopy": "复制诊断信息",
     "qrDiagnosticsReport": "去 GitHub 反馈",
-    "qrDiagnosticsPasteHint": "请把 Folia 复制的诊断信息粘贴在这里，并简单描述当时的情况（网络环境、是否开了代理等）。",
+    "qrDiagnosticsPasteHint": "请把 Ecria 复制的诊断信息粘贴在这里，并简单描述当时的情况（网络环境、是否开了代理等）。",
     "qrReportWebDeployment": "这是网页版部署的问题：这个网站没有配置音乐平台的 API 服务，或者连不上它。请把诊断报告交给这个网站的部署者；如果你就是部署者，请按部署文档检查 VITE_*_API_BASE 并重新构建。只想直接使用的话，可以下载官方桌面版。",
-    "qrReportUnofficialBuild": "你正在使用的不是 Folia 官方构建的版本，也不是文档里的自部署方式（可能是他人打包或修改过的版本），问题请反馈给提供这个版本的人。官方版本请从 GitHub Releases 下载。",
+    "qrReportUnofficialBuild": "你正在使用的不是 Ecria 官方构建的版本，也不是文档里的自部署方式（可能是他人打包或修改过的版本），问题请反馈给提供这个版本的人。官方版本请从 GitHub Releases 下载。",
     "qrSelfCheckTitle": "自动检查",
     "qrSelfCheckRunning": "正在检查网络与本地服务…",
     "qrSelfCheckFailed": "自动检查没能完成：{{message}}",
-    "qrSelfCheckBackendDown": "{{provider}}本地服务没有正常运行（{{detail}}）。重启 Folia 后再试。",
+    "qrSelfCheckBackendDown": "{{provider}}本地服务没有正常运行（{{detail}}）。重启 Ecria 后再试。",
     "qrSelfCheckRemoteUnreachable": "连不上 API 服务器（{{detail}}）。请检查部署地址与网络。",
-    "qrSelfCheckCredentialStore": "系统钥匙串不可用（{{detail}}），QQ 登录态无法加密保存。请安装并解锁 GNOME Keyring 或 KWallet，然后重启 Folia。",
-    "qrSelfCheckDnsFailed": "无法解析{{provider}}服务器的域名（{{detail}}）。请检查网络或 DNS 设置，或换个网络后重启 Folia。",
-    "qrSelfCheckTlsReset": "连接{{provider}}服务器时在加密握手阶段被断开（{{detail}}）。常见原因是代理、加速器、防火墙或网络环境的干扰：换个网络或关闭代理后，重启 Folia 再试。",
-    "qrSelfCheckUnreachable": "连不上{{provider}}服务器（{{detail}}）。请检查网络连接，或换个网络后重启 Folia。",
+    "qrSelfCheckCredentialStore": "系统钥匙串不可用（{{detail}}），QQ 登录态无法加密保存。请安装并解锁 GNOME Keyring 或 KWallet，然后重启 Ecria。",
+    "qrSelfCheckDnsFailed": "无法解析{{provider}}服务器的域名（{{detail}}）。请检查网络或 DNS 设置，或换个网络后重启 Ecria。",
+    "qrSelfCheckTlsReset": "连接{{provider}}服务器时在加密握手阶段被断开（{{detail}}）。常见原因是代理、加速器、防火墙或网络环境的干扰：换个网络或关闭代理后，重启 Ecria 再试。",
+    "qrSelfCheckUnreachable": "连不上{{provider}}服务器（{{detail}}）。请检查网络连接，或换个网络后重启 Ecria。",
     "qrSelfCheckIpv6Failed": "通过 IPv6 连接{{provider}}服务器失败，IPv4 正常（{{detail}}）。可以在系统里关闭 IPv6 或 Teredo 后重试。",
-    "qrSelfCheckHttpsFailed": "能连上{{provider}}服务器，但请求失败（{{detail}}）。换个网络后重启 Folia 再试。",
+    "qrSelfCheckHttpsFailed": "能连上{{provider}}服务器，但请求失败（{{detail}}）。换个网络后重启 Ecria 再试。",
     "qrSelfCheckClockSkew": "系统时间与服务器相差约 {{detail}} 分钟。请校准系统时间后重试。",
     "qrSelfCheckNetworkOk": "网络检查没有发现问题。",
     "qrSelfCheckProxyFakeIp": "检测到 TUN 模式代理（fake-ip）接管了连接。如果仍然失败，可以让{{provider}}的域名直连后再试。",
@@ -1955,7 +2038,7 @@ export default {
     "gridFolderRemoveSelectedTitle": "移除已选歌曲？",
     "gridFolderRemoveSelectedDescription": "移除 {{count}} 首歌曲。根目录直接移除，完整选中的子文件夹忽略扫描。磁盘文件不变。",
     "gridFolderRemoveRootTitle": "移除导入根目录？",
-    "gridFolderRemoveRootDescription": "从 Folia 移除 {{path}} 及其中全部歌曲？不会删除磁盘文件。",
+    "gridFolderRemoveRootDescription": "从 Ecria 移除 {{path}} 及其中全部歌曲？不会删除磁盘文件。",
     "login": "登录",
     "welcomeBack": "欢迎回来",
     "guestTitle": "先搜几首喜欢的歌试试看",
@@ -2089,7 +2172,7 @@ export default {
     "majorUpdateLabel": "{{codename}} Update · 重大更新",
     "servicePackLabel": "{{codename}} Update SP{{servicePack}} · 重大更新",
     "ponder": "思索帮助页",
-    "ponderDescription": "了解 Folia 的基本操作与运行逻辑",
+    "ponderDescription": "了解 Ecria 的基本操作与运行逻辑",
     "version": "版本"
   },
   "qishui": { "recentPlayed": "汽水最近播放", "recommended": "为你推荐" },
@@ -2341,7 +2424,82 @@ export default {
     "settingsPageGeneral": "通用",
     "settingsPageInteraction": "快捷操作",
     "settingsPageIntegration": "连接与集成",
+    "settingsPageAi": "AI",
     "settingsPageStorage": "存储与备份",
+    "settingsPageAccount": "账户与安全",
+    "accountGroupAccount": "云账户（OAuth）",
+    "accountGroupSync": "加密同步",
+    "accountGroupLock": "Face ID 锁定",
+    "accountGroupStorage": "凭据存放位置",
+    "accountGoogle": "使用 Google 登录",
+    "accountGoogleDesc": "通过 Google 自己的同意页登录；Ecria 永远看不到你的 Google 密码。",
+    "accountSigningIn": "正在登录…",
+    "accountSignOut": "退出登录",
+    "accountProvider": "身份提供方",
+    "accountProviderDesc": "Firebase 实际完成认证的提供方。",
+    "accountScopes": "授权范围",
+    "accountScopesDesc": "你同意 Google 分享的字段，除此之外不会请求任何权限。",
+    "accountScopesValue": "openid · email · profile",
+    "accountKeychainValue": "Keychain",
+    "accountVaultKeyValue": "AES-256-GCM · {{biometric}}",
+    "accountToken": "访问令牌",
+    "accountTokenDesc": "Firebase 的短时令牌，会在过期前自动刷新。",
+    "accountTokenSignedOut": "登录后显示令牌剩余有效期。",
+    "accountRefresh": "立即刷新",
+    "accountUid": "Firebase UID",
+    "accountUidDesc": "该账户唯一可读写的路径：ecria/users/<uid>。",
+    "accountSyncNow": "立即同步",
+    "accountSyncDesc": "在本机加密 Nightstand、外观设置与收藏歌曲引用，然后只上传密文。",
+    "accountSyncing": "正在加密…",
+    "accountRestore": "从云端恢复",
+    "accountRestoreDesc": "下载密文，并用 Keychain 密钥（Face ID）解密。",
+    "accountRestoring": "正在恢复…",
+    "accountVault": "云端保险库",
+    "accountVaultDesc": "AES-256-GCM，在本机完成加密。",
+    "accountVaultReady": "本机已有密钥",
+    "accountVaultEmpty": "尚未生成密钥",
+    "accountLastSync": "上次同步",
+    "accountLastSyncDesc": "保险库完成加密并上传的时间。",
+    "accountFresh": "重新开始",
+    "accountFreshDesc": "删除云端保险库与本机密钥，其他设备将失去访问权。",
+    "accountFreshConfirm": "再次点击确认清除",
+    "accountLockToggle": "要求 Face ID",
+    "accountLockOn": "已开启：冷启动或后台超过 5 分钟需要验证。",
+    "accountLockOff": "已关闭：打开 App 直接进入音乐界面。",
+    "accountLockFoot": "保险库密钥本身受生物识别保护，因此同步时也会要求 Face ID。",
+    "accountLockNow": "立即锁定",
+    "accountLockNowDesc": "马上隐藏到 Face ID 之后。",
+    "accountWhySignIn": "请先在上方用 Google 登录。",
+    "accountWhyNoBiometrics": "这台设备还没有设置 {{biometric}}。先到 iPhone 的「设置 › {{biometric}} 与密码」里设置好，再回来开启。",
+    "accountWhyLockOff": "请先打开上面的「要求 {{biometric}}」。",
+    "accountWhyNotConfigured": "这个版本没有配置云端登录，暂时不能用 Google 登录。",
+    "accountBiometrics": "生物识别",
+    "accountBiometricsDesc": "通过本机 LocalAuthentication 读取 Face ID / Touch ID。",
+    "accountBiometricsMissing": "未录入",
+    "accountNetEase": "网易云会话",
+    "accountNetEaseDesc": "MUSIC_U cookie 等同于密码，现在存放在 Keychain，而不是 localStorage。",
+    "accountVaultKey": "保险库密钥",
+    "accountVaultKeyDesc": "随机 256-bit 密钥，仅限本机，生物识别通过后才释放。",
+    "accountPublicKeys": "公开凭据",
+    "accountPublicKeysDesc": "可以出现在 App 内：Firebase Web API key、OAuth client id、网易 API 地址。",
+    "accountPublicKeysValue": "靠 Rules 保护，不靠保密",
+    "accountSecretKeys": "秘密凭据",
+    "accountSecretKeysDesc": "绝不进入安装包；用户自带的 AI key 只进 Keychain。",
+    "accountSecretKeysValue": "仅 Keychain",
+    "accountNativeOnly": "账户与安全",
+    "accountNativeOnlyDesc": "OAuth、加密保险库和 Face ID 都运行在 iOS 原生层。",
+    "accountUnavailable": "仅 iOS App 可用",
+    "accountNotConfiguredDesc": "填写 ios/Config/Secrets.xcconfig（Firebase 与 Google OAuth 配置）后即可启用云登录。",
+    "accountDismiss": "关闭",
+    "accountNoticeSignedIn": "Google 登录成功。OAuth 授权范围：openid · email · profile。",
+    "accountNoticeRefreshed": "Token 已刷新，到期时间已更新。",
+    "accountNoticeSignedOut": "已退出 Google 账户，本机 Keychain 中的 Firebase 会话已删除。",
+    "accountNoticeLockOn": "已开启 Face ID 锁定：冷启动或后台超过 5 分钟需要验证。",
+    "accountNoticeLockOff": "已关闭 Face ID 锁定。",
+    "accountNoticeSynced": "同步完成：数据已在本机加密，Firebase 中只有 Base64 密文。",
+    "accountNoticeRestored": "已从云端恢复。外观与 Nightstand 需要重新打开 App 才会生效。",
+    "accountNoticeReset": "已清除云端 vault 与本机密钥。下次同步会生成新密钥。",
+    "accountLoading": "正在读取安全状态…",
     "settingsPageDesktop": "桌面",
     "settingsPageGraphics": "动画与性能",
     "settingsPageMods": "模组",
@@ -2358,6 +2516,8 @@ export default {
     "settingsHeadingGlobalShortcuts": "全局快捷键",
     "settingsSearchTitle": "搜索",
     "settingsWindowName": "设置",
+    "settingsPreviewOn": "预览：在设置上方显示应用",
+    "settingsPreviewOff": "回到全屏设置",
     "settingsSearchCount": "{{n}} 项",
     "settingsRowDetails": "详情",
     "settingsCopy": "复制",
@@ -2398,7 +2558,7 @@ export default {
     "customShortcutTaken": "这个键已经被别的快捷键占用了",
     "customShortcutLettersOnly": "只支持 A–Z",
     "globalShortcuts": "全局快捷键",
-    "globalShortcutsDesc": "Folia 在后台时也能按的快捷键：播放控制，以及模组提供的命令。",
+    "globalShortcutsDesc": "Ecria 在后台时也能按的快捷键：播放控制，以及模组提供的命令。",
     "globalShortcutsNote": "自己按下组合键：修饰键（Ctrl、Alt、Shift、Win/Command）加一个字母、数字、功能键、空格、方向键，或者退格、删除这类单键。复制、粘贴、切换窗口、选中文字这类常用组合和会打出字符的组合会被拒绝，所以一般要按住两个以上修饰键，带 Win/Command 的要三个。推荐用默认的 Ctrl+Alt+Shift（macOS 上是 Control+Option+Shift）加字母或数字，它最不容易和别的程序冲突。被别的程序占用的组合会在对应行标出。",
     "globalShortcutsPortalDesc": "Wayland 下由桌面环境分配按键。",
     "globalShortcutsPortalNote": "注册后，按桌面环境的说明为每一项绑定按键。下面是每项附带的建议键：",
@@ -2418,19 +2578,19 @@ export default {
     "globalShortcutReserved": "系统、桌面环境或常用程序已经在用这个组合，换一个",
     "globalShortcutDuplicate": "另一个全局快捷键已经用了这个组合",
     "globalShortcutTakenBySystem": "这个组合已被别的程序占用",
-    "globalShortcutCustomCombination": "别的程序在自己窗口里用的快捷键这里查不出来；注册后，这个组合在所有程序里都归 Folia",
+    "globalShortcutCustomCombination": "别的程序在自己窗口里用的快捷键这里查不出来；注册后，这个组合在所有程序里都归 Ecria",
     "globalShortcutAltGrCombination": "在德语、波兰语等带 AltGr 的键盘布局里，Ctrl+Alt 加这个键会打出字符（如 @、€），注册后那个字符就打不出来了；别的程序在自己窗口里用的快捷键这里也查不出来",
     "globalShortcutModCommand": "{{command}} · {{mod}}",
     "globalShortcutModInactive": "模组未启用。启用后这个键会自动恢复",
     "globalShortcutModCommandMissing": "模组现在没有提供这条命令",
     "replayGainMode": "ReplayGain 模式 (响度平衡) ",
     "replayGainModeDesc": "检测到增益数据时，按单曲或专辑 ReplayGain 统一播放响度。「智能平衡」会测量每首歌的响度，把偏响的歌调小。",
-    "transitionSettings": "Folia 智能过渡",
+    "transitionSettings": "Ecria 智能过渡",
     "transitionEnable": "过渡",
     "transitionMode": "过渡模式",
-    "transitionCrossfade": "Folia Crossfade",
+    "transitionCrossfade": "Ecria Crossfade",
     "transitionCrossfadeDesc": "固定的淡出淡入。",
-    "transitionAutomix": "Folia Automix",
+    "transitionAutomix": "Ecria Automix",
     "transitionAutomixDesc": "分析歌曲并自动混音。",
     "transitionFellBack": "已退回淡化",
     "crossfadeMaxSeconds": "过渡最长时长",
@@ -2439,7 +2599,7 @@ export default {
     "transitionEngineFull": "完全体",
     "transitionEngineLite": "兼容模式",
     "transitionEngineLiteDesc": "浏览器里的混音效果约为桌面版的一半。",
-    "transitionEngineNeedsModels": "这次安装缺少分析模型，请重新安装 Folia 以使用完全体。",
+    "transitionEngineNeedsModels": "这次安装缺少分析模型，请重新安装 Ecria 以使用完全体。",
     "legacyModelsTitle": "清理旧版 automix 模型",
     "legacyModelsDesc": "新版已内置 automix 的分析模型，旧版下载的模型和运行环境不再使用。你之前选择的模型目录里还留着 {{files}} 项，共 {{size}}：{{dir}}。删除只会移除这些旧文件，不会动文件夹里的其他内容。",
     "legacyModelsDelete": "删除",
@@ -2449,7 +2609,7 @@ export default {
     "transitionPerformance": "表现模式",
     "transitionPerformanceDesc": "更激进的过渡表现。",
     "transitionPerformanceNeedsStems": "浏览器端技术限制无法开启。",
-    "transitionPerformanceNeedsModel": "这次安装缺少音轨分离模型，请重新安装 Folia。",
+    "transitionPerformanceNeedsModel": "这次安装缺少音轨分离模型，请重新安装 Ecria。",
     "transitionAnimation": "过渡动画",
     "transitionAnimationDesc": "混音时把这次过渡画出来。过渡短于 5 秒不显示。",
     "transitionAnimationRing": "屏幕圆环",
@@ -2656,7 +2816,7 @@ export default {
     "memoryByProcess": "分进程",
     "memorySeriesUnavailable": "当前系统不提供这个数据",
     "reduceMotionSection": "降低动态效果",
-    "reduceMotionSectionDesc": "Folia 默认播放完整动画。打开某一项，那一处的动效就会降低。",
+    "reduceMotionSectionDesc": "Ecria 默认播放完整动画。打开某一项，那一处的动效就会降低。",
     "reduceMotionFollowSystem": "跟随系统设置",
     "reduceMotionFollowSystemDesc": "由系统的动画设置决定全部动效",
     "reduceMotionForcedBySystem": "当前正被上面的系统设置压低。",
@@ -2725,7 +2885,7 @@ export default {
     "useNativeMacFullscreenButtonDesc": "全屏按钮进入 macOS 原生全屏，而不是最大化窗口",
     "useNativeMacTrafficLights": "使用 macOS 原生红绿灯",
     "useNativeMacTrafficLightsDesc": "用系统左上角红绿灯替代右上角自绘的最小化、最大化和关闭按钮",
-    "useNativeMacTrafficLightsNotice": "重启 Folia 后生效",
+    "useNativeMacTrafficLightsNotice": "重启 Ecria 后生效",
     "hidePlayerProgressBar": "隐藏底部控制条",
     "playerBottomBarOffset": "底部组件高度",
     "playerBottomBarOffsetDesc": "同时调整各页面的底部控制条、歌曲卡片、操作按钮和侧边面板；播放页字幕也会跟随。最高不超过半个屏幕。",
@@ -2757,7 +2917,7 @@ export default {
     "enablePlayerPageNativeBlurHint": "用系统毛玻璃替代播放页背景，更耗性能",
     "enablePlayerPageNativeBlurDesc": "仅在桌面版的非透明模式下生效；移动窗口时可能卡顿。",
     "nativeBlurConfirmTitle": "系统毛玻璃效果",
-    "nativeBlurConfirmDesc": "开启后，窗口会变为系统毛玻璃效果的半透明背景，Folia 的各种背景将不再显示。如果系统不支持，则会显示为白色不透明背景。",
+    "nativeBlurConfirmDesc": "开启后，窗口会变为系统毛玻璃效果的半透明背景，Ecria 的各种背景将不再显示。如果系统不支持，则会显示为白色不透明背景。",
     "nativeBlurConfirmAction": "我明白，这会让背景调整无效",
     "nativeBlurBackgroundNotice": "当前已开启原生毛玻璃背景，背景设置无效",
     "autoHidePlayerChrome": "自动隐藏控制栏",
@@ -2812,7 +2972,7 @@ export default {
     "closeToTrayDesc": "点关闭按钮时不退出，隐藏到托盘继续播放",
     "hideTaskbarIcon": "隐藏任务栏图标",
     "hideTaskbarIconDesc": "即使主窗口仍然打开，也不在任务栏中显示应用入口。开启后主要通过系统托盘找回窗口。",
-    "hideTaskbarIconNotice": "窗口只能从系统托盘里的 Folia 图标找回",
+    "hideTaskbarIconNotice": "窗口只能从系统托盘里的 Ecria 图标找回",
     "remoteControlGroup": "Remote Control",
     "remoteControlGroupDefault": "默认",
     "remoteControlGroupOn": "已改 {{count}} 项",
@@ -2831,9 +2991,9 @@ export default {
     "openPlayerOnLaunchDesc": "应用启动时自动进入播放界面。跟随“播放后进入的视图”：选择 Lattice 时，启动后进入队列拼贴。",
     "wallpaperMode": "壁纸模式",
     "wallpaperModeDesc": "窗口沉到桌面最底层，作为歌词壁纸。键盘不可用",
-    "wallpaperModeMacPermissionHint": "Mac 壁纸模式需要“输入监控”权限：请在 系统设置 → 隐私与安全性 → 输入监控 中勾选 Folia 然后重启应用。",
+    "wallpaperModeMacPermissionHint": "Mac 壁纸模式需要“输入监控”权限：请在 系统设置 → 隐私与安全性 → 输入监控 中勾选 Ecria 然后重启应用。",
     "wallpaperEnterConfirmTitle": "进入壁纸模式？",
-    "wallpaperEnterConfirmDesc": "窗口会沉到桌面最底层，作为歌词壁纸常驻显示。进入后窗口无法关闭、最小化或移动，键盘也无法操作应用。\n\n要退出，请打开系统托盘（macOS 为菜单栏）中的 Folia 菜单，再次点击“壁纸模式”。",
+    "wallpaperEnterConfirmDesc": "窗口会沉到桌面最底层，作为歌词壁纸常驻显示。进入后窗口无法关闭、最小化或移动，键盘也无法操作应用。\n\n要退出，请打开系统托盘（macOS 为菜单栏）中的 Ecria 菜单，再次点击“壁纸模式”。",
     "wallpaperEnterConfirmAction": "进入壁纸模式",
     "wallpaperDisplay": "壁纸显示器",
     "wallpaperDisplayDesc": "壁纸模式用哪一块显示器",
@@ -2886,7 +3046,7 @@ export default {
     "stageConnectionError": "未能连接到 ws://localhost:9863/api/ws/lyric，请确认 now-playing 服务已在本机运行",
     "stageNotRunning": "请在本机启动 now-playing 服务，并确保播放器正在播放",
     "discordRichPresence": "Discord 播放状态",
-    "discordRichPresenceDesc": "在 Discord 桌面端展示 Folia 当前播放歌曲。",
+    "discordRichPresenceDesc": "在 Discord 桌面端展示 Ecria 当前播放歌曲。",
     "discordPresenceDisabled": "未启用",
     "discordPresenceConnected": "已连接",
     "discordPresenceDisconnected": "未连接",
@@ -2898,7 +3058,7 @@ export default {
     "obsBrowserSourceGuideStep1": "在 OBS 的「来源」中添加「浏览器」。",
     "obsBrowserSourceGuideStep2": "把上方的 OBS 地址粘贴到 URL 栏。",
     "obsBrowserSourceGuideStep3": "宽高建议设为 1920×1080（竖屏为 1080×1920）。设得更大（如 3840×2160）时，布局按比例放大，文字更清晰。",
-    "obsBrowserSourceGuideStep4": "浏览器源只渲染画面，不播放声音。需要声音时，请用 OBS 的桌面音频或应用音频捕获来采集 Folia。",
+    "obsBrowserSourceGuideStep4": "浏览器源只渲染画面，不播放声音。需要声音时，请用 OBS 的桌面音频或应用音频捕获来采集 Ecria。",
     "obsBrowserSourceGuideStep5": "歌词的主题、字体、动画等视觉设置会同步到 OBS。主窗口开启透明播放器背景或播放页原生毛玻璃时，OBS 中的背景是透明的。",
     "obsBrowserSourceGuideStep6": "「连接数」大于 0 表示 OBS 已连接。重新生成 Token 后，旧地址会失效，需要在 OBS 中更新。",
     "obsBrowserSourceAddress": "OBS 地址",
@@ -3133,8 +3293,8 @@ export default {
     "beatEffectsNeedSmartBeat": "在「全局」页打开智能动感模式后，这些效果才会生效。",
     "beatEffectsOpenSmartBeat": "前往「全局」",
     "beatEffectStrength": "强度",
-    "beatEffectNeedsDrums": "这次安装缺少 HTDemucs 模型，请重新安装 Folia。没有鼓的歌也不出效果。",
-    "beatEffectNeedsStems": "这次安装缺少 HTDemucs 模型，请重新安装 Folia。",
+    "beatEffectNeedsDrums": "这次安装缺少 HTDemucs 模型，请重新安装 Ecria。没有鼓的歌也不出效果。",
+    "beatEffectNeedsStems": "这次安装缺少 HTDemucs 模型，请重新安装 Ecria。",
     "beatEffect_sonnetLensTear": "推镜裂光",
     "beatEffect_sonnetLensTearDesc": "跟着 beat_this 识别的节拍：每拍镜头推近，小节第一拍撕裂并泛起辉光。",
     "beatEffect_dioramaRipple": "水镜涟漪",
@@ -3594,15 +3754,15 @@ export default {
     "glowBlurQuantizeDesc": "改变部分歌词动画的发光绘制方式",
     "glowBlurQuantizeDocs": "文档",
     "backgroundThrottling": "后台节流",
-    "backgroundThrottlingHint": "Folia 最小化或隐藏时节流渲染，歌词动画停在当前画面",
-    "backgroundThrottlingDesc": "窗口最小化或隐藏到托盘时交给 Chromium 节流，歌词动画也停下，回来后从当前进度接着播；只是切到别的应用、窗口还看得见时照常动。音乐照常播放。默认关闭，因为用 OBS 窗口采集 Folia 直播时，窗口在后台也要照常画。壁纸模式、导出视频和 OBS 浏览器源连着时自动不生效。",
+    "backgroundThrottlingHint": "Ecria 最小化或隐藏时节流渲染，歌词动画停在当前画面",
+    "backgroundThrottlingDesc": "窗口最小化或隐藏到托盘时交给 Chromium 节流，歌词动画也停下，回来后从当前进度接着播；只是切到别的应用、窗口还看得见时照常动。音乐照常播放。默认关闭，因为用 OBS 窗口采集 Ecria 直播时，窗口在后台也要照常画。壁纸模式、导出视频和 OBS 浏览器源连着时自动不生效。",
     "gpuPreference": "渲染显卡",
     "gpuPreferenceHint": "双显卡电脑上选择用哪张显卡渲染画面，重启后生效",
-    "gpuPreferenceDesc": "自动：由系统决定，笔记本上通常是接屏幕的核显，更省电。高性能：用独立显卡，动画更流畅但更耗电，在后台放歌时也一样。省电：用核显。在 Windows「图形设置」里给 Folia 单独指定过显卡时，以系统设置为准。",
+    "gpuPreferenceDesc": "自动：由系统决定，笔记本上通常是接屏幕的核显，更省电。高性能：用独立显卡，动画更流畅但更耗电，在后台放歌时也一样。省电：用核显。在 Windows「图形设置」里给 Ecria 单独指定过显卡时，以系统设置为准。",
     "gpuPreferenceAuto": "自动",
     "gpuPreferenceHighPerformance": "高性能",
     "gpuPreferenceLowPower": "省电",
-    "gpuPreferenceRestartNotice": "重启 Folia 后生效",
+    "gpuPreferenceRestartNotice": "重启 Ecria 后生效",
     "gpuPreferenceCommandLineNotice": "这次启动带了显卡参数，以启动参数为准",
     "gpuPreferenceActive": "当前使用",
     "visualizerFrameRateValue": "限制档位",
@@ -3678,7 +3838,18 @@ export default {
     "clearAll": "全部清空",
     "confirmClearAll": "确定要清空所有缓存吗？",
     "cacheClearing": "清除中...",
+    "loginInfoGroup": "登录信息",
+    "clearAllLogins": "清除所有登录信息",
+    "clearAllLoginsDesc": "退出这台设备上登录的所有音乐平台账号；设置、外观和本地文件都会保留。",
+    "clearAllLoginsAction": "清除",
+    "clearAllLoginsRunning": "清除中...",
+    "clearAllLoginsConfirm": "会退出这台设备上所有音乐平台的账号，并把它们的歌移出播放队列（正在放的是它们就停下）；设置、外观和本地文件保留。继续吗？",
+    "clearAllLoginsDone": "已清除所有音乐平台的登录信息。",
     "electronSettings": "AI主题设置",
+    "deviceAiSettings": "AI主题设置",
+    "deviceAiKeychainDesc": "密钥保存在本机的钥匙串里，只发给这里选的服务商，用来生成歌曲主题。",
+    "deviceAiUnavailable": "安全存储只在 iOS 应用里可用。",
+    "deviceAiSaveFailed": "保存失败",
     "aiProvider": "AI 供应商",
     "useSystemProxyAI": "为AI使用系统代理",
     "useSystemProxyAIDesc": "仅将AI相关的网络请求通过系统代理路由。",
@@ -3827,7 +3998,7 @@ export default {
     "obsThemeModeBuiltin": "动态·内置",
     "obsThemeModeAi": "动态·AI",
     "obsThemeModeStaticHint": "把当前主题烧进链接，OBS 里永远固定不变。",
-    "obsThemeModeBuiltinHint": "OBS 按封面从 Folia 内置库逐曲挑最合适的配色。",
+    "obsThemeModeBuiltinHint": "OBS 按封面从 Ecria 内置库逐曲挑最合适的配色。",
     "obsThemeModeAiHint": "逐曲用 AI 生成主题，AI 不可用时回退内置。",
     "importSuccess": "配置导入成功！",
     "importFailed": "配置导入失败，请检查格式是否正确。",
@@ -3927,8 +4098,8 @@ export default {
     "macManualUpdateNotice": "提示：macOS 版本需要下载完整安装包手动覆盖更新。",
     "linuxManualUpdateNotice": "提示：Linux 不支持自动更新。请下载完整的 deb、rpm 或 tar.gz 包手动升级；仅正式版且通过 AUR 安装的用户可使用包管理器升级 folia-major-bin。",
     "manualUpdateNotice": "提示：当前平台暂不支持自动更新，请下载安装包手动覆盖更新。",
-    "unofficialBuildNotice": "非官方构建：这个版本既不是 Folia 仓库的 CI 构建的，也不是文档里的自部署方式（Docker、Vercel、Cloudflare），可能经过他人修改或缺少后端服务。遇到问题请先联系提供者，官方版本请从 GitHub Releases 下载。",
-    "selfHostedBuildNotice": "自部署版本：由部署者自行构建并托管，音乐平台的后端服务也由部署者配置。遇到问题请先联系部署者；确认是 Folia 本身的问题再到 GitHub 反馈。",
+    "unofficialBuildNotice": "非官方构建：这个版本既不是 Ecria 仓库的 CI 构建的，也不是文档里的自部署方式（Docker、Vercel、Cloudflare），可能经过他人修改或缺少后端服务。遇到问题请先联系提供者，官方版本请从 GitHub Releases 下载。",
+    "selfHostedBuildNotice": "自部署版本：由部署者自行构建并托管，音乐平台的后端服务也由部署者配置。遇到问题请先联系部署者；确认是 Ecria 本身的问题再到 GitHub 反馈。",
     "nowPlayingStatusHint": "固定连接 ws://localhost:9863/api/ws/lyric，请先在本机启动 now-playing 服务。",
     "globalLyricTimelineOffset": "全局时间偏移",
     "settingsHeadingLyricTiming": "时间与过滤",
@@ -3963,7 +4134,7 @@ export default {
     "v0_7_1": {
       "intro": "欢迎来到 0.7.1「Pleiades Update」：这是一次覆盖播放、扩展、桌面与视觉体验的大型更新。",
       "pleiadesAutomix": {
-        "title": "Folia Automix 智能过渡",
+        "title": "Ecria Automix 智能过渡",
         "description": "根据节拍、速度、调性、响度和歌曲段落自动选择切拍、低频交接、尾奏承接或淡化；桌面端可按需下载模型，获得更精准的节拍对齐、音轨分离和表现模式。"
       },
       "modsPlatform": {
@@ -3972,7 +4143,7 @@ export default {
       },
       "windowsWallpaper": {
         "title": "Windows 桌面壁纸模式",
-        "description": "Windows 现可将 Folia 沉入桌面图标下方，作为常驻歌词壁纸，并提供托盘与命令面板切换、鼠标转发和异常自动恢复；该模式下键盘不可用。"
+        "description": "Windows 现可将 Ecria 沉入桌面图标下方，作为常驻歌词壁纸，并提供托盘与命令面板切换、鼠标转发和异常自动恢复；该模式下键盘不可用。"
       },
       "sleepTimer": {
         "title": "可恢复的睡眠定时",
@@ -4041,7 +4212,7 @@ export default {
       },
       "macWallpaperMode": {
         "title": "macOS 壁纸模式",
-        "description": "Mac 现在也能把 Folia 沉到桌面图标下方作为歌词壁纸，无需重启应用即可切换，并可选择壁纸模式期间自动隐藏 Dock 栏。需要在 系统设置 → 隐私与安全性 → 输入监控 中授权 Folia 才能转发鼠标；该模式下键盘不可用。"
+        "description": "Mac 现在也能把 Ecria 沉到桌面图标下方作为歌词壁纸，无需重启应用即可切换，并可选择壁纸模式期间自动隐藏 Dock 栏。需要在 系统设置 → 隐私与安全性 → 输入监控 中授权 Ecria 才能转发鼠标；该模式下键盘不可用。"
       },
       "transcodeFallback": {
         "title": "自动转换无法播放的音频",
@@ -4064,7 +4235,7 @@ export default {
       "intro": "0.7.5 带来可自选的播放入口、更完整的命令面板操作，以及更可靠的桌面端诊断与更新体验。",
       "playbackEntryChoice": {
         "title": "选择播放后进入的视图",
-        "description": "点击播放时可选择进入可视化播放器或 Lattice 队列拼贴。更新说明结束后 Folia 会询问一次，此后仍可在界面设置中修改。由于 Lattice 不支持私人 FM，启动私人 FM 时仍会进入标准播放器。"
+        "description": "点击播放时可选择进入可视化播放器或 Lattice 队列拼贴。更新说明结束后 Ecria 会询问一次，此后仍可在界面设置中修改。由于 Lattice 不支持私人 FM，启动私人 FM 时仍会进入标准播放器。"
       },
       "commandPaletteGridActions": {
         "title": "命令面板接管网格操作",
@@ -4080,7 +4251,7 @@ export default {
       },
       "desktopReliability": {
         "title": "更清晰的桌面更新与崩溃报告",
-        "description": "macOS 和 Linux 现在也能检查新版本，并引导下载完整安装包或通过 AUR 升级；Windows 继续支持自动更新。Folia 崩溃时会保存诊断日志并可打开所在目录，Windows 卸载程序也可按需清除用户数据。"
+        "description": "macOS 和 Linux 现在也能检查新版本，并引导下载完整安装包或通过 AUR 升级；Windows 继续支持自动更新。Ecria 崩溃时会保存诊断日志并可打开所在目录，Windows 卸载程序也可按需清除用户数据。"
       },
       "visualizerRefinements": {
         "title": "更轻、更清晰的视觉器",
@@ -4118,7 +4289,7 @@ export default {
       },
       "motionControls": {
         "title": "可单独调低的动态效果",
-        "description": "Folia 默认播放完整动画，不再因为系统关闭了动画效果就把整套动效变成瞬移。实验室设置新增「降低动态效果」，可以分别调低队列拼贴、混音过渡、歌单展开转场、Monet 背景漂移、界面微动效和设置页平滑滚动；需要时也可以开启「跟随系统设置」。"
+        "description": "Ecria 默认播放完整动画，不再因为系统关闭了动画效果就把整套动效变成瞬移。实验室设置新增「降低动态效果」，可以分别调低队列拼贴、混音过渡、歌单展开转场、Monet 背景漂移、界面微动效和设置页平滑滚动；需要时也可以开启「跟随系统设置」。"
       },
       "wallpaperMultiMonitor": {
         "title": "壁纸模式支持多显示器",
@@ -4156,7 +4327,7 @@ export default {
       "intro": "欢迎来到 0.7.27。Spotify 新增 Soloist 播放方式，拿不到音频密钥的账号也能听歌；Apple Music 的音量和静音现在能用了，资料库多了「全部歌曲」，自带的逐字歌词也会让位给你选的优先歌词源；飞牛音乐在局域网外填 FN ID 就能登录。",
       "soloist": {
         "title": "Spotify：Soloist 播放",
-        "description": "有些 Spotify 账号（多见于 2024 年底以后注册的）拿不到音频密钥，Folia 自己的播放方式放不了。现在登录时可以在「标准播放」和「Soloist 播放」之间二选一：Soloist 是 Spotify 官方的播放程序，需要另外下载，并用 Premium 账号生成一把 API 密钥。选标准播放时，登录后会先试一下这个账号能不能拿到密钥，拿不到就提示改用 Soloist。配置清单一步步带你装好程序、填好密钥、配对设备，也可以从账号页、命令面板的「平台播放设置」或播放失败的提示里打开。Soloist 自己把声音送到系统输出，Folia 的均衡器、Automix 和视频导出不作用于它。另外修复了 Linux 上第一次播放 Spotify 时整个应用卡住的问题。"
+        "description": "有些 Spotify 账号（多见于 2024 年底以后注册的）拿不到音频密钥，Ecria 自己的播放方式放不了。现在登录时可以在「标准播放」和「Soloist 播放」之间二选一：Soloist 是 Spotify 官方的播放程序，需要另外下载，并用 Premium 账号生成一把 API 密钥。选标准播放时，登录后会先试一下这个账号能不能拿到密钥，拿不到就提示改用 Soloist。配置清单一步步带你装好程序、填好密钥、配对设备，也可以从账号页、命令面板的「平台播放设置」或播放失败的提示里打开。Soloist 自己把声音送到系统输出，Ecria 的均衡器、Automix 和视频导出不作用于它。另外修复了 Linux 上第一次播放 Spotify 时整个应用卡住的问题。"
       },
       "amUpdate": {
         "title": "Apple Music 改进",
@@ -4164,7 +4335,7 @@ export default {
       },
       "fnConnect": {
         "title": "飞牛音乐：外网用 FN ID 登录",
-        "description": "飞牛音乐的服务器地址可以只填 FN ID（例如 mynas），Folia 经 FN Connect 中继连上你的 fnOS 设备，不在同一个局域网也能登录和播放。填了协议、端口或路径的地址仍按原样直连；经中继时一律走 HTTPS。"
+        "description": "飞牛音乐的服务器地址可以只填 FN ID（例如 mynas），Ecria 经 FN Connect 中继连上你的 fnOS 设备，不在同一个局域网也能登录和播放。填了协议、端口或路径的地址仍按原样直连；经中继时一律走 HTTPS。"
       },
       "moreDetails": {
         "title": "更多改进",
@@ -4291,7 +4462,7 @@ export default {
       },
       "globalShortcuts": {
         "title": "全局播放快捷键",
-        "description": "桌面版「快捷操作 → 全局快捷键」：Folia 不在前台时也能用 Ctrl+Alt+Shift（macOS 是 Control+Option+Shift）加一个字母或数字控制播放，可绑定播放/暂停、上一首、下一首、音量加减、静音、循环和随机，模组提供的命令也能绑定；被别的程序占用的组合会标出来。原生 Wayland 下改为一键注册到桌面环境，在系统设置里绑定按键。命令面板也新增了播放/暂停和音量加减。"
+        "description": "桌面版「快捷操作 → 全局快捷键」：Ecria 不在前台时也能用 Ctrl+Alt+Shift（macOS 是 Control+Option+Shift）加一个字母或数字控制播放，可绑定播放/暂停、上一首、下一首、音量加减、静音、循环和随机，模组提供的命令也能绑定；被别的程序占用的组合会标出来。原生 Wayland 下改为一键注册到桌面环境，在系统设置里绑定按键。命令面板也新增了播放/暂停和音量加减。"
       },
       "aiProviders": {
         "title": "AI 服务商与模型",
@@ -4341,7 +4512,7 @@ export default {
       },
       "videoExport": {
         "title": "视频导出更可靠",
-        "description": "桌面版导出视频改为边录边写入磁盘，4K 等大文件不再在最后一步失败；改为直接录制 Folia 自己的页面，Linux（包括 Wayland）下不再找不到录制源，窗口被遮挡也照样录得到，4K 录制帧率明显提升。导出的 MP4 现在能正确显示时长。"
+        "description": "桌面版导出视频改为边录边写入磁盘，4K 等大文件不再在最后一步失败；改为直接录制 Ecria 自己的页面，Linux（包括 Wayland）下不再找不到录制源，窗口被遮挡也照样录得到，4K 录制帧率明显提升。导出的 MP4 现在能正确显示时长。"
       },
       "automixIntelMac": {
         "title": "Intel Mac 支持人声分离",
@@ -4349,7 +4520,7 @@ export default {
       },
       "modHomePages": {
         "title": "模组可以在首页添加页面",
-        "description": "Folium 1.5：模组可以在首页添加自己的页面，与原生页签并列切换；能读取和调整音量、静音、循环模式，查看并点播播放队列，还能感知播放失败。模组面板会显示每个模组占用的空间，可以一键清空缓存；模组设置里的下拉框换成与 Folia 一致的样式。社区「先行测试」渠道的模组会以紫色标记，并在启用前提示风险。"
+        "description": "Folium 1.5：模组可以在首页添加自己的页面，与原生页签并列切换；能读取和调整音量、静音、循环模式，查看并点播播放队列，还能感知播放失败。模组面板会显示每个模组占用的空间，可以一键清空缓存；模组设置里的下拉框换成与 Ecria 一致的样式。社区「先行测试」渠道的模组会以紫色标记，并在启用前提示风险。"
       },
       "stabilityFixes": {
         "title": "更稳定的细节",
@@ -4468,7 +4639,7 @@ export default {
       },
       "qrLogin": {
         "title": "扫码登录更稳，失败时有办法",
-        "description": "网易云扫码中途连接被重置时会换身份重试，失败时显示真实原因。登录失败后，二维码旁先给出重启 Folia、换网络等办法，诊断信息收在下方；QQ 音乐恢复诊断入口，在手机上取消后会等后端冷却结束再允许重试。"
+        "description": "网易云扫码中途连接被重置时会换身份重试，失败时显示真实原因。登录失败后，二维码旁先给出重启 Ecria、换网络等办法，诊断信息收在下方；QQ 音乐恢复诊断入口，在手机上取消后会等后端冷却结束再允许重试。"
       },
       "injectedShortcuts": {
         "title": "快捷键支持模拟输入",
@@ -4604,6 +4775,8 @@ export default {
     "slotSuggestionReplaceSecondary": "换掉右侧按钮「{{action}}」",
     "capsuleQuickActions": "快捷操作",
     "capsuleOpensPalette": "点一下打开命令面板",
+    "backToVisualizer": "返回可视化",
+    "showControlBar": "显示播放控制条",
   },
   "localMusic": {
     "foldersAndPlaylists": "文件夹",
@@ -4825,7 +4998,7 @@ export default {
     "posterChecking": "正在文件夹里找 poster.png…",
     "posterFound": "在文件夹里找到了 {{name}}",
     "posterMissing": "这个文件夹里没有 poster.png",
-    "posterNoAccess": "允许 Folia 读取这个文件夹，才能用里面的 poster.png",
+    "posterNoAccess": "允许 Ecria 读取这个文件夹，才能用里面的 poster.png",
     "posterUnavailable": "读不到这个文件夹",
     "upload": "上传图片",
     "restore": "恢复默认",
@@ -4837,7 +5010,7 @@ export default {
     "saved": "封面已设置",
     "restored": "已恢复自动封面",
     "failed": "封面没有设置成功：{{error}}",
-    "notImage": "这个文件不是 Folia 能读取的图片"
+    "notImage": "这个文件不是 Ecria 能读取的图片"
   },
   "navidrome": {
     "title": "Navi",
@@ -4911,9 +5084,9 @@ export default {
       "engineWeb": "Web Audio",
       "engineMpv": "mpv · HiFi 原生直通",
       "engineMpvNotice": "mpv 绕过 Web Audio：这些歌曲播放时，均衡器、音效、ReplayGain、淡入淡出、智能过渡、频谱和歌词视频导出都会停用，音量默认由 DAC 或功放控制。",
-      "unsupported": "这个版本的 Folia 没有 HiFi 引擎。",
+      "unsupported": "这个版本的 Ecria 没有 HiFi 引擎。",
       "confirmTitle": "mpv 以 100% 音量输出",
-      "confirmDesc": "mpv 以 100% 音量输出，Folia 的音量滑块不再改变响度，响度由你的 DAC 或功放决定。播放前先把那边的音量调低。",
+      "confirmDesc": "mpv 以 100% 音量输出，Ecria 的音量滑块不再改变响度，响度由你的 DAC 或功放决定。播放前先把那边的音量调低。",
       "confirmAction": "改用 mpv",
       "runtime": "mpv 播放器",
       "runtimeChecking": "正在查找 mpv...",
@@ -4925,7 +5098,7 @@ export default {
       "linuxInstallHint": "用发行版的包管理器安装 mpv 0.39 或更新的版本，然后重新检测。部分长期支持版自带的 mpv 较旧。",
       "manualPathRejected": "选中的文件无法使用：它不存在、不是 mpv，或版本低于 0.39。",
       "sourceManual": "手动指定",
-      "sourceDownloaded": "由 Folia 下载",
+      "sourceDownloaded": "由 Ecria 下载",
       "sourceSystem": "系统已安装",
       "download": "下载 mpv {{version}}",
       "update": "更新到 mpv {{version}}",
@@ -4952,7 +5125,7 @@ export default {
       "devicesEmpty": "没有找到输出设备。",
       "devicesNeedMpv": "需要先有 mpv 才能列出设备。",
       "exclusive": "独占模式",
-      "exclusiveDesc": "Folia 独占设备，系统混音器不会重采样或混音。期间其他程序在这个设备上没有声音，系统媒体控制也不可用。",
+      "exclusiveDesc": "Ecria 独占设备，系统混音器不会重采样或混音。期间其他程序在这个设备上没有声音，系统媒体控制也不可用。",
       "dsdMode": "DSD 输出方式",
       "dsdModeDesc": "DoP 把 DSD 原样装进 PCM 帧发送。",
       "dsdPcm": "转为 PCM",
@@ -4965,7 +5138,7 @@ export default {
       "navidrome": "Navidrome 歌曲也用 mpv",
       "navidromeDesc": "从服务器取原始文件，不转码。关闭时 Navidrome 歌曲用 Web Audio。",
       "softwareVolume": "软件音量",
-      "softwareVolumeDesc": "让 Folia 的音量滑块控制 mpv 的音量。这样信号链路就不再是原生直通。",
+      "softwareVolumeDesc": "让 Ecria 的音量滑块控制 mpv 的音量。这样信号链路就不再是原生直通。",
     },
     "player": {
       "badge": "HiFi · {{verdict}}",
@@ -4995,7 +5168,7 @@ export default {
       "noSource": "还没有载入音频",
       "outputLabel": "输出",
       "outputDesc": "音量、均衡器和音效照常生效；不保证逐位直通。",
-      "note": "只反映 Folia 自己的转码，看不到服务器端转码和设备实际格式。"
+      "note": "只反映 Ecria 自己的转码，看不到服务器端转码和设备实际格式。"
     },
     "signal": {
       "title": "HiFi 信号链路",
@@ -5075,7 +5248,7 @@ export default {
         "filter": "经 PipeWire 里的滤波器改动：{{names}}",
         "filterPlain": "经 PipeWire 里的滤波器改动"
       },
-      "transportLocal": "经 Folia 的本机桥接逐字节读取曲库文件",
+      "transportLocal": "经 Ecria 的本机桥接逐字节读取曲库文件",
       "transportNavidrome": "Navidrome 上的原始文件，不转码",
       "processBypassed": "不经均衡器、音效和 ReplayGain，也不调音量",
       "outputExclusive": "独占模式",
@@ -5090,25 +5263,25 @@ export default {
         "rateVirtual": "声音进了虚拟设备「{{name}}」（如 EasyEffects 这类音效程序，或没接上声卡的滤波器），PipeWire 的报告到这里为止：不知道最后接到哪块声卡、以什么采样率运行",
         "filtersOk": "mpv 和设备之间没有滤波器（均衡器、remap）",
         "filtersWarn": "途中有滤波器改动声音：{{names}}",
-        "streamVolumeOk": "Folia 这路流在 PipeWire 里是 100% 音量",
-        "streamVolumeWarn": "Folia 这路流在 PipeWire 里是 {{volume}} 音量，每个采样都被缩放",
+        "streamVolumeOk": "Ecria 这路流在 PipeWire 里是 100% 音量",
+        "streamVolumeWarn": "Ecria 这路流在 PipeWire 里是 {{volume}} 音量，每个采样都被缩放",
         "deviceVolumeOk": "设备上没有软件音量",
         "deviceVolumeWarn": "PipeWire 在软件里施加了一部分设备音量（{{volume}}），每个采样都被缩放",
         "otherStreamsOk": "这个设备上没有别的声音在放",
         "otherStreamsWarn": "这个设备上还在放：{{names}}",
-        "ownStream": "{{name}}（Folia 自己的）",
+        "ownStream": "{{name}}（Ecria 自己的）",
         "channelsOk": "设备的声道和 mpv 送出的一致",
         "channelsWarn": "mpv 送出 {{from}}，设备是 {{to}}：PipeWire 重新混了声道",
         "channelsWarnPlain": "设备的声道和 mpv 送出的不同：PipeWire 重新混了声道",
         "hintForced": "PipeWire 的 clock.force-rate 把采样率固定在 {{forced}}，设备不会切到 {{rate}}。要取消固定，在终端运行下面这条命令：",
         "hintNotAllowed": "PipeWire 不允许切到 {{rate}}：要把它加进 default.clock.allowed-rates。把下面这行存成 ~/.config/pipewire/pipewire.conf.d/ 里的一个 .conf 文件，再重启 PipeWire。",
         "hintBusy": "PipeWire 只在设备空闲时切换采样率，现在设备上还有别的流在放：{{names}}。",
-        "hintBusyOwn": "其中有来自 Folia 自己的流：Folia 的 Web 引擎还开着一路声音。",
+        "hintBusyOwn": "其中有来自 Ecria 自己的流：Ecria 的 Web 引擎还开着一路声音。",
         "hintJoin": "{{first}}{{second}}",
         "hintNoSwitch": "PipeWire 没有把设备切到 {{rate}}。它只切到 default.clock.allowed-rates 里列出、设备也支持的采样率，而且只在设备上没有别的声音时切。",
         "snippetLabel": "PipeWire 配置",
         "commandLabel": "终端命令",
-        "footnote": "以上是 PipeWire 报告的状态。Folia 只读得到 PipeWire 报的内容，确认不了 DAC 实际收到的采样率：请看 DAC 的采样率指示，或者用耳朵听。"
+        "footnote": "以上是 PipeWire 报告的状态。Ecria 只读得到 PipeWire 报的内容，确认不了 DAC 实际收到的采样率：请看 DAC 的采样率指示，或者用耳朵听。"
       }
     },
     "notice": {
@@ -5123,7 +5296,7 @@ export default {
       "MPV_SPAWN_FAILED": "mpv 无法启动。",
       "MPV_CRASHED": "mpv 意外退出了。",
       "IPC_TIMEOUT": "mpv 没有响应。",
-      "CIRCUIT_OPEN": "mpv 反复出错，HiFi 在重启 Folia 前不再使用，歌曲改用原来的引擎播放。",
+      "CIRCUIT_OPEN": "mpv 反复出错，HiFi 在重启 Ecria 前不再使用，歌曲改用原来的引擎播放。",
       "DEVICE_BUSY": "输出设备正被其他程序或系统的音频服务占用。请关掉那个程序，或在 播放引擎设置里换一个输出设备。",
       "DEVICE_UNAVAILABLE": "无法打开输出设备。",
       "SOURCE_UNREACHABLE": "无法读取歌曲文件。",
@@ -5140,8 +5313,8 @@ export default {
     "videoExportUnavailable": "HiFi 引擎播放时无法导出视频：声音直接送往输出设备，无法录制。"
   },
   "unifiedPanel": {
-    "nowPlayingStageDescription": "Now Playing 正由外部播放器控制，Folia 只负责展示歌词和视觉效果。",
-    "stageLocalInputDescription": "Stage 现在是本地单项输入模式。外部可以推送一份完整歌词对象或一段媒体，播放与展示仍由 Folia 自己控制。",
+    "nowPlayingStageDescription": "Now Playing 正由外部播放器控制，Ecria 只负责展示歌词和视觉效果。",
+    "stageLocalInputDescription": "Stage 现在是本地单项输入模式。外部可以推送一份完整歌词对象或一段媒体，播放与展示仍由 Ecria 自己控制。",
   },
   "libraryBravaisArtist": {
     "allSongsCountUnit_one": "首",
@@ -5182,8 +5355,8 @@ export default {
     "allSongsCollectionName": "{{artistName}} 的全部歌曲",
   },
   "obs": {
-    "connecting": "正在连接 Folia",
-    "waitingForPlayback": "等待 Folia 播放"
+    "connecting": "正在连接 Ecria",
+    "waitingForPlayback": "等待 Ecria 播放"
   },
   "queue": {
     "remove": "从队列中删除",
@@ -5279,7 +5452,7 @@ export default {
     }
   },
   "userGuide": {
-    "title": "欢迎使用 Folia",
+    "title": "欢迎使用 Ecria",
     "subtitle": "这里有一些提示，希望能帮到你。",
     "commandPalette": {
       "title": "命令面板",
@@ -5303,13 +5476,13 @@ export default {
       "title": "配色主题",
       "desc": "可以手动定制亮色 / 暗色配色，也可以根据当前歌曲生成 AI 主题。",
       "customDesc": "从视觉设置或命令面板打开主题乐园，编辑并保存自定义亮色与暗色配色。",
-      "aiDesc": "配置 AI 主题设置后，Folia 可以根据歌曲生成配色，并可自动应用已缓存的歌曲主题。"
+      "aiDesc": "配置 AI 主题设置后，Ecria 可以根据歌曲生成配色，并可自动应用已缓存的歌曲主题。"
     },
     "clickThrough": {
       "title": "点击穿透恢复",
       "desc": "开启点击穿透后，如果窗口控件被隐藏或不方便触达，可以通过系统托盘图标切换点击穿透。",
       "trayTitle": "使用托盘图标",
-      "trayDesc": "右键点击 Folia 的系统托盘图标，在菜单中选择点击穿透选项，即可开启或关闭。",
+      "trayDesc": "右键点击 Ecria 的系统托盘图标，在菜单中选择点击穿透选项，即可开启或关闭。",
       "lockTitle": "使用锁定按钮",
       "lockDesc": "也可以把鼠标移到顶部标题栏热点，唤出锁定按钮后点击关闭点击穿透。"
     },
@@ -5334,19 +5507,19 @@ export default {
   "soloist": {
     "method": {
       "standard": "标准播放",
-      "standardNote": "在浏览器里登录 Spotify，歌曲由 Folia 自己播放。均衡器、Automix 和跟着音乐跳动的效果都能用。",
+      "standardNote": "在浏览器里登录 Spotify，歌曲由 Ecria 自己播放。均衡器、Automix 和跟着音乐跳动的效果都能用。",
       "soloist": "Soloist 播放",
       "soloistNote": "在浏览器里登录 Spotify，歌曲交给 Spotify 官方的 Soloist 程序播放，适合拿不到音频密钥的账号。需要另外下载 Soloist，并用 Premium 账号生成一把 API 密钥。"
     },
     "setup": {
       "title": "Spotify Soloist 播放设置",
-      "note": "Soloist 是 Spotify 官方的播放程序，装在这台电脑上，自己把声音送到系统输出；Folia 控制它，并跟着它的进度显示歌词。Folia 的均衡器、Automix 和跟着音乐跳动的效果不处理它的声音。",
+      "note": "Soloist 是 Spotify 官方的播放程序，装在这台电脑上，自己把声音送到系统输出；Ecria 控制它，并跟着它的进度显示歌词。Ecria 的均衡器、Automix 和跟着音乐跳动的效果不处理它的声音。",
       "titleStandard": "Spotify 播放方式",
-      "noteStandard": "现在由 Folia 自己播放 Spotify 的歌曲。如果这个账号拿不到音频密钥、播放时提示账号无法播放，可以改用 Spotify 官方的 Soloist。"
+      "noteStandard": "现在由 Ecria 自己播放 Spotify 的歌曲。如果这个账号拿不到音频密钥、播放时提示账号无法播放，可以改用 Spotify 官方的 Soloist。"
     },
     "noKey": {
       "title": "这个账号拿不到 Spotify 的音频密钥",
-      "note": "Spotify 不给这个账号发放音频密钥，Folia 自己的播放方式放不了它的歌（2024 年底以后注册的账号常见）。可以改用 Spotify 官方的 Soloist 播放：下载 Soloist 程序，用 Premium 账号生成一把 API 密钥，再在 Spotify 应用里选一次设备。歌单、歌词和搜索不受影响。"
+      "note": "Spotify 不给这个账号发放音频密钥，Ecria 自己的播放方式放不了它的歌（2024 年底以后注册的账号常见）。可以改用 Spotify 官方的 Soloist 播放：下载 Soloist 程序，用 Premium 账号生成一把 API 密钥，再在 Spotify 应用里选一次设备。歌单、歌词和搜索不受影响。"
     },
     "step": {
       "program": "Soloist 程序",
@@ -5356,12 +5529,12 @@ export default {
       "modeSoloist": "播放方式：Soloist"
     },
     "mode": {
-      "standardNote": "Spotify 的歌曲由 Folia 自己播放。",
+      "standardNote": "Spotify 的歌曲由 Ecria 自己播放。",
       "soloistNote": "Spotify 的歌曲由 Soloist 播放。",
-      "noKeyNote": "Folia 自己的播放方式放不了这个账号的歌。"
+      "noKeyNote": "Ecria 自己的播放方式放不了这个账号的歌。"
     },
     "program": {
-      "todo": "从 Spotify 官方页面下载适合这台电脑的 Soloist，解压后选择里面的 soloist 程序（Windows 上是 soloist.exe）。Folia 不附带这个程序。",
+      "todo": "从 Spotify 官方页面下载适合这台电脑的 Soloist，解压后选择里面的 soloist 程序（Windows 上是 soloist.exe）。Ecria 不附带这个程序。",
       "valid": "版本 {{version}}，{{expires}} 到期，还剩 {{days}} 天。",
       "expiring": "版本 {{version}}，还剩 {{days}} 天就到期（{{expires}}）。每个构建只能用 90 天，请下载新版，解压后重新选择。",
       "unknown": "版本 {{version}}。读不出这个构建的日期，不知道什么时候到期。每个构建只能用 90 天，到期后 Soloist 会拒绝启动。",
@@ -5381,7 +5554,7 @@ export default {
     "pair": {
       "done": "已配对，可以播放。",
       "waiting": "先完成上面两步。",
-      "todo": "在同一局域网里的 Spotify 应用（手机或电脑）上打开设备列表，选择「Folia」。只需要做一次，之后会自动登录。",
+      "todo": "在同一局域网里的 Spotify 应用（手机或电脑）上打开设备列表，选择「Ecria」。只需要做一次，之后会自动登录。",
       "starting": "Soloist 还没启动。",
       "startFailed": "Soloist 没能启动。确认程序和密钥都对，然后点「重新连接」。"
     },
@@ -5476,7 +5649,7 @@ export default {
   "aiHelp": {
     "openButton": "遇到问题？",
     "title": "遇到问题？",
-    "docsTitle": "先查看 Folia 文档",
+    "docsTitle": "先查看 Ecria 文档",
     "openDocs": "打开文档",
     "discordTitle": "去 Discord 社区问问",
     "openDiscord": "加入",
@@ -5485,7 +5658,7 @@ export default {
     "copyPrompt": "复制提示词",
     "copyPromptTitle": "1. 复制 AI 提示词",
     "importJsonTitle": "2. 粘贴并导入 JSON",
-    "prompt": "我正在使用 GitHub 上的 folia-major 音乐播放器，遇到了一个问题，需要你协助排查。\n\nFolia 使用指南：{{guideUrl}}\nFolia 源码仓库：{{repoUrl}}\n\n请把这些资料作为上下文，结合我接下来描述的问题，帮我判断可能原因并给出处理步骤。如果信息不足，请先询问我需要补充什么，不要直接做不确定的假设。"
+    "prompt": "我正在使用 GitHub 上的 folia-major 音乐播放器，遇到了一个问题，需要你协助排查。\n\nEcria 使用指南：{{guideUrl}}\nEcria 源码仓库：{{repoUrl}}\n\n请把这些资料作为上下文，结合我接下来描述的问题，帮我判断可能原因并给出处理步骤。如果信息不足，请先询问我需要补充什么，不要直接做不确定的假设。"
   },
   "ponder": {
     "openPage": "思索当前页面",
@@ -5500,7 +5673,7 @@ export default {
     },
     "summaries": {
       "bravais_seam": "墙中间那道缝：三档开合、首页的页签与工具格、过滤和搜索的区别。",
-      "queue_shuffle": "Folia 没有随机播放模式，而是打乱队列；以及打乱队列的四个入口。",
+      "queue_shuffle": "Ecria 没有随机播放模式，而是打乱队列；以及打乱队列的四个入口。",
       "audio_equalizer": "十段均衡和效果链；拖动推子会改写自定义槽。",
       "vis_playground": "预览上的三块隐藏点击区。",
       "lyric_style": "每种样式的专属设置、莫奈部件的隐藏、背景搭配和通用副字幕。",
@@ -5819,8 +5992,8 @@ export default {
       "transition": {
         "panel": "设置 · 过渡",
         "enable": "过渡总开关",
-        "crossfade": "Folia Crossfade",
-        "automix": "Folia Automix",
+        "crossfade": "Ecria Crossfade",
+        "automix": "Ecria Automix",
         "badge": "运行状态",
         "detail": "当前模式的参数",
         "notice": "缺条件时的提示"
@@ -6021,7 +6194,7 @@ export default {
         "palette": "命令面板"
       },
       "grid": {
-        "help": "Folia 与帮助入口",
+        "help": "Ecria 与设置入口",
         "tabs": "内容来源页签",
         "search": "歌曲搜索",
         "map": "全部集合地图",
@@ -6134,7 +6307,7 @@ export default {
       "panelAccountTab": "面板 · 音质页",
       "latticePage": "Lattice 页面",
       "bravaisWall": "Bravais 墙",
-      "helpPage": "认识 Folia",
+      "helpPage": "认识 Ecria",
       "ponderBasics": "思索怎么用",
       "foliaTransport": "播放控制与媒体键",
       "foliaShortcuts": "常用快捷键",
@@ -6335,7 +6508,7 @@ export default {
         "toolsAppearance": "最下面是墙面外观：透光在三档之间轮换，还有海报叠色和开灯 / 关灯。向左滑这颗按钮，直接打开命令面板。"
       },
       "queueShuffle": {
-        "noMode": "Folia 不提供传统的随机播放模式，循环按钮也不会切到随机。想随机听，就打乱当前队列。",
+        "noMode": "Ecria 不提供传统的随机播放模式，循环按钮也不会切到随机。想随机听，就打乱当前队列。",
         "once": "打乱是一次操作：当前队列原地洗一次牌，之后按新顺序播放。想换个顺序，再打乱一次。",
         "command": "最快的是命令：命令窗口关着、焦点不在输入框时按冒号进入执行模式，再按 r。也可以在命令窗口里搜「打乱队列」。",
         "slot": "常用的话，在设置 · 播放页的「进度条右侧按钮」里选「随机队列」，控制条上就多一颗打乱按钮。",
@@ -6457,7 +6630,7 @@ export default {
         "grid": "这是浏览用的海报墙：搜索和歌单导航在卡片上方，选中一张卡片就会进入它的歌曲列表。",
         "gridNavigation": "滚动、滑动或用方向键在卡片间移动，然后选中当前卡片进入其中。",
         "gridSearch": "网格处于当前页面时直接输入文字即可筛选本页内容；按 Esc 关闭筛选。",
-        "gridHelp": "左侧齿轮打开帮助页；有新版本时，更新提示也会出现在这里。Help 内仍可打开版本更新说明和本页 Ponder。",
+        "gridHelp": "左侧齿轮打开设置；有新版本时，更新提示也会出现在这里，点它打开「通用」页的更新行。全部教程在设置侧栏底部。",
         "gridTabs": "中间页签切换歌单、推荐、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。",
         "gridSearchBox": "右侧是跨当前来源的歌曲搜索。输入后按 Enter 会进入搜索工作台；它不会筛选下方的集合海报。",
         "gridTabResult": "切换页签后，下方 3D 轨道会换成该来源的集合，并记住各来源最后聚焦的位置。",
@@ -6485,13 +6658,13 @@ export default {
         "playerToggleWhere": "侧边手柄贴在屏幕右缘，底边和控制条对齐。它是一颗圆按钮，按一下展开右侧控制面板。",
         "playerPanelWhere": "面板从手柄上方展开，贴着右侧。打开时是这首歌的封面页，最底下一排是封面、控制、播放列表、音质等标签页。",
         "playerPaletteSlide": "手柄背后还藏着一条向左的滑轨。按住手柄往左拖，越过判定线再松手，打开的是命令窗口，不是面板。",
-        "playerPaletteOpened": "命令窗口从底部的控制条原地长出来：输入框在底，最匹配的结果紧挨着它；看不到控制条时，它从屏幕上方落下。Folia 把「找功能」这件事全部收在这里。",
+        "playerPaletteOpened": "命令窗口从底部的控制条原地长出来：输入框在底，最匹配的结果紧挨着它；看不到控制条时，它从屏幕上方落下。Ecria 把「找功能」这件事全部收在这里。",
         "playerPaletteOtherWays": "{{mod}} + K 可随时打开命令窗口。播放页焦点不在输入框时，按 S 也可以；点控制条的空白处也行（播放入口设成 Lattice 时，这一下去 Lattice）；触屏先点右缘唤出手柄。",
         "playerCommandFilter": "窗口开着就直接打字，它按名字、别名和关键词一起筛。↑↓ 选，Enter 执行 —— 不必先想清楚这条命令归在哪一类。",
         "playerCommandArgument": "需要参数的命令不会立刻跑。打完命令名按空格，它收成输入行里的一枚标签，光标留在后面等你补参数，补完再 Enter。",
         "playerExecuteCloseFirst": "执行模式要在命令窗口关闭时进入。先按 Esc 关掉窗口：窗口开着时按冒号，只会把冒号打进输入框。",
         "playerExecuteMode": "回到播放页，焦点不在输入框时按冒号，命令窗口会直接以执行模式打开。进入后按 r/v/o/h 执行命令。",
-        "playerShuffleNoSwitch": "Folia 没有常驻的随机播放开关；它是一次操作，按下后会打乱当前队列。",
+        "playerShuffleNoSwitch": "Ecria 没有常驻的随机播放开关；它是一次操作，按下后会打乱当前队列。",
         "playerShuffleHow": "播放页按冒号进入执行模式，再按 r 打乱队列；再次执行可换顺序。",
         "playerShuffleSlot": "如果你常用它，把「随机队列」放进控制条右边那两个位置之一，以后按一下就行。",
         "lattice": "Lattice 把整条播放队列铺成一面海报墙。你可以在墙上移动查看队列，并选中海报来操作那首歌。从探索页打开时，铺开的是探索页的专辑、歌单、歌手和歌曲。",
@@ -6505,11 +6678,11 @@ export default {
         "latticeLights": "灯光关闭后海报退暗，只保留必要层次；这是显示设置，不会暂停播放或修改队列。",
         "latticePosterKeys": "收起时 Enter/Space 展开；展开后 Enter 播放/暂停，Space 显示控制，Esc 收起。",
         "latticePageKeys": ": + C 当前歌曲；{{mod}} + P 队列；{{mod}} + B 返回；{{mod}} + K 命令；方向键移动。",
-        "help": "Folia 分开处理浏览、播放、命令和设置。{{mod}}+G 说明当前页面，有特殊操作的组件也有独立教程。",
+        "help": "Ecria 分开处理浏览、播放、命令和设置。{{mod}}+G 说明当前页面，有特殊操作的组件也有独立教程。",
         "helpCommands": "{{mod}} + K 可以搜索全部命令和设置。对于藏得较深的选项，直接搜名称通常比记住它在哪一级更快。",
         "helpOperatingModel": "网格选歌，Player 或 Lattice 播放；底部控制条负责播放，帮助和设置覆盖当前页面。",
         "settings": "左侧按界面、音乐、应用和高级分组列出类别；右侧显示当前类别里的具体设置。",
-        "settingsDirectNavigation": "不必逐层翻找：在命令面板搜索设置名称，Folia 会直接打开对应分组并滚到准确位置。"
+        "settingsDirectNavigation": "不必逐层翻找：在命令面板搜索设置名称，Ecria 会直接打开对应分组并滚到准确位置。"
       },
       "playerBar": {
         "basicsAutoExpand": "暂停且不在首页时，控制条会自动展开。恢复播放或回到首页后，它会收起。",
@@ -6524,7 +6697,7 @@ export default {
         "heightDrag": "进了拖动调整之后，按住胶囊任意位置上下拖。松手即生效，而且会被记住。",
         "slotsIntro": "进度条右边这两个按钮不是固定的，两个位置各自独立。",
         "shuffleIntro": "这个随机和别处的不一样 —— 它不是一个开着就一直生效的模式。",
-        "shuffleOnce": "按一下，Folia 把当前队列原地洗一次牌，洗完这个顺序就定下来了。想换个顺序就再按一次。",
+        "shuffleOnce": "按一下，Ecria 把当前队列原地洗一次牌，洗完这个顺序就定下来了。想换个顺序就再按一次。",
         "volumeIntro": "底部控制条上没有常驻的音量滑块。",
         "volumeOpens": "按这里打开的是命令面板里的音量面板，不是就地弹一个小滑块。",
         "slotsHold": "在按钮上按住，外圈画满就松开；或者直接右键。",
@@ -6597,7 +6770,7 @@ export default {
         "sourceLyrics": "歌词这一行右端是这首歌现有的几种歌词，点一段就换；只有一种时只写着它的名字。",
         "sourceOffset": "时间轴偏移按 250ms 调整，也可以直接输入。它只对当前播放生效；设置里的全局偏移会与它相加。",
         "sourceLyricsFile": "「导入 / 导出歌词」这颗把两件事合在一个窗口里，点开再选。它左边的「在线匹配」打开匹配歌词的窗口。",
-        "sourceExportFormats": "窗口上面是导入，接受 lrc、vtt、ttml、qrc、yrc、krc、txt 和 Folia 导出的 .fia；Navidrome 的歌曲不能导入，窗口里只有导出。中间两块把这一首导成文件：.fia 保留逐字时间轴、翻译、背景和声和你保存的分词，能原样导回来；.lrc 是增强型 LRC，别的播放器也能读，但这些 Folia 专有的信息会丢掉。",
+        "sourceExportFormats": "窗口上面是导入，接受 lrc、vtt、ttml、qrc、yrc、krc、txt 和 Ecria 导出的 .fia；Navidrome 的歌曲不能导入，窗口里只有导出。中间两块把这一首导成文件：.fia 保留逐字时间轴、翻译、背景和声和你保存的分词，能原样导回来；.lrc 是增强型 LRC，别的播放器也能读，但这些 Ecria 专有的信息会丢掉。",
         "sourceExportBatch": "最底下一行是批量导出：它会打开命令面板里的导出页，一次导出本机缓存的所有歌词。设置 · 存储与备份「缓存详情」里「歌词」那一行也有同一个入口。",
         "coverTab": "封面页就是这首歌：大封面，下面是歌名、歌手和专辑，再下面一行动作。这一页没有别的内容。",
         "coverTabDetail": "点击歌手或专辑可进入对应集合。点击歌名复制歌曲信息，按住 {{mod}} 点击可打开来源页面。",
@@ -6610,12 +6783,12 @@ export default {
       },
       "transition": {
         "enable": "这一组管的是两首歌之间怎么接上。最上面是总开关 —— 它和控制页里「智能过渡」那一格是同一个值，两处改的是同一件事。",
-        "modes": "「过渡模式」有两段：Folia Crossfade 淡化切换歌曲，Folia Automix 分析音频后选择接点。",
+        "modes": "「过渡模式」有两段：Ecria Crossfade 淡化切换歌曲，Ecria Automix 分析音频后选择接点。",
         "badge": "两段左边那一小块字是运行状态：「完全体」或「兼容模式」表示自动混音正在运行；「已退回淡化」表示条件不足，系统改用淡化。",
         "notice": "自动混音需要歌曲缓存；提示右端的「开启歌曲缓存」可以就地打开它。"
       },
       "libraryWatch": {
-        "enable": "打开后，Folia 会监视已导入的本地文件夹并自动增量扫描。",
+        "enable": "打开后，Ecria 会监视已导入的本地文件夹并自动增量扫描。",
         "roots": "开关底下才展开这张列表，一行一个被监视的根文件夹，下面那行小字是它的真实路径。",
         "warning": "眼睛表示监视正常；黄色三角表示路径或权限有问题，文件夹已停止自动扫描。",
         "recheck": "看到三角就按右边这颗「重新检查文件夹」，它会重新挂一遍所有导入过的文件夹。旁边那行小字是上一次自动扫描的时间。"
@@ -6637,7 +6810,7 @@ export default {
       "lyricExport": {
         "whatItIs": "这一页把本机已有的歌词打成一个 zip，不联网下载新的歌词。",
         "effective": "在线缓存是播放过的在线歌曲，导出的是播放时实际显示的版本，你导入或手动匹配的优先。本地曲库只导出在线匹配到的歌词：文件按音频文件名命名，按原目录结构放在 zip 的 local 文件夹里，解压到曲库所在的上一级目录，就会落在每首歌旁边。纯音乐和没有歌词的歌曲会跳过，并写进 manifest.json。",
-        "formats": ".fia 无损，可以直接导回 Folia；LRC 通用，但会丢掉背景和声和分词。两种都勾上，zip 里就是两个文件夹。",
+        "formats": ".fia 无损，可以直接导回 Ecria；LRC 通用，但会丢掉背景和声和分词。两种都勾上，zip 里就是两个文件夹。",
         "names": "在线歌词缓存本身不带歌名。播放过的歌会顺手记下歌名，这是第一来源；没有的再从本机缓存过的歌单和队列里找，最后才联网问音乐平台，查到的结果会记下来，下次不用再问。关掉联网，查不到歌名的歌曲就以 ID 命名。",
         "running": "开始后这里显示进度，按钮变成取消。关掉命令面板也等于取消：导出不会在后台继续跑。"
       },
@@ -6680,8 +6853,8 @@ export default {
       },
       "localGridControls": {
         "sources": "这一排在本地曲库内部切换文件夹、专辑、艺术家和本地歌单。它换的是 Grid3D 轨道里的集合类型，不是切换在线音乐来源。",
-        "foldersAndPlaylists": "「文件夹」保留导入时的目录结构；「歌单」是 Folia 保存在本地的歌单，和在线歌单、Navidrome 歌单彼此独立。",
-        "imports": "「导入文件夹」从目录加入音乐；「导入歌单」读取 M3U/M3U8，并用 Folia 能解析到的曲目建立本地歌单。",
+        "foldersAndPlaylists": "「文件夹」保留导入时的目录结构；「歌单」是 Ecria 保存在本地的歌单，和在线歌单、Navidrome 歌单彼此独立。",
+        "imports": "「导入文件夹」从目录加入音乐；「导入歌单」读取 M3U/M3U8，并用 Ecria 能解析到的曲目建立本地歌单。",
         "refresh": "「刷新」重新扫描已经导入的根目录，找出新增、变化和丢失的文件；它不会再复制一份曲库。"
       },
       "onlineCollectionActions": {

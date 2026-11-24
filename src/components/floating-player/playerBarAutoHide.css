@@ -1,0 +1,92 @@
+/* src/components/floating-player/playerBarAutoHide.css
+   底部播放控制条的空闲自动收起（usePlayerBarAutoHide）：
+   - .player-bar-shell 是控制条的外层定位层。水平居中由这里的 translate: -50% 负责（不再用 Tailwind 的
+     -translate-x-1/2：Tailwind v4 的 translate-* 工具类写的就是 translate 属性，会和这里的收起位移互相覆盖，
+     控制条会从屏幕中线开始往右拖出去）。收起时在同一属性上追加 y 位移，整条滑到屏幕下方。滑出距离由组件按
+     「底距 + 胶囊高度 + 32」写进 --player-bar-hide-distance，所以把控制条拖高之后也能完整滑出去。
+   - .player-bar-reveal 是底边中央的玻璃小把手：一个向上箭头，轻轻上下浮动 / 呼吸，提示可以往上拖。
+     它常驻 DOM，只靠 data-visible 显隐；收起时 tabIndex 为 -1、aria-hidden，展开时按键与读屏都能用。
+   动效遵守应用的降低动效（data-reduce-motion~='uiMicroMotion'）：不浮动、不滑动，直接切换。 */
+
+.player-bar-shell {
+    translate: -50% 0;
+    transition: translate 380ms var(--dock-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.player-bar-shell[data-auto-hidden] {
+    /* 兜底 100vh：第一次收起、距离还没量到时也不可能留在屏幕里。 */
+    translate: -50% var(--player-bar-hide-distance, 100vh);
+}
+
+.player-bar-reveal {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 2px);
+    left: 50%;
+    z-index: 61;
+    display: grid;
+    width: 72px;
+    height: 34px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--text-primary, #f7f4ee) 10%, transparent);
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--text-primary, #f7f4ee) 72%, transparent);
+    background: color-mix(in srgb, var(--bg-color, #070707) 76%, transparent);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 26%);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    transform: translateX(-50%);
+    translate: 0 18px;
+    opacity: 0;
+    pointer-events: none;
+    touch-action: none;
+    cursor: grab;
+    transition: opacity 180ms ease, translate 320ms var(--dock-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.player-bar-reveal[data-visible] {
+    opacity: 1;
+    pointer-events: auto;
+    translate: 0 0;
+}
+
+.player-bar-reveal:active { cursor: grabbing; }
+
+.player-bar-reveal-icon {
+    display: grid;
+    place-items: center;
+}
+
+.player-bar-reveal svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.4;
+}
+
+.player-bar-reveal[data-visible] .player-bar-reveal-icon {
+    animation: player-bar-reveal-bob 1.8s ease-in-out infinite;
+}
+
+.player-bar-reveal[data-visible] .player-bar-reveal-icon svg {
+    animation: player-bar-reveal-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes player-bar-reveal-bob {
+    0%, 100% { translate: 0 0; }
+    50% { translate: 0 -4px; }
+}
+
+@keyframes player-bar-reveal-pulse {
+    0%, 100% { opacity: 0.72; }
+    50% { opacity: 1; }
+}
+
+:root[data-reduce-motion~='uiMicroMotion'] .player-bar-shell,
+:root[data-reduce-motion~='uiMicroMotion'] .player-bar-reveal {
+    transition: none;
+}
+
+:root[data-reduce-motion~='uiMicroMotion'] .player-bar-reveal[data-visible] .player-bar-reveal-icon,
+:root[data-reduce-motion~='uiMicroMotion'] .player-bar-reveal[data-visible] .player-bar-reveal-icon svg {
+    animation: none;
+}

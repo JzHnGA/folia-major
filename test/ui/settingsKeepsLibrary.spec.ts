@@ -50,7 +50,7 @@ const countHomeRequests = (page: Page) => {
 const setSettingsOpen = (page: Page, open: boolean) => page.evaluate(async (next) => {
     const path = '/src/stores/useSettingsModalStore.ts';
     const { useSettingsModalStore } = await import(/* @vite-ignore */ path);
-    if (next) useSettingsModalStore.getState().openSettings('options');
+    if (next) useSettingsModalStore.getState().openSettings();
     else useSettingsModalStore.getState().closeSettings();
 }, open);
 

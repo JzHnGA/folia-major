@@ -23,7 +23,7 @@ test('enters Sonnet from settings and exposes its layer controls', async ({ page
     await page.evaluate(async () => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options', 'visualizer', 'visualizer');
+        useSettingsModalStore.getState().openSettings('visualizer', 'visualizer');
     });
 
     const sonnetMode = page.getByRole('radio', { name: 'Sonnet', exact: true });

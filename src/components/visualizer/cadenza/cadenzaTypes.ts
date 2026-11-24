@@ -2,6 +2,7 @@ import type { layoutWithLines, PreparedTextWithSegments } from '@chenglou/pretex
 import type { CadenzaTuning, Line, Theme, Word as WordType } from '../../../types';
 import type { GraphemeTiming } from '../../../utils/lyrics/graphemeTiming';
 import type { LineTransitionTiming } from '../../../utils/lyrics/renderHints';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 
 // src/components/visualizer/cadenza/cadenzaTypes.ts
 // Cadenza 的布局 / 动画中间结构：pretext 分段元信息、词范围、跨行片段、落点，以及运行时缓存的准备态。
@@ -118,6 +119,8 @@ export interface PreparedState {
 export interface PreparedStateCacheContext {
     showText: boolean;
     viewport: { width: number; height: number; };
+    /** 左右安全区（灵动岛 / 刘海，px）；没有时都是 0。 */
+    safeSides: SafeAreaSides;
     theme: Theme;
     tuning: Pick<CadenzaTuning, 'fontScale' | 'widthRatio'>;
 }

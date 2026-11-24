@@ -13,6 +13,7 @@ import { useLyricRenderQuality } from '../renderQuality/useLyricRenderQuality';
 import { useVisualizerRuntime } from '../runtime';
 import { useVisualizerSongCommit } from '../songHandover';
 import VisualizerShell from '../VisualizerShell';
+import { useSafeAreaSidesPx, type SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import VisualizerSubtitleOverlay from '../VisualizerSubtitleOverlay';
 import type {
     TemperaPixiRuntime,
@@ -24,6 +25,7 @@ import { compileTemperaProgram } from './temperaProgram';
 // src/components/visualizer/tempera/VisualizerTempera.tsx
 // Mounts the lazily loaded Pixi director while React retains shell and subtitle responsibilities.
 const EMPTY_TEMPERA_LINES: Line[] = [];
+const NO_SAFE_SIDES: SafeAreaSides = { left: 0, right: 0 };
 
 const VisualizerTempera: React.FC<VisualizerSharedProps> = (props) => {
     const {
@@ -68,6 +70,12 @@ const VisualizerTempera: React.FC<VisualizerSharedProps> = (props) => {
     const antialias = resolveLyricAntialias(isPreviewMode ? 'auto' : renderQuality.antialias, !temperaTuning.postProcessEnabled);
     const renderScaleRef = useRef(renderScale);
     renderScaleRef.current = renderScale;
+    // iPhone 横屏时灵动岛 / 刘海占掉左右两侧：歌词构图和镜头让开它。就地推给运行时，不重建上下文。
+    // 预览（样式架小图、样式窗口）不贴屏幕边，不让。
+    const screenSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : screenSafeSides;
+    const safeSidesRef = useRef(safeSides);
+    safeSidesRef.current = safeSides;
     const latestSongMetadataRef = useRef<TemperaSongMetadata>({
         title: songTitle,
         artist: songArtist,
@@ -220,11 +228,13 @@ const VisualizerTempera: React.FC<VisualizerSharedProps> = (props) => {
                 songArtist: metadata.artist,
                 songAlbum: metadata.album,
                 signal,
+                safeSides: safeSidesRef.current,
             });
             runtime.setSongMetadata(latestSongMetadataRef.current);
             // The tuning may have moved on while Pixi was importing or initializing.
             runtime.setTuning(temperaTuningRef.current);
             runtime.setRenderScale(renderScaleRef.current);
+            runtime.setSafeSides(safeSidesRef.current);
             // The pause state may have changed while Pixi was importing or initializing.
             runtime.setPaused(pausedRef.current);
             return runtime;
@@ -243,6 +253,10 @@ const VisualizerTempera: React.FC<VisualizerSharedProps> = (props) => {
     useEffect(() => {
         runtimeRef.current?.setRenderScale(renderScale);
     }, [renderScale, runtimeRef]);
+
+    useEffect(() => {
+        runtimeRef.current?.setSafeSides(safeSides);
+    }, [safeSides, runtimeRef]);
 
     useEffect(() => {
         runtimeRef.current?.setSongMetadata(latestSongMetadataRef.current);

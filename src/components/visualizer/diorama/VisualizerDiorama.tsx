@@ -486,8 +486,10 @@ const VisualizerDiorama: React.FC<VisualizerDioramaProps> = (props) => {
                         // Synchronous ref value (not the state): the flight must start the SAME frame the
                         // follow pose jumps to the new offset corridor, or the seek-snap would fire first.
                         transitionEpoch={transitionEpochRef.current}
+                        ignoreSafeArea={isPreviewMode}
                     />
                     <DioramaScene
+                        ignoreSafeArea={isPreviewMode}
                         theme={theme}
                         sequencer={seq}
                         globalIndex={globalIndex}

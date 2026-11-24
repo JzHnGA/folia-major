@@ -16,7 +16,7 @@ export const subtitleSettingsSurface: CommandPaletteSurface = {
         // The rest (fonts, the harmony line) is on the lyric style window's subtitle tab.
         onOpenMoreSettings: () => {
             close();
-            context.settings.openSettings('options', 'visualizer', 'subtitle');
+            context.settings.openSettings('visualizer', 'subtitle');
         },
     }),
 };

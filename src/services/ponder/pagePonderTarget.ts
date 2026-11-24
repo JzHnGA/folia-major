@@ -59,7 +59,7 @@ export const readVisiblePagePonderScope = (): PagePonderScope | null => {
 };
 
 /**
- * 思索导航页。帮助页那颗灯泡按钮开的是它。
+ * 思索导航页：设置侧栏底部那颗灯泡按钮开的是它。
  *
  * 不直接开教程：总览只有一章，剩下的几十条各自独立，用户要的是「挑一条」而不是
  * 「从头看一遍」。导航页上按 Ctrl+G 才是总览 —— 那一屏声明了 help-page 作为页面 scope。
@@ -82,7 +82,7 @@ export const openSettingsFromPonder = (anchorId: SettingsAnchorId): void => {
     const ponder = usePonderStore.getState();
     ponder.closePonder();
     ponder.closeNavigation();
-    openSettings('options', settingsAnchorSubview(anchorId), null, anchorId);
+    openSettings(settingsAnchorSubview(anchorId), null, anchorId);
 };
 
 /** 同上，去的是歌词动画调参台的某一页。收层的顺序和理由与 openSettingsFromPonder 相同。 */
@@ -90,7 +90,7 @@ export const openVisualizerSettingsFromPonder = (section: VisualizerSettingsSect
     const ponder = usePonderStore.getState();
     ponder.closePonder();
     ponder.closeNavigation();
-    openSettings('options', 'visualizer', section);
+    openSettings('visualizer', section);
 };
 
 /** Opens Ponder for the foremost page and completes the non-dismissible shortcut lesson if present. */

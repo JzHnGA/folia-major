@@ -171,7 +171,11 @@ const VisualizerCappella: React.FC<VisualizerCappellaProps> = (props) => {
         >
             {showText && (
                 <div className="relative z-10 flex h-full w-full items-start justify-center overflow-visible px-4 pb-36 pt-12 sm:px-8 sm:pb-40 sm:pt-16 lg:px-14 lg:pt-20">
-                    <div className="relative flex w-full max-w-4xl flex-col justify-start gap-3 overflow-visible">
+                    {/* 横屏时灵动岛 / 刘海在左右两侧：贴边的气泡让开安全区（网页与桌面的 inset 为 0）。 */}
+                    <div
+                        className="relative flex w-full max-w-4xl flex-col justify-start gap-3 overflow-visible"
+                        style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+                    >
                         <AnimatePresence initial={false} mode="popLayout">
                             {visibleMessages.map((message) => (
                                 <CappellaMessageRow

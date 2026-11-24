@@ -33,6 +33,7 @@ export const REGISTERED_SITES = [
         sites: {
             'src/services/onlineMusic/netease/netease.ts': { resolveNeteaseSongAvailability: 'privilege.st 是网易云的下架码（NETEASE_TAKEN_DOWN_ST），且没有可播的音质、不是云盘' },
             'src/services/onlineMusic/bodian/bodianProvider.ts': { getAvailability: '波点自己标的 off-shelf' },
+            'src/services/onlineMusic/netease/official/officialProvider.ts': { getAvailability: '官方 OpenAPI 记录的 visible=false（是否有版权：false），由 normalizeOfficialSong 存成 resourceState；playFlag=false 单独不算' },
             'src/components/app/playback/start/usePlaybackQueueController.ts': { playSong: '只在 isSongUnavailable(song) 为真时：那是 provider 依据平台记录给的静态可用性，这里只是呈现' },
         },
     },
@@ -44,6 +45,7 @@ export const REGISTERED_SITES = [
         sites: {
             'src/services/onlineMusic/kugou/kugouProvider.ts': { getLikedSongIds: 'getKugouLikedPlaylistTracks 读到底，读不完就抛错' },
             'src/services/onlineMusic/netease/neteaseProvider.ts': { getLikedSongIds: '一次请求就是整张列表；出错的答复先抛 OnlineProviderError' },
+            'src/services/onlineMusic/netease/official/officialProvider.ts': { getLikedSongIds: '每一页都经 officialRequest，失败就抛 OnlineProviderError；某页不满 500 首才算读到底，读满 10 页还没到底回 whole: false' },
         },
     },
     {

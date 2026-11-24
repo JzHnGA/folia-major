@@ -13,7 +13,7 @@ import id from '../../../src/i18n/locales/in';
 const echo = (key: string) => key;
 
 const ALL_SECTIONS: SettingsSectionId[] = [
-    'appearance', 'player', 'home', 'graphics', 'playback', 'lyrics', 'general', 'interaction', 'integration', 'storage', 'desktop', 'mods', 'developer',
+    'appearance', 'player', 'home', 'graphics', 'playback', 'lyrics', 'general', 'interaction', 'integration', 'ai', 'storage', 'account', 'desktop', 'mods', 'developer',
 ];
 
 const lookup = (bundle: Record<string, unknown>, key: string): unknown => (
@@ -28,13 +28,26 @@ describe('settingsNavModel', () => {
         expect(ids).toEqual(ALL_SECTIONS);
     });
 
-    it('drops desktop-only sections on web without leaving an empty group', () => {
+    it('drops desktop-only and app-only sections on web without leaving an empty group', () => {
         const groups = buildSettingsNavGroups(echo, { isElectron: false });
         const ids = flattenSettingsNavItems(groups).map(item => item.id);
 
         expect(ids).not.toContain('desktop');
         expect(ids).not.toContain('mods');
-        expect(ids).toHaveLength(ALL_SECTIONS.length - 2);
+        // The web build's AI key is the deployment's, so it has no AI page.
+        expect(ids).not.toContain('ai');
+        expect(ids).toHaveLength(ALL_SECTIONS.length - 3);
+        expect(groups.every(group => group.items.length > 0)).toBe(true);
+    });
+
+    it('drops the mobileHidden sections on the phone shell', () => {
+        const groups = buildSettingsNavGroups(echo, { isElectron: false, mobile: true });
+        const ids = flattenSettingsNavItems(groups).map(item => item.id);
+
+        for (const hidden of ['graphics', 'interaction', 'integration', 'developer']) {
+            expect(ids).not.toContain(hidden);
+        }
+        expect(ids).toEqual(['appearance', 'player', 'home', 'playback', 'lyrics', 'general', 'ai', 'storage', 'account']);
         expect(groups.every(group => group.items.length > 0)).toBe(true);
     });
 

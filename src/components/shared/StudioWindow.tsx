@@ -14,7 +14,7 @@ import { tabTarget } from './sheetKeys';
 // looks like the settings window and sets the settings kit's colour and motion variables on
 // itself, so the kit's parts work anywhere inside it. 1240 by 780, never larger than the app's
 // window. Where that window is narrower than 1024px the column goes under the stage and the two
-// scroll together; the stage then has a height of its own, so what fills it still has one.
+// scroll together; the stage then takes its height from what is in it (SampleBox fills its width).
 // It knows nothing of what it frames.
 //
 // It is drawn where it is rendered, inside an AnimatePresence: it comes in with the kit's `unfold`
@@ -155,7 +155,7 @@ export const StudioWindow: React.FC<StudioWindowProps> = ({
 
     return (
         <div
-            className="fixed inset-0 z-[140] flex items-center justify-center p-3 sm:p-5"
+            className="overlay-safe fixed inset-0 z-[140] flex items-center justify-center p-3 sm:p-5"
             // Only a press that began on the dim layer closes: a slider let go outside the window does not.
             onMouseDown={(event) => {
                 pressedOutside.current = event.target === event.currentTarget;
@@ -185,12 +185,14 @@ export const StudioWindow: React.FC<StudioWindowProps> = ({
                 initial={ARRIVE_FROM}
                 animate={{ opacity: 1, y: 0, scale: 1, transition: kitTransition('unfold', reduced) }}
                 exit={{ ...LEAVE_TO, transition: kitTransition('move', reduced) }}
-                className="st-window relative grid h-[780px] max-h-full w-[1240px] max-w-full grid-rows-[64px_minmax(0,1fr)] overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)]"
+                className="st-window relative grid h-[780px] max-h-full w-[1240px] max-w-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)]"
                 // The window holds focus without a mark of its own.
                 style={{ outline: 'none', ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reduced) }}
             >
                 <SettingsKitThemeContext.Provider value={kitTheme}>
-                    <header inert={hasOver} className="flex min-w-0 items-center gap-2 pl-4 pr-5">
+                    {/* One bar 64px tall; below lg the slot drops to a line of its own under the back button, the
+                        title and the actions, so none of them is pushed out of the window. */}
+                    <header inert={hasOver} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 py-3 pl-3 pr-4 sm:pl-4 sm:pr-5 lg:h-16 lg:flex-nowrap lg:py-0">
                         <Tooltip text={backLabel} className="inline-flex shrink-0">
                             <button
                                 type="button"
@@ -201,12 +203,12 @@ export const StudioWindow: React.FC<StudioWindowProps> = ({
                                 <ChevronLeft size={18} />
                             </button>
                         </Tooltip>
-                        <h2 id={titleId} className="ml-1 mr-2 shrink-0 whitespace-nowrap text-xl font-semibold leading-8">{title}</h2>
-                        <div className="flex min-w-0 flex-1 items-center gap-2">{slot}</div>
-                        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+                        <h2 id={titleId} className="ml-1 mr-2 min-w-0 flex-1 truncate whitespace-nowrap text-xl font-semibold leading-8 lg:flex-none lg:shrink-0">{title}</h2>
+                        {slot && <div className="order-last flex min-w-0 basis-full items-center gap-2 lg:order-none lg:basis-auto lg:flex-1">{slot}</div>}
+                        {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
                     </header>
                     <div inert={hasOver} className="st-scroll flex min-h-0 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
-                        <section className="flex h-[64vh] min-h-[380px] min-w-0 shrink-0 flex-col gap-4 px-4 pb-6 sm:px-6 lg:h-auto lg:min-h-0">{stage}</section>
+                        <section className="flex min-w-0 shrink-0 flex-col gap-4 px-3 pb-5 sm:px-6 sm:pb-6 lg:min-h-0">{stage}</section>
                         <aside className="flex min-w-0 shrink-0 flex-col border-t border-[var(--st-line)] lg:min-h-0 lg:border-l lg:border-t-0">
                             {children}
                         </aside>

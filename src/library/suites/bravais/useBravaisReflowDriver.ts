@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, type MutableRefObject, type RefObject } from '
 import { buildPlatePath, type PlateBlock, type PlateBlockSet, type PlateRect } from './bravaisBlockPlate';
 import { BRAVAIS_BLOCK_SHAPE, shapeSlotFromKey, type BravaisWallShape } from './bravaisWallShape';
 import { BRAVAIS_REFLOW_MS, bravaisReflowEase } from './bravaisReflowMotion';
+import { bravaisTileTransform } from './bravaisTileTransform';
 
 // src/library/suites/bravais/useBravaisReflowDriver.ts
 // 聚焦卡块内让位（展开、同块换卡、收起 / 换块时的归位）由这里逐帧驱动：同一个 rAF 回调里先写块里各磁贴外框的
@@ -105,8 +106,26 @@ export const splitStaleTracks = (
     return { live, settled };
 };
 
+// TEMPORARY probe (2026-11-21): frame gaps of one reflow, logged when it settles. VITE_REFLOW_PROBE=1 only.
+let probeFrames: number[] = [];
+let probeLast = 0;
+const noteReflowFrame = (now: number, remaining: number, field: HTMLElement | null) => {
+    if (probeLast) probeFrames.push(now - probeLast);
+    probeLast = now;
+    if (remaining > 0) return;
+    const gaps = probeFrames.slice().sort((a, b) => a - b);
+    if (gaps.length) {
+        const avg = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+        const p95 = gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * 0.95))];
+        const tiles = field?.querySelectorAll('[data-bravais-slot]').length ?? 0;
+        console.log(`[reflow-probe] frames=${gaps.length + 1} avg=${avg.toFixed(1)}ms p95=${p95.toFixed(1)}ms max=${gaps[gaps.length - 1].toFixed(1)}ms over33=${gaps.filter(gap => gap > 33).length} tiles=${tiles} transform=${field?.querySelector<HTMLElement>('[data-bravais-slot]')?.style.transform.split('(')[0] ?? '?'}`);
+    }
+    probeFrames = [];
+    probeLast = 0;
+};
+
 const writeTileRect = (tile: HTMLElement, rect: PlateRect) => {
-    tile.style.transform = `translate3d(${rect.x}px, ${rect.y}px, 0)`;
+    tile.style.transform = bravaisTileTransform(rect.x, rect.y);
     tile.style.width = `${rect.width}px`;
     tile.style.height = `${rect.height}px`;
 };
@@ -197,6 +216,7 @@ export const useBravaisReflowDriver = ({
     const tick = (now: number) => {
         rafRef.current = 0;
         draw(now);
+        if (import.meta.env.VITE_REFLOW_PROBE === '1') noteReflowFrame(now, tracksRef.current.size, fieldRef.current);
         if (tracksRef.current.size > 0) rafRef.current = requestAnimationFrame(tick);
     };
 

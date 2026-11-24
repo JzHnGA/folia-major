@@ -29,6 +29,7 @@ import { LumiereDarkFieldLayer } from './lumiereDarkField';
 import { PixiSongSwap } from '../pixiSongSwap';
 import { buildLumiereOverlay } from './overlay';
 import { createLightSprites, type LightSprites } from './light/sprites';
+import type { FrameSafeSides } from './text/lineWrap';
 import type { LumiereSceneTuning } from './types';
 
 // src/components/visualizer/lumiere/createLumierePixiRuntime.ts
@@ -69,6 +70,8 @@ export interface LumiereRuntimeOptions {
     renderScale: LyricRenderScale;
     /** MSAA：建上下文时定，原来写死关着。 */
     antialias: boolean;
+    /** 左右安全区（逻辑像素，useSafeAreaSidesPx）：歌词放字范围让开 iPhone 横屏的灵动岛 / 刘海；没有就是 0。 */
+    safeSides: FrameSafeSides;
     signal?: AbortSignal;
 }
 
@@ -265,6 +268,7 @@ export class LumierePixiRuntime {
         return buildLumiereSceneEntry(this.pixi, {
             width: this.width,
             height: this.height,
+            safeSides: this.options.safeSides,
             resolution: this.renderResolution,
             program: song.program,
             theme: song.theme,
@@ -354,6 +358,7 @@ export class LumierePixiRuntime {
         return {
             width: this.width,
             height: this.height,
+            safeSides: this.options.safeSides,
             resolution: this.renderResolution,
             theme,
             metadata: this.options.metadata,
@@ -435,6 +440,19 @@ export class LumierePixiRuntime {
         // 还没装好（第一帧前）时 install 里的 resizeToHost 会按新倍数来。
         if (this.width === 0) return;
         if (this.resizeToHost(false) && this.options.paused) this.renderOnce();
+    }
+
+    /**
+     * 就地换左右安全区（转屏、灵动岛那侧换边）：放字范围烘焙在场景里，同窗口缩放一样防抖重建场景与片尾卡。
+     * 画框四角括号不跟着让（装饰，压一点在灵动岛下面无妨）。
+     */
+    setSafeSides(sides: FrameSafeSides) {
+        const current = this.options.safeSides;
+        if (this.destroyed || (sides.left === current.left && sides.right === current.right)) return;
+        this.options.safeSides = { left: sides.left, right: sides.right };
+        // 还没装好（第一帧前）时 install 里的 resizeToHost 会按新值建第一个场景。
+        if (this.width === 0) return;
+        this.scheduleRebuild();
     }
 
     setShowText(showText: boolean) {

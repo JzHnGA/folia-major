@@ -12,7 +12,10 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     // pages/AppearancePage
     lyricsRenderer: { section: 'appearance' },
     themePresets: { section: 'appearance' },
-    electronSettings: { section: 'appearance' },
+
+    // pages/AiPage: the desktop app's provider settings, and the iOS app's own.
+    electronSettings: { section: 'ai' },
+    deviceAiSettings: { section: 'ai' },
 
     // pages/PlayerPage
     playbackEntryView: { section: 'player' },
@@ -77,6 +80,10 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
 
     // pages/StoragePage (backup and import)
     importExportTitle: { section: 'storage' },
+
+    // pages/AccountSecurityPage; the iOS quick tour opens the Google sign-in and the Face ID lock from here.
+    securityAccount: { section: 'account' },
+    securityLock: { section: 'account' },
 
     // pages/DesktopPage, and the update check on pages/GeneralPage
     desktopTrayBehavior: { section: 'desktop' },

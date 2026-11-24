@@ -2,17 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="一个动态歌词播放器，支持 AI 主题生成" />
     <meta name="theme-color" content="#09090b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Folia" />
+    <meta name="apple-mobile-web-app-title" content="Ecria" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <title>Folia</title>
+    <title>Ecria</title>
     <script src="/runtime-config.js"></script>
   <script type="importmap">
 {
@@ -45,11 +45,13 @@
         justify-content: center;
         background-color: #09090b;
         font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-        transition: opacity 320ms ease;
+        transition: opacity 320ms ease, transform 320ms ease;
       }
 
+      /* 淡出时带一点放大，收尾更像一个启动画面而不是加载条。 */
       #app-splash.is-hiding {
         opacity: 0;
+        transform: scale(1.04);
         pointer-events: none;
       }
 
@@ -63,22 +65,22 @@
         animation: app-splash-in 420ms ease 180ms forwards;
       }
 
-      /* 四块色块拼成的 F（版型同 public/icon.svg，配色同 build/icon-color.svg）。
+      /* 四块色块拼成的 E（版型同 public/icon.svg，配色同 build/icon-color.svg）。
          容器按 250:340 的比例定宽，色块用百分比定位，跟着视口缩放。
-         循环动画：色块从上到下一块接一块向右滑一格，整个 F 像履带一样往右爬；
+         循环动画：色块从上到下一块接一块向右滑一格，整个 E 像履带一样往右爬；
          容器同时匀速向左退同样的距离，所以 F 留在原地、色块一直单向滑动，不走回头路。 */
       #app-splash .app-splash-blocks {
         position: relative;
         width: clamp(88px, 15vw, 150px);
         aspect-ratio: 250 / 340;
-        animation: app-splash-drift 2400ms linear infinite;
+        animation: app-splash-drift 3600ms linear infinite;
       }
 
-      /* 每块两个动画：位移一圈 2400ms，颜色四圈换完一轮（每滑一次换一个颜色）。 */
+      /* 每块两个动画：位移一圈 3600ms，颜色四圈换完一轮（每滑一次换一个颜色）。 */
       #app-splash .app-splash-blocks span {
         position: absolute;
         border-radius: clamp(4px, 0.6vw, 6px);
-        animation-duration: 2400ms, 9600ms;
+        animation-duration: 3600ms, 14400ms;
         animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
         animation-iteration-count: infinite;
       }
@@ -96,24 +98,24 @@
         left: 0;
         top: 0;
         width: 35.2%;
-        height: 45.88%;
+        height: 100%;
         background-color: #e3342a;
         animation-name: app-splash-stem-slide, app-splash-stem-color;
       }
 
       #app-splash .app-splash-blocks .is-middle {
-        left: 0;
-        top: 49.41%;
-        width: 80%;
+        left: 40%;
+        top: 38.24%;
+        width: 60%;
         height: 23.53%;
         background-color: #1f5bc6;
         animation-name: app-splash-middle-slide, app-splash-middle-color;
       }
 
       #app-splash .app-splash-blocks .is-foot {
-        left: 0;
+        left: 40%;
         top: 76.47%;
-        width: 35.2%;
+        width: 60%;
         height: 23.53%;
         background-color: #ffffff;
         animation-name: app-splash-foot-slide, app-splash-foot-color;
@@ -122,6 +124,24 @@
       @keyframes app-splash-in {
         to {
           opacity: 1;
+        }
+      }
+
+      /* 应用名比色块更晚淡入上移；秒开时遮罩先撤，名字来不及出现，不会闪一下。 */
+      #app-splash .app-splash-name {
+        color: #ffffff;
+        font-size: clamp(18px, 4vw, 26px);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        transform: translateY(8px);
+        animation: app-splash-name-in 350ms ease-out 800ms forwards;
+      }
+
+      @keyframes app-splash-name-in {
+        to {
+          opacity: 1;
+          transform: none;
         }
       }
 
@@ -223,7 +243,7 @@
         }
         72%,
         100% {
-          transform: translateX(50%);
+          transform: translateX(66.67%);
         }
       }
 
@@ -264,7 +284,7 @@
         }
         97%,
         100% {
-          transform: translateX(113.64%);
+          transform: translateX(66.67%);
         }
       }
 
@@ -303,16 +323,22 @@
           animation: none;
         }
 
-        /* 不动，保持拼好的 F。 */
+        /* 不动，保持拼好的 E。 */
         #app-splash .app-splash-blocks,
         #app-splash .app-splash-blocks span {
+          animation: none;
+        }
+
+        #app-splash .app-splash-name {
+          opacity: 1;
+          transform: none;
           animation: none;
         }
       }
     </style>
 </head>
   <body>
-    <div id="app-splash" role="status" aria-live="polite" aria-label="Loading Folia">
+    <div id="app-splash" role="status" aria-live="polite" aria-label="Loading Ecria">
       <div class="app-splash-inner">
         <div class="app-splash-blocks" aria-hidden="true">
           <span class="is-stem"></span>
@@ -320,6 +346,7 @@
           <span class="is-middle"></span>
           <span class="is-foot"></span>
         </div>
+        <div class="app-splash-name">Ecria</div>
       </div>
     </div>
     <script>
@@ -337,6 +364,17 @@
           }
         } catch (error) {
           // 探测失败时保留遮罩，React 挂载后仍会移除它。
+        }
+
+        // iOS 壳改由原生启动动画（ios/App/App/LaunchSplashView.swift）接管首屏：
+        // 它在 App 第一帧就绪，E 标逐块显形 + 名称淡入，React 挂载后由 appSplash.ts 通知淡出。
+        // 这里直接撤掉网页遮罩，避免原生层淡出后又看到一遍传送带动画。
+        var nativeLaunchSplash = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LaunchSplash;
+        if (nativeLaunchSplash) {
+          var splash = document.getElementById('app-splash');
+          if (splash) {
+            splash.remove();
+          }
         }
       })();
     </script>

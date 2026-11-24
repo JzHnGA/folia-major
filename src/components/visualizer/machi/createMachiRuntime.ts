@@ -115,6 +115,8 @@ export interface MachiRuntimeOptions {
     fallbackIcons: readonly string[];
     /** WebGL 上下文丢了：外壳重建运行时。 */
     onContextLost: () => void;
+    /** 左右安全区（px，iPhone 横屏的灵动岛）：第一帧就按它构图。不给就是没有。 */
+    safeSides?: { left: number; right: number };
     signal: AbortSignal;
 }
 
@@ -352,6 +354,8 @@ export class MachiRuntime {
         this.camera.setMotion(options.tuning.motion, options.tuning.motionSpeed);
         this.resizeObserver = new ResizeObserver(this.onResize);
         this.resizeObserver.observe(options.host);
+        // 先定安全区再定尺寸：第一帧的构图就让开灵动岛。
+        if (options.safeSides) this.camera.setSafeInsets(options.safeSides.left, options.safeSides.right);
         this.resize(options.host.clientWidth, options.host.clientHeight);
         this.clock.paused = this.paused || this.staticMode;
     }
@@ -1030,6 +1034,13 @@ export class MachiRuntime {
         if (this.showText === showText) return;
         this.showText = showText;
         this.boardTarget = null;
+        this.wantsFrame = true;
+        this.wake();
+    }
+
+    /** 左右安全区（px）变了（转屏）：镜头按两边安全区之间那一段重新构图。 */
+    setSafeSides(left: number, right: number) {
+        this.camera.setSafeInsets(left, right);
         this.wantsFrame = true;
         this.wake();
     }

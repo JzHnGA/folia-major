@@ -1,5 +1,5 @@
 import { PlayerState } from '../../../types';
-import { Heart, ListX, Pause, Piano, Play, Repeat, Shuffle, SkipBack, SkipForward, Star, Undo2, Volume1, Volume2, VolumeX } from 'lucide-react';
+import { Heart, ListX, Pause, Piano, Play, Repeat, Share2, Shuffle, SkipBack, SkipForward, Star, Undo2, Volume1, Volume2, VolumeX } from 'lucide-react';
 import { executeModeCommand } from './executeModeCommand';
 import { queueCommand } from './queueCommand';
 import { volumeCommand } from './volumeCommand';
@@ -11,6 +11,11 @@ import type { CommandPaletteCommand, CommandPaletteContext } from '../types';
 import { createToggleCommand, createReplayGainCommand, createSoundPresetCommand, defineCommand } from '../commandFactories';
 import { canShuffleQueue } from '../../../utils/playbackNeighbors';
 import { undoFoliumQueueReplace, useFoliumQueueUndoStore } from '../../../mods/runtime/queue/queueReplaceUndo';
+import { omni } from '../../../services/onlineMusic/omni';
+import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
+import { sharePayload } from '../../../utils/system/share';
+import { setStatusMessage } from '../../../stores/useStatusMessageStore';
+import i18n from '../../../i18n/config';
 
 // src/components/command-palette/commands/playbackCommands.ts
 // Commands in the `playback` group: transport, queue, volume, Personal FM mode, ReplayGain, and
@@ -151,6 +156,33 @@ export const playbackCommands: CommandPaletteCommand[] = [
             capsuleAction: true,
         },
     ),
+    {
+        id: 'playback-share',
+        group: 'playback',
+        title: 'Share current song',
+        description: 'Share the current song with a link to its page',
+        keywords: ['share', 'send song', 'copy link', '分享', '分享歌曲', '分享当前歌曲', '复制链接'],
+        icon: Share2,
+        isAvailable: context => (context ? Boolean(context.shared.currentSong) : true),
+        execute: async (_input, context) => {
+            const song = context.shared.currentSong;
+            if (!song) {
+                return false;
+            }
+            const artist = getSongArtistLabel(song);
+            // 链接走 omni，由各平台自己的 getSongPageUrl 出；没有页面链接的平台就只分享歌名。
+            const outcome = await sharePayload({
+                title: artist ? `${song.name} - ${artist}` : song.name,
+                url: omni.getSongPageUrl(song) ?? undefined,
+            });
+            if (outcome === 'clipboard') {
+                setStatusMessage({ type: 'success', text: i18n.t('status.shareLinkCopied') });
+            } else if (outcome === 'failed') {
+                setStatusMessage({ type: 'error', text: i18n.t('status.shareFailed') });
+            }
+            return true;
+        },
+    },
     createToggleCommand(
         'playback-mute',
         'playback',

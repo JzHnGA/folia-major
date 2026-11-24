@@ -26,6 +26,11 @@ type BottomDockState = {
     /** 换档追踪开着（只在主窗口）；没开时不往 <html> 写属性，OBS 之类的页面不受影响。 */
     isTracking: boolean;
     capsule: DockCapsuleState;
+    /**
+     * 胶囊是空闲自动收起的（capsule 这时是 none）：挂件不回右下角单独出现，仍挂在胶囊上、跟着胶囊滑出屏幕，
+     * 胶囊回来时一起回来。
+     */
+    capsuleAutoHidden: boolean;
     /** 挂在胶囊右端的按钮，按登记者记：同一时刻可能有两份（换页的交接里）。 */
     companions: Record<string, true>;
     /** 指针在挂着的按钮上：胶囊当作还在悬停，免得指针从胶囊挪到按钮上那一下胶囊收起来。 */
@@ -37,6 +42,7 @@ type BottomDockState = {
     setLayout: (layout: BottomLayout) => void;
     setTracking: (isTracking: boolean) => void;
     setCapsule: (capsule: DockCapsuleState) => void;
+    setCapsuleAutoHidden: (hidden: boolean) => void;
     setCompanion: (id: string, attached: boolean) => void;
     setCompanionHovered: (hovered: boolean) => void;
     setCompanionOpen: (id: string, open: boolean) => void;
@@ -54,6 +60,7 @@ export const useBottomDockStore = create<BottomDockState>(set => ({
     layoutChangedAt: 0,
     isTracking: false,
     capsule: 'none',
+    capsuleAutoHidden: false,
     companions: {},
     companionHovered: false,
     openCompanions: {},
@@ -63,6 +70,7 @@ export const useBottomDockStore = create<BottomDockState>(set => ({
         : { layout, layoutChangedAt: typeof performance === 'undefined' ? 0 : performance.now() })),
     setTracking: isTracking => set(state => (state.isTracking === isTracking ? state : { isTracking })),
     setCapsule: capsule => set(state => (state.capsule === capsule ? state : { capsule })),
+    setCapsuleAutoHidden: capsuleAutoHidden => set(state => (state.capsuleAutoHidden === capsuleAutoHidden ? state : { capsuleAutoHidden })),
     setCompanion: (id, attached) => set(state => {
         const companions = withKey(state.companions, id, attached);
         return companions === state.companions ? state : { companions };
@@ -114,10 +122,13 @@ export const selectWallLocate = (state: Pick<BottomDockState, 'wallLocates'>): W
     state.wallLocates.length > 0 ? state.wallLocates[state.wallLocates.length - 1].action : null
 );
 
-/** 紧凑档、而且胶囊在：挂件（面板按钮、墙工具按钮）这时才缩进胶囊右端。 */
-export const useIsDockCompactWithCapsule = (): boolean => useBottomDockStore(
-    state => state.layout === 'compact' && state.capsule !== 'none',
+/** 挂件此刻挂在胶囊上：紧凑档，而且胶囊在、或者只是空闲自动收起了（挂件跟着胶囊滑出去，不单独留在右下角）。 */
+export const isDockCompactWithCapsule = (state: Pick<BottomDockState, 'layout' | 'capsule' | 'capsuleAutoHidden'>): boolean => (
+    state.layout === 'compact' && (state.capsule !== 'none' || state.capsuleAutoHidden)
 );
+
+/** 紧凑档、而且胶囊在（或只是自动收起）：挂件（面板按钮、墙工具按钮）这时缩进胶囊右端。 */
+export const useIsDockCompactWithCapsule = (): boolean => useBottomDockStore(isDockCompactWithCapsule);
 
 export const useIsBottomLayoutCompact = (): boolean => useBottomDockStore(state => state.layout === 'compact');
 
@@ -128,10 +139,12 @@ if (typeof document !== 'undefined') {
         if (!state.isTracking) {
             root.removeAttribute('data-bottom-layout');
             root.removeAttribute('data-capsule');
+            root.removeAttribute('data-capsule-hidden');
             return;
         }
         if (root.getAttribute('data-bottom-layout') !== state.layout) root.setAttribute('data-bottom-layout', state.layout);
         if (root.getAttribute('data-capsule') !== state.capsule) root.setAttribute('data-capsule', state.capsule);
+        if (root.hasAttribute('data-capsule-hidden') !== state.capsuleAutoHidden) root.toggleAttribute('data-capsule-hidden', state.capsuleAutoHidden);
     };
     useBottomDockStore.subscribe(sync);
 }

@@ -73,7 +73,7 @@ export type AccountProbeApi = {
     setSelfCheck: (providerId: string, script: AccountSelfCheckScript | null) => void;
 
     // ---- 种子（不经确认，等同启动恢复） ----
-    setAccount: (providerId: string, status: 'authenticated' | 'anonymous') => void;
+    setAccount: (providerId: string, status: 'authenticated' | 'anonymous' | 'checking') => void;
     setActive: (providerId: string) => void;
 
     // ---- 网易本地后端 ----

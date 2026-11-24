@@ -129,6 +129,7 @@ export const createLoginHostState = (ports: LoginHostPorts) => {
         /**
          * 窗口打开了一次：给了平台就选中它，没给就什么都不选、什么都不开始。要直接到配置清单（`intent`）而这个平台
          * 已经登录着：选中之后打开它的清单；没登录就照常登录。
+         * 只有一种平台可选时（例如移动端构建只有一家）不替用的人摆「选择平台」那一步：直接选中它。
          */
         opened(providerId: OnlineProviderId | null, intent: 'setup' | null = null): void {
             turn += 1;
@@ -136,9 +137,12 @@ export const createLoginHostState = (ports: LoginHostPorts) => {
             confirmedSeen = false;
             ports.closeLogin();
             set(NOTHING_CHOSEN);
-            if (providerId) choose(providerId);
-            if (providerId && intent === 'setup' && state.chosen?.providerId === providerId && state.chosen.lead === 'account') {
-                ports.openSetup(providerId);
+            const selectable = ports.rows().filter(row => rowStatus(row) !== 'off');
+            const onlyProviderId = !providerId && selectable.length === 1 ? selectable[0].providerId : null;
+            const chosenId = providerId ?? onlyProviderId;
+            if (chosenId) choose(chosenId);
+            if (chosenId && intent === 'setup' && state.chosen?.providerId === chosenId && state.chosen.lead === 'account') {
+                ports.openSetup(chosenId);
             }
         },
 
@@ -179,6 +183,12 @@ export const createLoginHostState = (ports: LoginHostPorts) => {
          * 确认的）晚到的账号。这一行已经登录了：这一次登录停下，这一行改成账号那一幅。不放动画，也不关窗。
          */
         rowsChanged(): void {
+            // 打开时平台还没读出来（启动中）：这一列到齐之后如果只有一家能登录，替用的人把它选上。
+            if (open && !state.done && !state.chosen) {
+                const selectable = ports.rows().filter(row => rowStatus(row) !== 'off');
+                if (selectable.length === 1) choose(selectable[0].providerId);
+                return;
+            }
             const chosen = state.chosen;
             if (!open || !chosen || chosen.lead !== 'sign-in' || state.done || confirmedSeen) return;
             const summary = ports.rows().find(row => row.providerId === chosen.providerId);

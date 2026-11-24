@@ -2,7 +2,7 @@ import { OnlineProviderError } from '../../types/onlineMusic';
 import type { OnlineMusicProvider, OnlineProviderId, ProviderCapabilities } from '../../types/onlineMusic';
 import type { SongResult } from '../../types';
 import { getPlaybackSourceRef } from '../../utils/appPlaybackGuards';
-import { neteaseProvider } from './netease/neteaseProvider';
+import { neteaseProvider } from './netease/neteaseProviderChoice';
 import { kugouProvider } from './kugou/kugouProvider';
 import { qqProvider } from './qq/qqProvider';
 import { bodianProvider } from './bodian/bodianProvider';
@@ -125,3 +125,14 @@ registerOnlineMusicProvider(qishuiProvider);
 
 registerOnlineMusicProvider(appleMusicProvider);
 registerOnlineMusicProvider(fnmusicProvider);
+
+// VITE_FOLIA_NETEASE_ONLY=true（iOS 移动端构建）只保留网易云：先按原样平铺登记全部平台，
+// 再在这里摘掉其余的，搜索、登录、设置等处经 omni / listOnlineMusicProviders 自然不再出现它们。
+// 登记保持平铺写法是 D122 契约的要求（providerRegistration.test.ts 靠这个写法认出每个平台）。
+if ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_FOLIA_NETEASE_ONLY === 'true') {
+    for (const provider of listOnlineMusicProviders()) {
+        if (provider.id !== 'netease') {
+            unregisterOnlineMusicProvider(provider.id);
+        }
+    }
+}

@@ -7,9 +7,8 @@ import { useSettingsPage } from './settingsPageContext';
 // src/components/modal/settings/pages/ChinaDrivesRow.tsx
 // The two network drives, put up front when GitHub could not be read for the update: the check had
 // to go through a public proxy, or failed, or the download from GitHub did. On the 通用 page it is a
-// caution with two buttons; on the Help page, under the version, a quiet line that only shows with a
-// found update. Where the drives hold no installer for this build (the test channels, Linux), the
-// 通用 page says the found version cannot be downloaded for now instead.
+// caution with two buttons. Where the drives hold no installer for this build (the test channels,
+// Linux), the 通用 page says the found version cannot be downloaded for now instead.
 
 type ChinaDrivesRowProps = {
     /** Under the row above it: indented. */

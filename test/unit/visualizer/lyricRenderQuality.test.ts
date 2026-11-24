@@ -4,6 +4,7 @@ import { readStoredLyricRenderQuality } from '@/stores/visualizerSettingsPersist
 import {
     DEFAULT_LYRIC_RENDER_QUALITY,
     LYRIC_RENDER_QUALITY_STORAGE_KEY,
+    lyricDevicePixelRatio,
     normalizeLyricRenderOverride,
     normalizeLyricRenderQuality,
     resolveLyricAntialias,
@@ -51,6 +52,16 @@ describe('lyric render quality', () => {
         // 默认密度本来就过了上限：不再加，但也不压下来。
         expect(resolveLyricPixelRatio(3.5, 2)).toBe(3.5);
         expect(resolveLyricPixelRatio(Number.NaN, 1)).toBe(1);
+    });
+
+    it('caps the screen density at 2 in the native iOS shell only', () => {
+        expect(lyricDevicePixelRatio(3, true)).toBe(2);
+        expect(lyricDevicePixelRatio(1.5, true)).toBe(1.5);
+        expect(lyricDevicePixelRatio(3, false)).toBe(3);
+        expect(lyricDevicePixelRatio(Number.NaN, true)).toBe(1);
+        expect(lyricDevicePixelRatio(0, false)).toBe(1);
+        // 原生壳里仍可以手动超采样：封顶的是当底的密度，不是用户选的倍数。
+        expect(resolveLyricPixelRatio(lyricDevicePixelRatio(3, true), 1.5)).toBe(3);
     });
 
     it('keeps the style default when anti-aliasing is auto', () => {

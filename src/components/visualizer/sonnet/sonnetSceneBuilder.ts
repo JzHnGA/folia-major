@@ -1,4 +1,5 @@
 import type { SonnetTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { normalizeFontWeight, resolveThemeFontStack } from '../../../utils/fontStacks';
 import type { SonnetParagraph, SonnetShot } from './types';
 import { hashSonnetSeed } from './sonnetRandom';
@@ -71,6 +72,11 @@ export interface SonnetSceneBuildOptions {
     lyricsFontScale: number;
     staticMode: boolean;
     transparentBackground: boolean;
+    /**
+     * 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）。只有要读的歌词让开它：排版宽度和镜头落点按
+     * [left, width - right] 这一段算，背景 MG 和画框装饰仍铺满整块画布。缺省或都是 0 时与原来一样。
+     */
+    safeSides?: SafeAreaSides;
 }
 
 const colorNumber = (pixi: PixiModule, color: string) => pixi.Color.shared.setValue(color).toNumber();
@@ -88,6 +94,11 @@ export const buildSonnetScene = (
     const { Container, Graphics, Sprite } = pixi;
     const width = Math.max(options.host.clientWidth, 320);
     const height = Math.max(options.host.clientHeight, 240);
+    // 歌词排版与镜头落点用的那一段：两侧安全区都是 0 时就是整块画布，走原来的式子，逐位相同。
+    const safeLeft = Math.max(0, options.safeSides?.left ?? 0);
+    const safeRight = Math.max(0, options.safeSides?.right ?? 0);
+    const hasSafeSides = safeLeft + safeRight > 0;
+    const layoutWidth = hasSafeSides ? Math.max(160, width - safeLeft - safeRight) : width;
     const container = new Container();
     const sceneBackgroundLayer = new Container();
     // Resolve visibility once while building; playback only mutates animation state afterward.
@@ -183,14 +194,14 @@ export const buildSonnetScene = (
         const wordCount = Math.max(1, segments.filter(segment => segment.isWordLike).length);
         const heroScale = shot.kind === 'type-impact' ? 1.55 : shot.kind === 'quiet-tableau' ? 0.82 : 1;
         const fontSize = Math.max(24, Math.min(112, (
-            width / Math.max(7, wordCount * 2.15)
+            layoutWidth / Math.max(7, wordCount * 2.15)
         ) * heroScale * options.lyricsFontScale));
         const views: SegmentView[] = [];
         const placements = resolveSonnetTypographyLayout({
             lines: linesSegments,
             shotKind: shot.kind,
             paragraphKind: paragraph.kind,
-            width,
+            width: layoutWidth,
             height,
             baseFontSize: fontSize,
             fontFamily,
@@ -252,7 +263,7 @@ export const buildSonnetScene = (
                     shotStartTime: shot.startTime,
                     shotEndTime: shot.endTime,
                     paragraphKind: paragraph.kind,
-                    width,
+                    width: layoutWidth,
                     fontFamily,
                     fontWeight: manualFontWeight,
                     theme: options.theme,
@@ -298,8 +309,11 @@ export const buildSonnetScene = (
             : heroPlacement ? heroPlacement.y : (bounds.y + bounds.height / 2);
         
         shotContainer.pivot.set(focusX, focusY);
+        // 落点以安全区之间那一段的中心为准，镜头偏移也按那一段的宽度算，免得主词一开场就落进灵动岛下面。
         shotContainer.position.set(
-            width * (shot.kind === 'poster-blocks' ? 0.5 : 0.5 + shot.camera.x),
+            hasSafeSides
+                ? safeLeft + layoutWidth * (shot.kind === 'poster-blocks' ? 0.5 : 0.5 + shot.camera.x)
+                : width * (shot.kind === 'poster-blocks' ? 0.5 : 0.5 + shot.camera.x),
             height * (shot.kind === 'poster-blocks'
                 ? 0.5
                 : 0.48 + shot.camera.y + (shotIndex % 2 ? 0.025 : -0.025)),

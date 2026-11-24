@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LibraryLoginCompletion, LibraryLoginSessionSnapshot, LibraryProviderSetupSnapshot } from '../../../library/core/account/account.contract';
 import { resolveLoginSessionReportRoute, translateLoginSelfCheck } from '../../../library/core/account/useLibraryAccount';
@@ -17,6 +17,8 @@ import { LOGIN_CASE_TEXTS } from './loginCaseTexts';
 import LoginMessage, { LoginDetails, type MessageAction } from './LoginMessage';
 import LoginTile from './LoginTile';
 import { shortAccountId } from '../../../utils/accountIdDisplay';
+import { openOutsideLink } from '../../../utils/system/outsideLink';
+import { isNightstandSupported } from '../../nightstand/nightstandPlatform';
 import { accountView, failureNoteKey, failureQuote, loginScene, sceneHeadline, stepMarks, type RowLead } from './loginView';
 import FormLogin from './FormLogin';
 import LoginWindow from './LoginWindow';
@@ -199,6 +201,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         }
         if (scene === 'browser-ready') actions = [{ label: t('login.openBrowser'), primary: true, onClick: onStart }];
         if (scene === 'browser' && login?.canReopenLoginPage) actions = [{ label: t('home.loginBrowserOpen'), onClick: onReopenBrowser }];
+        // 手机（Nightstand）上没法扫自己屏上的码：平台给了登录页的地址就留一个按钮，点一下交给系统，
+        // 装着平台的 App 就跳进去确认（同一个 key，轮询照常等确认）；二维码留在原地做兜底。
+        if ((scene === 'code' || scene === 'scanned') && login?.codeUrl && isNightstandSupported()) {
+            const codeUrl = login.codeUrl;
+            actions = [{ label: t('home.openLoginInApp'), primary: true, onClick: () => { void openOutsideLink(codeUrl); } }];
+        }
     }
 
     // 登录成功的动画：扫码之后那一块画由它画，读到账号之后它铺满窗口，再让窗口走（done/）。动效关着就没有；
@@ -223,6 +231,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const sceneKey = `${providerId}:${scene}:${failure?.case.id ?? ''}:${failure?.at ?? ''}`;
     const [detailsOpen, setDetailsOpen] = useState(false);
     useEffect(() => setDetailsOpen(false), [sceneKey]);
+
+    // 手机（Nightstand）上没法扫自己屏上的码：二维码一出来就把登录页交给系统一次，装着平台的 App
+    // 就直接跳进去点确认。每一轮登录只自动打开这一次；没跳出去（没装 App、系统拦了）时二维码和
+    // 下面的按钮都留在原地，轮询不受影响。
+    const autoOpenedRef = useRef<number | null>(null);
+    const codeUrl = login?.codeUrl ?? '';
+    useEffect(() => {
+        if (scene !== 'code' || !codeUrl || !isNightstandSupported()) return;
+        if (autoOpenedRef.current === login?.id) return;
+        autoOpenedRef.current = login?.id ?? null;
+        void openOutsideLink(codeUrl);
+    }, [scene, codeUrl, login?.id]);
 
     return (
         <>

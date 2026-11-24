@@ -63,7 +63,7 @@ const setSelfCheck = (page: Page, providerId: string, script: AccountSelfCheckSc
     ([id, value]) => window.__accountProbe!.setSelfCheck(id, value),
     [providerId, script] as const,
 );
-const setAccount = (page: Page, providerId: string, status: 'authenticated' | 'anonymous') => page.evaluate(
+const setAccount = (page: Page, providerId: string, status: 'authenticated' | 'anonymous' | 'checking') => page.evaluate(
     ([id, value]) => window.__accountProbe!.setAccount(id, value),
     [providerId, status] as const,
 );
@@ -909,6 +909,16 @@ test.describe('[bravais] the seam account entry opens the shared login window', 
         // 不替用的人选平台：没有哪一行被选中，也没有开始登录。
         await expect(loginWindowPlatforms(page).locator('[role="option"][aria-selected="true"]')).toHaveCount(0);
         expect(await countCalls(page, 'create')).toBe(0);
+    });
+
+    // 启动时账户还在确认：入口显示中性的「确认中」，不能画成平台徽章（那会像已经登录了）。
+    test('[bravais] checking shows a neutral pending mark instead of the provider badge', async ({ page }) => {
+        await setActive(page, ACCOUNT_GAMMA);
+        await setAccount(page, ACCOUNT_GAMMA, 'checking');
+        await expect(bravaisSwitcher(page)).toHaveAttribute('data-bravais-account', 'checking');
+        await expect(bravaisSwitcher(page).locator('[data-bravais-account-avatar="checking"] svg')).toBeVisible();
+        await expect(bravaisSwitcher(page).locator('[data-bravais-account-avatar="badge"]')).toHaveCount(0);
+        await expect(bravaisSwitcher(page)).toContainText('Checking sign-in…');
     });
 });
 

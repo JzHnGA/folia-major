@@ -1,6 +1,6 @@
 import { SEAM_EDGE_MARGIN, getSeamGeometry, getSeamGeometryY, getSeamSplitOffsets, nearestSeamBoundaryX, type SeamAxis } from '../../../components/wall/seamPlan';
 import { cameraFromViewCenter, getViewLineX, type WallView, type WallViewCenter } from '../../../components/wall/wallView';
-import { BRAVAIS_METRICS } from './bravaisConstants';
+import { BRAVAIS_METRICS, BRAVAIS_SEAM_HOME_WIDTH } from './bravaisConstants';
 
 // src/library/suites/bravais/bravaisFrame.ts
 // 每一帧要写到 DOM 上的几何（纯计算）：墙的左右两半各自的 transform、缝的屏幕位置与宽度、缝内容的透明度、
@@ -30,6 +30,9 @@ export type BravaisFrameInput = {
     poster?: boolean;
     /** 整层（两半墙与缝）此刻的倾斜角（度；各种页面转多少见 BRAVAIS_TILT_DEG）。 */
     tiltDeg?: number;
+    /** 屏幕左右被系统占掉的安全区（iOS 横屏的灵动岛 / 刘海，px）：缝的开合与收窄要让开它们。 */
+    safeLeft?: number;
+    safeRight?: number;
     /**
      * 两半墙沿纸自己的竖向多挪的一段（屏幕 px，转之前的坐标；缝不跟着挪）：倾斜着换锚点时支点瞬间换了位置，墙会顺着纸的
      * 竖向跳一截，这一段把它垫回去、再补间到 0（reanchorLift、useBravaisSeam）。平常是 0。
@@ -56,7 +59,7 @@ const contentOpacityFor = (width: number, contentWidth: number) => (
     Math.max(0, Math.min(1, (width / Math.max(contentWidth, 1) - 0.35) / 0.65))
 );
 
-export const computeBravaisFrame = ({ center, view, anchorX, anchorY = null, openWidth, contentWidth, hidden, poster = false, tiltDeg = 0, liftY = 0 }: BravaisFrameInput): BravaisFrame => {
+export const computeBravaisFrame = ({ center, view, anchorX, anchorY = null, openWidth, contentWidth, hidden, poster = false, tiltDeg = 0, liftY = 0, safeLeft = 0, safeRight = 0 }: BravaisFrameInput): BravaisFrame => {
     const camera = cameraFromViewCenter(center, view);
     if (anchorX === null && anchorY !== null) {
         const geometry = getSeamGeometryY({ anchorY, cameraY: center.y, openWidth, view });
@@ -82,7 +85,19 @@ export const computeBravaisFrame = ({ center, view, anchorX, anchorY = null, ope
             tilt: { deg: 0, pivotX: 0, pivotY: 0 },
         };
     }
-    const geometry = getSeamGeometry({ anchorX, cameraX: center.x, openWidth, view, edge: seamEdgeFor(poster) });
+    // The narrow home rail / spine keeps its fixed layout width at the edge; only wider openings
+    // (the full info bar, a panel, a poster) may be squeezed by the edge margin.
+    const keepWidth = contentWidth > 0 && contentWidth <= BRAVAIS_SEAM_HOME_WIDTH;
+    const geometry = getSeamGeometry({
+        anchorX,
+        cameraX: center.x,
+        openWidth,
+        view,
+        edge: seamEdgeFor(poster),
+        keepWidth,
+        edgeBefore: safeLeft,
+        edgeAfter: safeRight,
+    });
     const offsets = getSeamSplitOffsets(geometry.width, view.scale, BRAVAIS_METRICS);
     const layoutWidth = Math.max(contentWidth, 1);
     return {

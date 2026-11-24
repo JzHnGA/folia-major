@@ -247,7 +247,7 @@ export const buildPlayerPanelModel = ({
             isStageContext: activePlaybackContext === 'stage',
             playbackControlsDisabled: isNowPlayingControlDisabled,
             onOpenSettings: () => {
-                openSettings('options');
+                openSettings();
             },
             onOpenCommandPalette: openCommandPalette,
             isCommandPaletteOpen,

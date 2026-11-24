@@ -22,7 +22,12 @@ export interface NebbiaLayoutOptions {
     fogAt: (i: number) => number;
     /** 屏上还空着时第 i 句最多留到的时刻：多留的这段只算一点点占地方，后面的句子要用这块它就让位。 */
     lingerUntil?: (i: number) => number;
+    /** 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）；没有时为 0，排版和以前一模一样。 */
+    insetL?: number;
+    insetR?: number;
 }
+/** 有安全区的一侧，字离安全区边缘至少留这么多：拉丁字按 1.15 倍画（nebbiaScene.ts），还有手写歪斜。 */
+const SAFE_GAP = 16;
 /** 多留着的句子占地方的权重：有空地就别压上去，但不为它缩小字号。 */
 const LINGER_WEIGHT = 0.03;
 
@@ -41,8 +46,14 @@ const overlapArea = (a: Box, b: Box) => Math.max(0, Math.min(a.x1, b.x1) - Math.
 
 /** 排整首歌：每句一个数组，和 chars 一一对应（空格也有位置，但不画）。 */
 export const layoutNebbiaSong = (lines: NebbiaSourceLine[], opts: NebbiaLayoutOptions): NebbiaCharPos[][] => {
-    const { W, H, jitter, layouts, fontScale, visibleUntil, fogAt, lingerUntil } = opts;
-    const mx = W * 0.05, my = H * 0.07;
+    const { W, H, jitter, layouts, fontScale, visibleUntil, fogAt, lingerUntil, insetL = 0, insetR = 0 } = opts;
+    // 左右边距分开算：只在有安全区的一侧加宽，没有安全区时两侧都还是 W * 0.05
+    const mxL = insetL > 0 ? Math.max(W * 0.05, insetL + SAFE_GAP) : W * 0.05;
+    const mxR = insetR > 0 ? Math.max(W * 0.05, insetR + SAFE_GAP) : W * 0.05;
+    const my = H * 0.07;
+    // 能放字的宽度和它的中线；安全区为 0 时就是 W 和 W / 2
+    const spanW = W - mxL - mxR;
+    const safeL = insetL, safeW = W - insetL - insetR, midX = safeL + safeW / 2;
     const Smin = Math.max(26, H * 0.065) * fontScale, Smax = H * 0.14 * fontScale;
     const placed: { box: Box; until: number; fogAt: number; linger: number }[] = [];
     const recent: string[] = [];
@@ -53,17 +64,17 @@ export const layoutNebbiaSong = (lines: NebbiaSourceLine[], opts: NebbiaLayoutOp
         const res = (kind === 'title' ? null : COMPOSITIONS.ribbon(ctx)) ?? pickWide(ctx);
         const bb = bboxOf(res.items);
         const cap = kind === 'title' ? Smax * 1.15 : Smax * 0.55;
-        const S = Math.min(cap, (W - mx * 2) * 0.8 / bb.w, H * 0.32 / bb.h);
+        const S = Math.min(cap, spanW * 0.8 / bb.w, H * 0.32 / bb.h);
         const bw = bb.w * S, bh = bb.h * S;
         const cy = kind === 'title' || !titleBox ? H * 0.42 : titleBox.y1 + bh / 2 + S * 0.6;
-        const box = { x0: W / 2 - bw / 2, x1: W / 2 + bw / 2, y0: cy - bh / 2, y1: cy + bh / 2 };
+        const box = { x0: midX - bw / 2, x1: midX + bw / 2, y0: cy - bh / 2, y1: cy + bh / 2 };
         if (kind === 'title') titleBox = box;
-        return { score: 0, name: 'ribbon', items: res.items, bb, S, cx: W / 2, cy, box };
+        return { score: 0, name: 'ribbon', items: res.items, bb, S, cx: midX, cy, box };
     };
     // 曲名：一行写得下（字不小于最小字号）就一行，否则两行
     const pickWide = (ctx: CompositionContext) => {
         const one = COMPOSITIONS.ribbon(ctx)!, bb = bboxOf(one.items);
-        const fits = Math.min(Smax * 1.15, (W - mx * 2) * 0.8 / bb.w) >= Smin;
+        const fits = Math.min(Smax * 1.15, spanW * 0.8 / bb.w) >= Smin;
         return (fits ? null : COMPOSITIONS.lines2(ctx)) ?? one;
     };
     return lines.map((line, li) => {
@@ -73,7 +84,7 @@ export const layoutNebbiaSong = (lines: NebbiaSourceLine[], opts: NebbiaLayoutOp
         // 快歌：每个字平均唱不到 0.22 秒
         const fast = visible.length > 0 && (line.end - line.t) / visible.length < 0.22;
         const words = mergeWords(chars, line.words);
-        if (!words.length) return chars.map(() => ({ x: W / 2, y: H / 2, s: Smin, rot: 0 }));
+        if (!words.length) return chars.map(() => ({ x: midX, y: H / 2, s: Smin, rot: 0 }));
         const roles = assignRoles(chars, words);
         const RS = fast ? ROLE_SCALE_FAST : ROLE_SCALE;
         // 这句出现时还在屏上的句子；已经开始起雾的按剩下的清晰度打折
@@ -95,14 +106,15 @@ export const layoutNebbiaSong = (lines: NebbiaSourceLine[], opts: NebbiaLayoutOp
                 if (!res || !res.items.length) continue;
                 const bb = bboxOf(res.items);
                 // 构图最多占半屏左右，给下一句留出地方
-                const maxH = H * (name === 'ribbon' ? 0.28 : 0.5), maxW = (W - mx * 2) * (SIMPLE_COMPOSITIONS.has(name) ? 0.94 : 0.68);
+                const maxH = H * (name === 'ribbon' ? 0.28 : 0.5), maxW = spanW * (SIMPLE_COMPOSITIONS.has(name) ? 0.94 : 0.68);
                 const Sfit = Math.min(maxW / bb.w, maxH / bb.h, Smax);
                 if (Sfit < Smin * 0.75) continue;
                 // 字号也是候选：屏上挤的时候缩小一点换位置，不低于最小字号的 3/4
                 for (const S of [Sfit, Sfit * 0.8, Sfit * 0.64, Sfit * 0.5].filter((v, i) => i === 0 || v >= Smin * 0.75)) {
                     const bw = bb.w * S, bh = bb.h * S;
                     for (const fx of [0.5, 0.3, 0.7]) for (const fy of [0.25, 0.42, 0.58, 0.75]) {
-                        const cx = clamp(fx * W, mx + bw / 2, W - mx - bw / 2), cy = clamp(fy * H, my + bh / 2, H - my - bh / 2);
+                        // 候选横位按安全区内的宽度取比例（安全区为 0 时就是 fx * W）
+                        const cx = clamp(safeL + fx * safeW, mxL + bw / 2, W - mxR - bw / 2), cy = clamp(fy * H, my + bh / 2, H - my - bh / 2);
                         const box = { x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - bh / 2, y1: cy + bh / 2 };
                         const pad = S * 0.3, padBox = { x0: box.x0 - pad, x1: box.x1 + pad, y0: box.y0 - pad, y1: box.y1 + pad };
                         let score = 0;
@@ -131,8 +143,8 @@ export const layoutNebbiaSong = (lines: NebbiaSourceLine[], opts: NebbiaLayoutOp
             const ctx: CompositionContext = { blocks, h: 0, chars };
             const res = COMPOSITIONS.lines3(ctx) ?? COMPOSITIONS.lines2(ctx) ?? COMPOSITIONS.ribbon(ctx)!;
             const bb = bboxOf(res.items);
-            const S = Math.min(Smax, (W - mx * 2) / bb.w, (H - my * 2) / bb.h);
-            best = { score: 0, name: 'lines3', items: res.items, bb, S, cx: W / 2, cy: H / 2, box: { x0: W / 2 - bb.w * S / 2, x1: W / 2 + bb.w * S / 2, y0: H / 2 - bb.h * S / 2, y1: H / 2 + bb.h * S / 2 } };
+            const S = Math.min(Smax, spanW / bb.w, (H - my * 2) / bb.h);
+            best = { score: 0, name: 'lines3', items: res.items, bb, S, cx: midX, cy: H / 2, box: { x0: midX - bb.w * S / 2, x1: midX + bb.w * S / 2, y0: H / 2 - bb.h * S / 2, y1: H / 2 + bb.h * S / 2 } };
         }
         const chosen: Candidate = best;
         placed.push({ box: chosen.box, until: visibleUntil(li), fogAt: fogAt(li), linger: Math.max(visibleUntil(li), lingerUntil?.(li) ?? 0) });

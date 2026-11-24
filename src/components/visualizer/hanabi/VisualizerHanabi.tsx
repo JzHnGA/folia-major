@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Line, Theme } from '../../../types';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
 import { loadLucideIcons } from '../../../services/lucideIconResolver';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
 import { resolveLyricAntialias } from '../../../utils/lyricRenderQuality';
@@ -65,9 +66,17 @@ const VisualizerHanabi: React.FC<VisualizerSharedProps & { hanabiTuning: HanabiT
     const renderScale = isPreviewMode ? 1 : renderQuality.scale;
     const antialias = isPreviewMode ? false : resolveLyricAntialias(renderQuality.antialias, false);
 
+    // iPhone 横屏时灵动岛 / 刘海压在左右两侧（约 59px），文字区按整屏宽排会钻到它下面，让开这一段。
+    // 预览是小图，不贴屏幕边，不让（保持 0，与桌面一致）。
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = useMemo(
+        () => (isPreviewMode ? { left: 0, right: 0 } : deviceSafeSides),
+        [isPreviewMode, deviceSafeSides],
+    );
+
     // 运行时创建期间这些输入可能已经变了；create 完成后按最新值补一次。
-    const latestRef = useRef({ tuning: hanabiTuning, paused, showText, staticMode, renderScale });
-    latestRef.current = { tuning: hanabiTuning, paused, showText, staticMode, renderScale };
+    const latestRef = useRef({ tuning: hanabiTuning, paused, showText, staticMode, renderScale, safeSides });
+    latestRef.current = { tuning: hanabiTuning, paused, showText, staticMode, renderScale, safeSides };
     const metadataRef = useRef<HanabiCreditsMetadata>({ title: songTitle, artist: songArtist, album: songAlbum });
     metadataRef.current = { title: songTitle, artist: songArtist, album: songAlbum };
 
@@ -122,12 +131,14 @@ const VisualizerHanabi: React.FC<VisualizerSharedProps & { hanabiTuning: HanabiT
                 metadata: metadataRef.current,
                 renderScale: latest.renderScale,
                 antialias,
+                safeSides: latest.safeSides,
                 signal,
             });
             const current = latestRef.current;
             runtime.setSongMetadata(metadataRef.current);
             runtime.setTuning(current.tuning);
             runtime.setRenderScale(current.renderScale);
+            runtime.setSafeSides(current.safeSides);
             runtime.setShowText(current.showText);
             runtime.setStaticMode(current.staticMode);
             runtime.setPaused(current.paused);
@@ -148,6 +159,10 @@ const VisualizerHanabi: React.FC<VisualizerSharedProps & { hanabiTuning: HanabiT
     useEffect(() => {
         runtimeRef.current?.setRenderScale(renderScale);
     }, [renderScale, runtimeRef]);
+
+    useEffect(() => {
+        runtimeRef.current?.setSafeSides(safeSides);
+    }, [safeSides, runtimeRef]);
 
     useEffect(() => {
         runtimeRef.current?.setShowText(showText);

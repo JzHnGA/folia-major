@@ -188,10 +188,6 @@ const ThemePreview: React.FC<{
 
                 {/* A picture of the theme at work: nothing in it takes the pointer or the keyboard. */}
                 <div aria-hidden className="pointer-events-none absolute inset-0 z-10">
-                    <div className="absolute left-5 right-16 top-4">
-                        <div className={`${SAMPLE_COLOR_MOTION_CLASS} min-h-5 truncate text-sm font-semibold leading-5 text-[color:var(--ts-fg)]`}>{name}</div>
-                        <div className={`${SAMPLE_COLOR_MOTION_CLASS} truncate text-xs leading-[18px] text-[color:var(--ts-muted)]`}>{description}</div>
-                    </div>
                     <div className="absolute inset-x-5 bottom-[18px] flex items-center gap-4">
                         <ThemeSampleCard />
                         <ThemeSampleProgress currentTime={progressTime} duration={liveContent ? liveContent.duration : VIS_PLAYGROUND_PREVIEW_LOOP_DURATION} />
@@ -199,25 +195,36 @@ const ThemePreview: React.FC<{
                     </div>
                 </div>
 
-                <PreviewSourceSwitch
-                    value={previewSource}
-                    onChange={onPreviewSourceChange}
-                    liveEmpty={previewSource === 'live' && liveContent === null}
-                    className="absolute right-[60px] top-3 z-30 inline-flex"
-                />
-                <Tooltip text={pauseLabel} className="absolute right-3 top-3 z-30 inline-flex">
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onTogglePause();
-                        }}
-                        aria-label={pauseLabel}
-                        className="st-t-fast grid h-8 w-8 place-items-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65"
-                    >
-                        {isPaused ? <Play size={14} className="translate-x-[1px]" fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
-                    </button>
-                </Tooltip>
+                {/* The top row: the theme's name at the left gives way to the source switch and the pause
+                    button, so it is cut short before them and never runs under them. Only the two
+                    controls take the pointer. */}
+                <div className="pointer-events-none absolute inset-x-4 top-4 z-30 flex items-start gap-2">
+                    <div aria-hidden className="min-w-0 flex-1 pl-1 pt-1.5">
+                        <div className={`${SAMPLE_COLOR_MOTION_CLASS} min-h-5 truncate text-sm font-semibold leading-5 text-[color:var(--ts-fg)]`}>{name}</div>
+                        <div className={`${SAMPLE_COLOR_MOTION_CLASS} truncate text-xs leading-[18px] text-[color:var(--ts-muted)]`}>{description}</div>
+                    </div>
+                    <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+                        <PreviewSourceSwitch
+                            value={previewSource}
+                            onChange={onPreviewSourceChange}
+                            liveEmpty={previewSource === 'live' && liveContent === null}
+                            className="inline-flex shrink-0"
+                        />
+                        <Tooltip text={pauseLabel} className="inline-flex shrink-0">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onTogglePause();
+                                }}
+                                aria-label={pauseLabel}
+                                className="st-t-fast grid h-8 w-8 place-items-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65"
+                            >
+                                {isPaused ? <Play size={14} className="translate-x-[1px]" fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
+                            </button>
+                        </Tooltip>
+                    </div>
+                </div>
             </SampleBox>
         );
     };

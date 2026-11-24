@@ -9,8 +9,8 @@ import { getOnlineMusicProvider, listOnlineMusicProviders } from '@/services/onl
 
 const AUTH_MEMBERS: Record<string, string[]> = {
     netease: [
-        'canRunLoginSelfCheck', 'checkLogin', 'createQr', 'describeLoginFailure', 'forgetOldKeptAccount', 'getLoginDiagnostics', 'getLoginStatus', 'getLoginTexts', 'localService',
-        'logout', 'oldKeptAccount', 'runLoginSelfCheck', 'showsKeptAccountAtStart', 'signInRanOut', 'startLogin',
+        'canRunLoginSelfCheck', 'checkLogin', 'createQr', 'describeLoginFailure', 'forgetOldKeptAccount', 'getLoginCodeUrl', 'getLoginDiagnostics', 'getLoginStatus', 'getLoginTexts', 'localService',
+        'logout', 'oldKeptAccount', 'runLoginSelfCheck', 'showsKeptAccountAtStart', 'showsKeptAccountOnStartFailure', 'signInRanOut', 'startLogin',
     ],
     qq: [
         'canRunLoginSelfCheck', 'cancelLogin', 'checkLogin', 'createQr', 'describeLoginFailure', 'getLoginDiagnostics', 'getLoginMethods', 'getLoginStatus',

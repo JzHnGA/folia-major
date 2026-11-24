@@ -22,8 +22,18 @@ import { assertLibrarySuiteChromeActions } from './suiteChrome';
 // account surface（A5）同样整体回退：选中的 suite 没声明它就由网格的登录弹窗与确认框答复；声明了就必须列全
 // 基础动作（LIBRARY_ACCOUNT_REQUIRED_ACTION_IDS），缺了在建索引时抛错。
 
-/** 默认 suite：任何 suite 没实现的 surface 都由它渲染，所以它必须实现全部 surface。 */
-export const DEFAULT_LIBRARY_SUITE_ID: LibrarySuiteId = 'grid';
+/**
+ * 默认 suite：任何 suite 没实现的 surface 都由它渲染，所以它必须实现全部 surface。
+ * iOS 壳只带 bravais（grid 的 entry 在那个构建里被换成不可用的空壳），构建变量
+ * VITE_LIBRARY_DEFAULT_SUITE 把它指过去；其余构建仍是 grid。
+ */
+export const resolveDefaultLibrarySuiteId = (override: unknown): LibrarySuiteId => (
+    typeof override === 'string' && override.trim() ? override.trim() : 'grid'
+);
+
+export const DEFAULT_LIBRARY_SUITE_ID: LibrarySuiteId = resolveDefaultLibrarySuiteId(
+    import.meta.env.VITE_LIBRARY_DEFAULT_SUITE,
+);
 
 /** 没有构建变量覆盖时的初始选择：bravais（下一版起的默认，2026-10-10 用户定）。 */
 const LIBRARY_SUITE_INITIAL_CHOICE_FALLBACK: LibrarySuiteId = 'bravais';

@@ -63,6 +63,8 @@ export const buildWordPlacements = (
     animationIntensity: Theme['animationIntensity'],
     seed: number,
     isInterlude: boolean,
+    /** 落点离行中线最远的横向距离（安全区）；默认不限。 */
+    horizontalLimit = Infinity,
 ) => {
     // This is where fragments stop being text slices and start becoming actual animated visual objects.
     // From this point on, everything is placement geometry and per-state motion data.
@@ -243,8 +245,8 @@ export const buildWordPlacements = (
             }
         }
 
-        const horizontalMin = (-maxWidth / 2) - 72;
-        const horizontalMax = (maxWidth / 2) + 72;
+        const horizontalMin = Math.max((-maxWidth / 2) - 72, -horizontalLimit);
+        const horizontalMax = Math.min((maxWidth / 2) + 72, horizontalLimit);
         const verticalMin = -Math.max(totalHeight * 0.9, lineHeight * 1.6);
         const verticalMax = Math.max(totalHeight * 0.9, lineHeight * 1.45);
         let chosenX = preferredX;

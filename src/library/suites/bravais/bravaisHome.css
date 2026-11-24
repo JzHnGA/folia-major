@@ -390,6 +390,8 @@
     font-size: 12px;
     line-height: 1.25;
     text-align: left;
+    /* 长名字（平台的卡名、导入的收藏夹名）在窄缝的菜单宽度里换行，不要溢出被缝裁掉。 */
+    overflow-wrap: anywhere;
 }
 
 .bravais-seam-menu.is-home button svg { width: 14px; height: 14px; flex: none; opacity: 0.75; }

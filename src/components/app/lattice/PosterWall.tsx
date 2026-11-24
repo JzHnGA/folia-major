@@ -26,6 +26,7 @@ import {
 import { setLatticeCurrentSongPosterVisible } from '../../../stores/useLatticeControlsStore';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { useDevicePixelRatio } from '../../../hooks/useMediaQuery';
+import { coverPixelRatio } from '../../../utils/coverUrl';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { EXPANSION_SPAN } from '../../wall/blockTemplates';
 import { useLatticeSettingsStore } from '../../../stores/useLatticeSettingsStore';
@@ -131,7 +132,7 @@ export default function PosterWall({
     const entranceSuppressed = useWallHandoffStore(state => resolveWallHandoffRole(state.session, 'lattice') === 'in');
     const autoFocusOnSongChange = useLatticeSettingsStore(state => state.autoFocusOnSongChange);
     const devicePixelRatio = useDevicePixelRatio();
-    const pixelScale = cameraScale * devicePixelRatio;
+    const pixelScale = cameraScale * coverPixelRatio(devicePixelRatio);
 
     const wallLayout = useMemo(
         () => (sections ? createExploreLayout(sections, METRICS) : createQueueLayout(tiles.length, METRICS)),

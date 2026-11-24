@@ -52,14 +52,17 @@ describe('library suite registry', () => {
         expect(resolveLibrarySurface('account', 'tui')).toBe(tui);
     });
 
-    it('answers bravais with the grid account surface as a whole: its sign-in is the shared window, its switch confirm grid\'s', () => {
-        // 登录在共用的登录窗口里，缝里不再有登录态 / 确认态：bravais 不声明 account surface，整体回退 grid 的确认框。
+    it('renders bravais\'s own account surface and declares all seven account actions', () => {
+        // 登录在共用的登录窗口里，缝里不再有登录态 / 确认态：bravais 的 account surface 只画待确认切换的确认框。
+        // iOS 构建只留 bravais 时，它必须是完整的一套 suite，不能再回退 grid。
         const bravais = resolveLibrarySurface('account', 'bravais');
         const grid = resolveLibrarySurface('account', 'grid');
-        expect(getLibrarySuite('bravais')?.surfaces.account).toBeUndefined();
-        expect(bravais).toMatchObject({ suiteId: 'grid', isFallback: true });
-        expect(bravais.component).toBe(grid.component);
-        expect(bravais.declaredActions).toBe(grid.declaredActions);
+        expect(getLibrarySuite('bravais')?.surfaces.account).toBeDefined();
+        expect(bravais).toMatchObject({ suiteId: 'bravais', isFallback: false });
+        expect(bravais.component).toBe(getLibrarySuite('bravais')?.surfaces.account?.component);
+        expect(bravais.component).not.toBe(grid.component);
+        expect([...bravais.declaredActions.actions].sort()).toEqual([...LIBRARY_ACCOUNT_ACTION_IDS].sort());
+        expect(resolveLibrarySurface('account', 'bravais')).toBe(bravais);
     });
 
     it('still answers a suite without an account surface with the grid one as a whole', () => {

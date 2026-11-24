@@ -171,6 +171,11 @@ export type BravaisLayerWall = {
 export type BravaisWallHint = {
     title: string;
     body?: string;
+    /** 手机上的行动入口（未登录时的登录）；桌面不给。 */
+    action?: {
+        label: string;
+        onClick: (pressed: HTMLElement) => void;
+    };
 };
 
 /** 列表面板工具行的排序（本地文件夹才有）。 */

@@ -5,6 +5,9 @@ import { getNavidromeConfig, navidromeApi } from '@/services/navidromeService';
 import type { LocalLibraryAssignment, LocalLibraryEntity } from '@/types/localLibrary';
 
 vi.mock('@/services/onlineMusic/netease/netease', () => ({
+    resolveConfiguredNeteaseApiBase: () => null,
+    getNeteaseRemoteApiBase: () => null,
+    setNeteaseApiBaseOverride: () => undefined,
     neteaseApi: {
         cloudSearch: vi.fn(),
         normalizeSongResult: vi.fn((raw: unknown) => raw),

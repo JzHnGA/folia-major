@@ -1,4 +1,5 @@
 import type { TemperaTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import {
     resolveTemperaBreathWeight,
     resolveTemperaCameraBreath,
@@ -40,6 +41,56 @@ const RISE_ENTER_SECONDS = 0.9;
 /** The slow climb that follows, across the whole shot, as a share of the height. */
 const RISE_DRIFT = 0.18;
 
+/** 安全区内侧再留的一点空（px）：字贴着灵动岛的边也一样难读。 */
+const SAFE_SIDE_MARGIN = 8;
+
+/**
+ * 有安全区时把这一帧的镜头（推拉 + 横移）收在安全区之内：歌词外接框按镜头变换后的屏幕横向范围
+ * 必须落在 [left, width - right]。先压推近：放大后超出那一段就把缩放降到刚好放下，但不低于 1
+ * （排版本来就排在那一段里）；再把剩下的越界横向挪回来。仍放不下时让它居中在那一段里。
+ * 只看 shot 交接之外的部分：推入推出本来就是让构图滑出画面。
+ */
+const resolveTemperaSafeSideCamera = (
+    view: TemperaShotView,
+    x: number,
+    scale: number,
+    rotation: number,
+    width: number,
+    slack: number,
+    safeSides: SafeAreaSides,
+) => {
+    const bounds = view.lyricBounds;
+    if (!bounds) return { x, scale };
+    const bandLeft = Math.max(0, safeSides.left) + SAFE_SIDE_MARGIN + slack;
+    const bandRight = width - Math.max(0, safeSides.right) - SAFE_SIDE_MARGIN - slack;
+    if (bandRight <= bandLeft) return { x, scale };
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const pivotX = view.container.pivot.x;
+    const pivotY = view.container.pivot.y;
+    // 外接框四角经旋转后相对枢轴的横向范围（未乘缩放）。
+    let relMin = Number.POSITIVE_INFINITY;
+    let relMax = Number.NEGATIVE_INFINITY;
+    for (const cornerX of [bounds.minX, bounds.maxX]) {
+        for (const cornerY of [bounds.minY, bounds.maxY]) {
+            const rel = cos * (cornerX - pivotX) - sin * (cornerY - pivotY);
+            relMin = Math.min(relMin, rel);
+            relMax = Math.max(relMax, rel);
+        }
+    }
+    const extent = relMax - relMin;
+    const bandWidth = bandRight - bandLeft;
+    let nextScale = scale;
+    if (extent * scale > bandWidth) nextScale = Math.max(Math.min(scale, 1), bandWidth / Math.max(1, extent));
+    const left = x + nextScale * relMin;
+    const right = x + nextScale * relMax;
+    let nextX = x;
+    if (right - left > bandWidth) nextX = x + (bandLeft + bandRight) / 2 - (left + right) / 2;
+    else if (left < bandLeft) nextX = x + bandLeft - left;
+    else if (right > bandRight) nextX = x + bandRight - right;
+    return { x: nextX, scale: nextScale };
+};
+
 const resolveAnimationScale = (theme: Theme) => (
     theme.animationIntensity === 'calm' ? 0.65 : theme.animationIntensity === 'chaotic' ? 1.35 : 1
 );
@@ -66,6 +117,8 @@ export const updateTemperaShot = (
     theme: Theme,
     /** 墨染奥行's share, 0..1: the camera pan, the parallax and the glyph depth scale with it (and each with its own tuning strength). */
     depthMix: number,
+    /** 左右安全区（px）。缺省或都是 0 时镜头不收束，与原来逐位相同。 */
+    safeSides?: SafeAreaSides,
 ) => {
     const duration = Math.max(view.shot.endTime - view.shot.startTime, 0.001);
     const rawProgress = (time - view.shot.startTime) / duration;
@@ -112,14 +165,36 @@ export const updateTemperaShot = (
     view.container.scale.set((1 + (frame.scale - 1) * camera) * (1 - exit * 0.08));
     view.container.rotation = frame.rotation * camera;
 
+    const glyphParallaxCap = Math.min(width, height) * GLYPH_PARALLAX_CAP;
+    const glyphDepth = depthMix * tuning.glyphDepth;
+    if (safeSides && (safeSides.left > 0 || safeSides.right > 0)) {
+        // 收束只作用在交接之外的那部分镜头上，交接的推入推出照旧加回去。视差仍按原来的镜头位移算。
+        const travelX = Math.cos(view.shot.flowAngle) * travel;
+        const steadyScale = 1 + (frame.scale - 1) * camera;
+        // 字形的视差会把字从排好的位置再带开一点（有上限），这一段也要让出来。
+        const glyphSlack = Math.min(
+            glyphParallaxCap,
+            Math.abs(cameraX) * Math.max(GLYPH_LEAD_NEAR, GLYPH_LAG_FAR) * glyphDepth,
+        ) * steadyScale;
+        const safe = resolveTemperaSafeSideCamera(
+            view,
+            view.baseX + cameraX - travelX,
+            steadyScale,
+            view.container.rotation,
+            width,
+            glyphSlack,
+            safeSides,
+        );
+        view.container.x = safe.x + travelX;
+        view.container.scale.set(safe.scale * (1 - exit * 0.08));
+    }
+
     // Two ends on purpose. The graphics' entrance stagger is paced against the lyric this
     // shot carries; the steady flow creep runs for the shot's whole visible life, which is
     // tiled up to the next shot's start and can be seconds longer.
     view.blocks.updateTime(time, view.shot.startTime, view.shot.endTime, view.shot.lyricEndTime);
     view.images.updateTime(time, view.shot.startTime, view.shot.endTime, view.shot.lyricEndTime);
 
-    const glyphParallaxCap = Math.min(width, height) * GLYPH_PARALLAX_CAP;
-    const glyphDepth = depthMix * tuning.glyphDepth;
     view.glyphs.forEach(glyph => {
         const frame = resolveTemperaGlyphMotion(glyph.motion, time, motion);
         // 字号即远近: big glyphs sit in front and lead the camera, small ones sit back, lag it

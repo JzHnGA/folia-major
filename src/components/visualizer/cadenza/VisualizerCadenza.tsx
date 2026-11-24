@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_CADENZA_TUNING, Line } from '../../../types';
 import { getLineRenderEndTime } from '../../../utils/lyrics/renderHints';
-import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
+import { lyricDevicePixelRatio, resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import { colorWithAlpha, mixColors } from '../colorMix';
 import { prepareActiveAndUpcoming, useVisualizerRuntime } from '../runtime';
 import { type VisualizerSharedProps } from '../definition';
@@ -11,6 +11,7 @@ import VisualizerShell from '../VisualizerShell';
 import { useLyricRenderQuality } from '../renderQuality/useLyricRenderQuality';
 import VisualizerSubtitleOverlay from '../VisualizerSubtitleOverlay';
 import { resolveSubtitleFontSizes } from '../subtitleFontSizes';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
 import type {
     AnimatedPlacementState,
     OverlayWordNodes,
@@ -56,6 +57,7 @@ type VisualizerProps = VisualizerSharedProps;
 
 /** Words are drawn waiting first and active last, so the word being sung sits on top. */
 const STATUS_DRAW_ORDER = ['waiting', 'passed', 'active'] as const;
+const NO_SAFE_SIDES = { left: 0, right: 0 };
 
 const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
     const {
@@ -87,6 +89,9 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         renderScaleRef.current = isPreviewMode ? 1 : renderQuality.scale;
     }, [isPreviewMode, renderQuality.scale]);
     const [viewport, setViewport] = useState({ width: 0, height: 0 });
+    // 横屏时灵动岛 / 刘海压在左右两侧：换行宽度和行的中线都按安全区内算。预览的小图不贴屏幕边，不用让
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : deviceSafeSides;
     const containerRef = useRef<HTMLDivElement>(null);
     const lineLayerRef = useRef<HTMLDivElement>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
@@ -115,12 +120,13 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
     const preparedStateContext = useMemo<PreparedStateCacheContext>(() => ({
         showText,
         viewport,
+        safeSides,
         theme,
         tuning: {
             fontScale: tuning.fontScale,
             widthRatio: tuning.widthRatio,
         },
-    }), [showText, theme, tuning.fontScale, tuning.widthRatio, viewport]);
+    }), [safeSides, showText, theme, tuning.fontScale, tuning.widthRatio, viewport]);
 
     const preparedStateContextKey = useMemo(() => {
         const wordColorSignature = (theme.wordColors ?? [])
@@ -133,6 +139,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             showText ? '1' : '0',
             viewport.width,
             viewport.height,
+            safeSides.left,
+            safeSides.right,
             theme.fontStyle,
             theme.fontFamily ?? '',
             theme.fontFamilyStack?.join(',') ?? '',
@@ -144,6 +152,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             wordColorSignature,
         ].join('|');
     }, [
+        safeSides.left,
+        safeSides.right,
         theme.accentColor,
         showText,
         theme.animationIntensity,
@@ -263,7 +273,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             lastFrameTimeRef.current = now;
             const width = Math.max(Math.floor(viewport.width), 1);
             const height = Math.max(Math.floor(viewport.height), 1);
-            const dpr = resolveLyricPixelRatio(window.devicePixelRatio || 1, renderScaleRef.current);
+            const dpr = resolveLyricPixelRatio(lyricDevicePixelRatio(), renderScaleRef.current);
 
             if (textCanvas.width !== Math.floor(width * dpr) || textCanvas.height !== Math.floor(height * dpr)) {
                 textCanvas.width = Math.floor(width * dpr);
@@ -296,6 +306,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             const motionEnergy = energy * tuning.motionAmount;
             const verticalLift = Math.sin(time * 2.3) * (3 + motionEnergy * 8);
             const focusY = height * 0.42 + verticalLift;
+            // 行的中线放在安全区中间；没有安全区时就是 width / 2
+            const focusX = safeSides.left + (width - safeSides.left - safeSides.right) / 2;
 
             lineLayer.style.opacity = lineEnvelope.opacity.toString();
             lineLayer.style.filter = lineEnvelope.blur > 0.05 ? `blur(${lineEnvelope.blur.toFixed(2)}px)` : 'none';
@@ -353,7 +365,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                     const localFloatY = Math.cos(time * 1.5 + placementIndex * 0.4) * motionEnergy * 2.5;
                     const passedDriftX = status === 'passed' ? placement.passedDriftX * passedDriftProgress : 0;
                     const passedDriftY = status === 'passed' ? placement.passedDriftY * passedDriftProgress : 0;
-                    const targetX = width / 2 + placement.x + localFloatX + passedDriftX + (status === 'waiting' ? placement.entryOffsetX : 0);
+                    const targetX = focusX + placement.x + localFloatX + passedDriftX + (status === 'waiting' ? placement.entryOffsetX : 0);
                     const targetY = focusY + placement.y + localFloatY + passedDriftY + (status === 'waiting' ? placement.entryOffsetY : 0);
                     const targetBodyAlpha = status === 'waiting' ? 0 : status === 'active' ? 1 : passedAlpha;
                     const targetBlur = status === 'waiting' && !isInstantWordReveal ? 10 : 0;
@@ -365,7 +377,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                     const existingState = stateMap.get(placement.id);
                     const shouldInitializeAsActive = isInstantWordReveal && time >= placement.word.startTime;
                     const animatedState = existingState ?? {
-                        x: width / 2 + placement.x + placement.entryOffsetX,
+                        x: focusX + placement.x + placement.entryOffsetX,
                         y: focusY + placement.y + placement.entryOffsetY,
                         rotation: shouldInitializeAsActive ? targetRotation : targetRotation + 16,
                         scale: shouldInitializeAsActive ? targetScale : Math.max(placement.scale * 0.5, 0.5),
@@ -498,6 +510,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         currentTime,
         activeLine,
         preparedState,
+        safeSides.left,
+        safeSides.right,
         showText,
         theme,
         tuning.glowIntensity,

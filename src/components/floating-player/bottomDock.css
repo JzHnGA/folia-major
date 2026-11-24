@@ -19,6 +19,12 @@
     :root { --dock-wall-tools-right: 16px; }
 }
 
+/* 触屏的墙工具按钮右距与 WallToolsButton.css 的粗指针规则一致（安全区 + 20，至少 24）：
+   挂上胶囊时按它平移才对得齐。 */
+@media (pointer: coarse) {
+    :root { --dock-wall-tools-right: max(24px, calc(env(safe-area-inset-right) + 20px)); }
+}
+
 @media (min-width: 640px) {
     :root { --dock-wall-tools-base: 24px; }
 }
@@ -42,6 +48,14 @@
     translate: calc(var(--dock-edge-pad) - var(--dock-capsule-right) - 4px) 12px;
     scale: 0.8333;
     transform-origin: calc(100% - var(--dock-edge-pad) - 24px) 50%;
+}
+
+/* 胶囊空闲自动收起（<html data-capsule-hidden>）：挂着的面板按钮不回右下角，跟着胶囊往下滑出同样的距离
+   （--player-bar-hide-distance，FloatingPlayerControls 收起前量好写到根上），时长和曲线与胶囊一致。 */
+:root[data-capsule-hidden] .dock-companion--panel.is-docked {
+    translate: calc(var(--dock-edge-pad) - var(--dock-capsule-right) - 4px) calc(12px + var(--player-bar-hide-distance, 100vh));
+    transition: translate 380ms var(--dock-ease), scale 380ms var(--dock-ease);
+    pointer-events: none;
 }
 
 /* 墙工具按钮的 dock（WallToolsDock）平时是 z-10，在进度条胶囊（z-60）下面；挂到胶囊上时提到胶囊上面一层，

@@ -94,13 +94,12 @@ describe('createWallToolsHostStore', () => {
         expect(deps.saveCurrentQueueAsLocalPlaylist).toHaveBeenCalledWith('Mix');
     });
 
-    it('opens the settings dialog on its options tab', () => {
+    it('opens the settings dialog', () => {
         const { host } = createWallToolsHostStore({ current: makeDeps() });
         closeSettings();
         host.openSettings();
         const state = useSettingsModalStore.getState().settingsModalState;
         expect(state.isOpen).toBe(true);
-        expect(state.initialTab).toBe('options');
         closeSettings();
     });
 

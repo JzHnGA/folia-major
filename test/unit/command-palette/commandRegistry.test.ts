@@ -284,7 +284,7 @@ describe('command palette registry', () => {
         expect(match.command.id).toBe('settings-integration');
         match.command.execute(match.input, context);
 
-        expect(context.settings.openSettings).toHaveBeenCalledWith('options', 'integration');
+        expect(context.settings.openSettings).toHaveBeenCalledWith('integration');
     });
 
     it('opens the local lyrics priority setting from the command palette', () => {
@@ -296,7 +296,7 @@ describe('command palette registry', () => {
 
         // The top of the lyrics page is not the destination — the lyrics group on it is, which is
         // what an anchor-level command exists to reach.
-        expect(context.settings.openSettings).toHaveBeenCalledWith('options', 'lyrics', null, 'lyrics');
+        expect(context.settings.openSettings).toHaveBeenCalledWith('lyrics', null, 'lyrics');
     });
 
     it('switches ReplayGain modes from the command palette', () => {
@@ -434,7 +434,7 @@ describe('command palette registry', () => {
         const [generalMatch] = getCommandPaletteMatches('通用');
         expect(generalMatch.command.id).toBe('settings-general');
         generalMatch.command.execute(generalMatch.input, context);
-        expect(context.settings.openSettings).toHaveBeenCalledWith('options', 'general');
+        expect(context.settings.openSettings).toHaveBeenCalledWith('general');
 
         const playerControlSlotsCommand = COMMAND_PALETTE_COMMANDS.find(
             command => command.id === 'settings-player-control-slots',
@@ -443,7 +443,7 @@ describe('command palette registry', () => {
         playerControlSlotsCommand!.execute('', context);
         // 必须带上锚点：槽位选择器在「播放页」的控制栏那一组里，
         // 只传页面的话打开的是这一页的顶部，等于没跳过去。
-        expect(context.settings.openSettings).toHaveBeenLastCalledWith('options', 'player', null, 'bottomUiSettings');
+        expect(context.settings.openSettings).toHaveBeenLastCalledWith('player', null, 'bottomUiSettings');
 
         const [systemLanguageMatch] = getCommandPaletteMatches('跟随系统');
         expect(systemLanguageMatch.command.id).toBe('settings-language-system');
@@ -651,7 +651,7 @@ describe('command palette registry', () => {
         expect(matchesZhuti[0].command.id).toBe('settings-theme-park');
 
         matchesColor[0].command.execute('', context);
-        expect(context.settings.openSettings).toHaveBeenCalledWith('options', 'themePark');
+        expect(context.settings.openSettings).toHaveBeenCalledWith('themePark');
     });
 
     it('executes navigation commands', async () => {

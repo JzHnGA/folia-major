@@ -2,6 +2,8 @@ import { DualTheme } from "../types";
 import { applyStoredAnimationIntensityToDualTheme } from "./themePreferences";
 import { sanitizeDualTheme } from "./themeSanitizer";
 import { getWebAiProvider, type WebAiProvider } from "./runtimeConfig";
+import { generateDeviceTheme, testDeviceAiConnection } from "./deviceAi/deviceAiClient";
+import { isDeviceAiHost, useDeviceAiSettingsStore, type DeviceAiConfig } from "./deviceAi/deviceAiSettings";
 export {
   AI_PROVIDER_PRESETS,
   inferAiProviderFromUrl,
@@ -21,8 +23,10 @@ export {
  * generateTheme, segmentLyrics and testAiConnection) and our own web routes (/api/generate-theme,
  * /api/generate-theme_openai, /api/segment-lyrics).
  *
- * The window never sends a request to a service itself. The only key it handles is the one typed
- * into the settings form, which it hands to the main process to store or to test. On the desktop
+ * On the desktop and the web the window never sends a request to a service itself: the only key it
+ * handles is the one typed into the settings form, which it hands to the main process to store or
+ * to test. The iOS app has neither a main process nor a server of ours, so there the window sends
+ * the theme ask and the connection test itself, with the key from the Keychain (./deviceAi/). On the desktop
  * the main process sends the request, with the service and the key from the user's settings
  * (electron/aiTextClient.cjs, behind the IPC handlers in electron/main.cjs). On the web our
  * serverless routes send it, with the deployment's key (worker/, and api-ts/ built into api/;
@@ -74,6 +78,11 @@ export const generateThemeFromLyrics = async (
     if ((window as any).electron && typeof (window as any).electron.generateTheme === 'function') {
       const dualTheme = await (window as any).electron.generateTheme(lyricsText, options);
       return sanitizeDualTheme(dualTheme);
+    }
+
+    if (isDeviceAiHost()) {
+      const dualTheme = await generateDeviceTheme(useDeviceAiSettingsStore.getState().config, lyricsText, options);
+      return applyStoredAnimationIntensityToDualTheme(sanitizeDualTheme(dualTheme));
     }
 
     const response = await fetch(themeRoute(getWebAiProvider()), {
@@ -182,8 +191,13 @@ export const fetchAiModels = (payload: AiConnectionTestPayload): Promise<AiModel
     : Promise.resolve({ ok: false, errorKind: 'config' })
 );
 
-/** Whether the connection test can run here. It is desktop only: there is no web route for it. */
-export const canRunAiConnectionTest = (): boolean => Boolean(window.electron?.testAiConnection);
+/** Whether the connection test can run here: the desktop app and the iOS app; there is no web route for it. */
+export const canRunAiConnectionTest = (): boolean => Boolean(window.electron?.testAiConnection) || isDeviceAiHost();
+
+/** The iOS form's connection test, with the values on its screen. */
+export const runDeviceAiConnectionTest = (config: DeviceAiConfig, typedKey: string): Promise<AiConnectionTestResult> => (
+  testDeviceAiConnection(config, typedKey)
+);
 
 /**
  * Hands the unsaved values of the settings form to the main process, which sends one "hello" with

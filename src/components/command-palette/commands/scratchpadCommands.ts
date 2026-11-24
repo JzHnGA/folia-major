@@ -9,7 +9,7 @@ import { useScratchpadSettingsStore } from '../../../stores/useScratchpadSetting
 // src/components/command-palette/commands/scratchpadCommands.ts
 // 速记簿的命令：开合左边的抽屉，把正在播的这首记进去（不动队列），这两条都能绑全局快捷键；
 // 另有显示 / 隐藏左缘的悬浮把手，和跳到设置里速记簿那一组（主页与歌单页）。
-// 开合抽屉是 Ctrl+J（J 取 jot / 记，设置帮助页「键盘快捷键」里列着），执行模式 `:j`；记下这首是 `:s`（收）。
+// 开合抽屉是 Ctrl+J（J 取 jot / 记），执行模式 `:j`；记下这首是 `:s`（收）。
 
 export const scratchpadCommands: CommandPaletteCommand[] = [
     createToggleCommand(

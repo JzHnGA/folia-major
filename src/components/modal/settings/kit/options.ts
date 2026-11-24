@@ -12,6 +12,8 @@ export type SettingsGroupDef = {
     titleKey: string;
     /** A group only the desktop app has; the search leaves it and its options out on web. */
     electronOnly?: boolean;
+    /** A group the phone shell does not draw: hover, cursor and window-shaped settings live in these. */
+    mobileHidden?: boolean;
     /** Asked by the search: false where the page does not draw the group on this machine (a browser that cannot watch a folder). */
     available?: () => boolean;
 };
@@ -24,17 +26,21 @@ export type SettingsOptionDef = {
     group: SettingsGroupDef;
     /** A row only the desktop app draws, in a group the web has too; the search leaves it out on web. */
     electronOnly?: boolean;
+    /** A row the phone shell does not draw: cursor, window and OBS-shaped settings. */
+    mobileHidden?: boolean;
     /** Asked by the search: false where the page does not draw the row on this machine (a row for one system). */
     available?: () => boolean;
 };
 
 /** Whether the page draws a group or a row here: what the search asks before it lists one. */
 export const isDrawnHere = (
-    def: Pick<SettingsGroupDef, 'electronOnly' | 'available'>,
-    machine: { isElectron: boolean },
-): boolean => (machine.isElectron || !def.electronOnly) && def.available?.() !== false;
+    def: Pick<SettingsGroupDef, 'electronOnly' | 'mobileHidden' | 'available'>,
+    machine: { isElectron: boolean; isMobile?: boolean },
+): boolean => (machine.isElectron || !def.electronOnly)
+    && (!machine.isMobile || !def.mobileHidden)
+    && def.available?.() !== false;
 
-export const option = (group: SettingsGroupDef, id: string, labelKey: string, marks?: Pick<SettingsOptionDef, 'electronOnly' | 'available'>): SettingsOptionDef => ({
+export const option = (group: SettingsGroupDef, id: string, labelKey: string, marks?: Pick<SettingsOptionDef, 'electronOnly' | 'mobileHidden' | 'available'>): SettingsOptionDef => ({
     id,
     labelKey,
     group,

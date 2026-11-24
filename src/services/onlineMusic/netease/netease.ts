@@ -5,6 +5,7 @@ import type { PersonalFmRequestOptions, ProviderSongAvailability } from '../../.
 import { withLoginRequestLimit } from '../login/loginRequestLimit';
 import { withOnlineRequestLimit } from '../failure/onlineRequestLimit';
 import { errorFields } from '../../../utils/errorText';
+import { getStoredString, removeStoredKey, setStoredString } from '../../../stores/storagePrimitives';
 
 type UnavailableSongReplacement = {
   replacementSong: SongResult;
@@ -27,8 +28,39 @@ const getElectronBridge = () => {
 const isElectronRuntime = () =>
   Boolean(getElectronBridge() && typeof getElectronBridge()?.getNeteasePort === 'function');
 
-const getConfiguredApiBase = () => {
-  const viteEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+// iOS（Capacitor）等没有内嵌后端的壳里构建期可以不填 VITE_NETEASE_API_BASE：用户在应用内
+// 填一次实例地址存本地。键登记在 dev/dedicatus/storageKeys.mjs（D507）。
+const NETEASE_API_BASE_OVERRIDE_KEY = 'netease_api_base_override';
+
+/** 应用内填写的网易云 API 地址（去除末尾斜杠）；没填返回 null。 */
+export const getNeteaseApiBaseOverride = (): string | null => {
+  const trimmed = getStoredString(NETEASE_API_BASE_OVERRIDE_KEY, '').trim();
+  return trimmed ? trimmed.replace(/\/+$/, '') : null;
+};
+
+/** 保存/清除应用内填写的 API 地址，并清掉缓存的 base 让下一次请求重新解析。 */
+export const setNeteaseApiBaseOverride = (value: string | null): void => {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed) {
+    setStoredString(NETEASE_API_BASE_OVERRIDE_KEY, trimmed.replace(/\/+$/, ''));
+  } else {
+    removeStoredKey(NETEASE_API_BASE_OVERRIDE_KEY);
+  }
+  API_BASE = null;
+};
+
+// 没有内嵌后端的构建（iOS 壳 / 网页）没配实例时的兜底：直接用部署好的实例，
+// 不在启动时要求用的人先填地址。可用应用内覆盖换实例。
+const DEFAULT_NETEASE_API_BASE = 'https://folia-netease-api-beta.vercel.app';
+
+const getConfiguredApiBase = (): string | null => {
+  // 应用内覆盖优先于构建期环境变量：iOS 壳里用户可以换实例而不用重新打包。
+  const override = getNeteaseApiBaseOverride();
+  if (override) {
+    return override;
+  }
+
+  const viteEnv = typeof import.meta !== 'undefined' ? (import.meta as { env?: Record<string, unknown> }).env : undefined;
   if (viteEnv && typeof viteEnv.VITE_NETEASE_API_BASE === 'string' && viteEnv.VITE_NETEASE_API_BASE) {
     return viteEnv.VITE_NETEASE_API_BASE;
   }
@@ -37,8 +69,11 @@ const getConfiguredApiBase = () => {
     return process.env.VITE_NETEASE_API_BASE;
   }
 
-  return null;
+  return DEFAULT_NETEASE_API_BASE;
 };
+
+/** 当前可解析出的网易云 API 地址（应用内覆盖或构建期环境变量）；桌面版内嵌后端时返回 null。 */
+export const resolveConfiguredNeteaseApiBase = (): string | null => (isElectronRuntime() ? null : getConfiguredApiBase());
 
 /** 网页版配置的远端 API 地址（自检与诊断报告用）；桌面版走内嵌后端，返回 null。 */
 export const getNeteaseRemoteApiBase = (): string | null => (isElectronRuntime() ? null : getConfiguredApiBase());

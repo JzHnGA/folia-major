@@ -7,7 +7,7 @@ import { useSettingsPage } from './settingsPageContext';
 import { offersChinaDrives } from './ChinaDrivesRow';
 
 // src/components/modal/settings/pages/FoundUpdateRow.tsx
-// The row a found update gets, on the 通用 page and on the Help page: the new version, the list of
+// The row a found update gets, on the 通用 page: the new version, the list of
 // places to download it from (pages outside the app, with notes under the list), and what the app
 // itself can do with it: download it, show how far the download has come, restart to install. It
 // unfolds once the update check has found a version.

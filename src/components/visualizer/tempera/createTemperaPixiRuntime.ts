@@ -1,5 +1,6 @@
 import type { MotionValue } from 'framer-motion';
 import type { LyricRenderScale, TemperaTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import {
     destroyPixiDisplayTree,
@@ -98,6 +99,11 @@ export interface TemperaRuntimeOptions {
     songArtist?: string | null;
     songAlbum?: string | null;
     signal?: AbortSignal;
+    /**
+     * 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）：歌词构图与镜头让开这两段。缺省或都是 0 时
+     * 与原来一样。就地改，见 setSafeSides。
+     */
+    safeSides?: SafeAreaSides;
 }
 
 
@@ -421,6 +427,7 @@ export class TemperaPixiRuntime {
             imageTextures: this.imageTextures.textures,
             // The depth blur is baked when the scene is built, and only while 墨染奥行 is on.
             renderer: this.depthOn ? this.app.renderer : null,
+            safeSides: this.options.safeSides,
         }, song.program.paragraphs[index]);
     }
 
@@ -531,7 +538,16 @@ export class TemperaPixiRuntime {
                     && resolveTemperaShotExit(shot, time) < 1;
                 setPixiDisplayTreeVisibility(shot.container, isShotActive || isHandingOff);
                 if (!shot.container.visible) return;
-                updateTemperaShot(shot, time, width, height, this.options.tuning, this.options.theme, this.depthMix);
+                updateTemperaShot(
+                    shot,
+                    time,
+                    width,
+                    height,
+                    this.options.tuning,
+                    this.options.theme,
+                    this.depthMix,
+                    this.options.safeSides,
+                );
             });
             scene.activeShotIndex = activeShotIndex;
 
@@ -743,6 +759,19 @@ export class TemperaPixiRuntime {
         if (resolution === this.renderResolution) return;
         this.renderResolution = resolution;
         this.app.renderer.resolution = resolution;
+        this.rebuildScenes();
+        if (this.options.paused) this.renderOnce();
+    }
+
+    /**
+     * 换左右安全区（转屏、灵动岛出现或消失）：构图区域跟着变，所以和 setRenderScale 一样在现有上下文上
+     * 重建场景；画布、纹理池和图片都不动。
+     */
+    setSafeSides(safeSides: SafeAreaSides) {
+        if (this.destroyed) return;
+        const previous = this.options.safeSides;
+        if ((previous?.left ?? 0) === safeSides.left && (previous?.right ?? 0) === safeSides.right) return;
+        this.options.safeSides = safeSides;
         this.rebuildScenes();
         if (this.options.paused) this.renderOnce();
     }

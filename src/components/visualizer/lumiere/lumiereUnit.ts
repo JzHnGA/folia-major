@@ -5,6 +5,7 @@ import { cameraBetween, type Affine, type LumiereAudioFrame } from './lumiereKer
 import type { LightSprites } from './light/sprites';
 import type { LumiereParagraph, LumiereShot } from './program';
 import { createLumiereScene, type LumiereScene, type SceneShot } from './scene';
+import type { FrameSafeSides } from './text/lineWrap';
 import type { WindowTypography } from './text/lyricWindow';
 import type { LumiereSceneTuning } from './types';
 
@@ -19,6 +20,8 @@ export interface LumiereUnitOptions {
     /** 画面逻辑尺寸（CSS 像素）与渲染倍率（devicePixelRatio × 画质缩放）。 */
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素），原样交给场景的歌词窗口。 */
+    safeSides?: FrameSafeSides;
     resolution: number;
     /** 程序种子（LumiereProgram.seed）；场景按 `${programSeed}:${paragraph.id}` 播种。 */
     programSeed: string;
@@ -66,6 +69,7 @@ export const createLumiereUnit = (pixi: PixiModule, options: LumiereUnitOptions)
     const scene = createLumiereScene(pixi, {
         width: options.width,
         height: options.height,
+        safeSides: options.safeSides,
         resolution: options.resolution,
         seed: `${options.programSeed}:${paragraph.id}`,
         theme: options.theme,

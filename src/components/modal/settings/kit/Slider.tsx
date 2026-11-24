@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useRowAria } from './Row';
+import { useSettingsDevice } from './device';
 
 // src/components/modal/settings/kit/Slider.tsx
 // A slider with its value beside it. The filled part of the track is a gradient cut at --st-p, which
@@ -14,7 +15,8 @@ import { useRowAria } from './Row';
 // together than the names are wide run into each other.
 //
 // Stacked, for a narrow column: alone in its Row, the value ends the label's line and the track
-// spans the row under it (kit.css lets the two parts lie in the row itself).
+// spans the row under it (kit.css lets the two parts lie in the row itself). On the phone shell a
+// slider is stacked unless its page says otherwise: a 200px track beside the label does not fit there.
 
 /** The thumb is 16px wide: its centre stops this far inside each end of the track. */
 const THUMB_INSET = 8;
@@ -59,12 +61,14 @@ type SliderProps = {
     format: (value: number) => string;
     /** Values the track marks with a tick; one the slider cannot take is moved to the nearest it can. `label` is a short name under the tick. */
     marks?: ReadonlyArray<{ value: number; label?: string }>;
-    /** For a narrow column, alone in its Row: the value ends the label's line, the track spans the row. */
+    /** For a narrow column, alone in its Row: the value ends the label's line, the track spans the row. Defaults to on in the phone shell. */
     stacked?: boolean;
     disabled?: boolean;
 };
 
-export const Slider: React.FC<SliderProps> = ({ value, min, max, step = 1, onChange, format, marks, stacked, disabled }) => {
+export const Slider: React.FC<SliderProps> = ({ value, min, max, step = 1, onChange, format, marks, stacked: stackedByPage, disabled }) => {
+    const { isMobile } = useSettingsDevice();
+    const stacked = stackedByPage ?? isMobile;
     // A pointer is moving the thumb: only then does the value land on marks.
     const dragging = useRef(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +161,7 @@ export const Slider: React.FC<SliderProps> = ({ value, min, max, step = 1, onCha
         return (
             <span className="st-slider-stacked">
                 <output className={`ml-auto shrink-0 text-[13px] text-[color:var(--st-t2)] tabular-nums${dim}`}>{text}</output>
-                <span className={`relative mb-1 mt-1.5 min-w-0 basis-full${named ? ' pb-4' : ''}${dim}`}>{track}</span>
+                <span className={`relative mb-1 min-w-0 basis-full${named ? ' pb-4' : ''}${dim}`}>{track}</span>
             </span>
         );
     }

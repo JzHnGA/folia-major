@@ -1,12 +1,13 @@
 import type { TemperaTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
 import { buildWordColorRangesFromMatchers, prepareWordColorMatchers } from '../wordColoring';
 import type { TemperaParagraph, TemperaShot } from './types';
 import { hashTemperaSeed, temperaHash01 } from './temperaRandom';
-import { easeTemperaEnter } from './temperaMotion';
+import { easeTemperaEnter, RELEASE_TRACKING } from './temperaMotion';
 import { resolveTemperaPalette, type TemperaPalette } from './temperaPalette';
 import { buildTemperaBlocks, type TemperaBlocksView } from './temperaBlocks';
-import { isTemperaLayoutSegment, resolveTemperaLayout } from './temperaLayout';
+import { isTemperaLayoutSegment, resolveTemperaLayout, resolveTemperaSafeBand } from './temperaLayout';
 import {
     buildTemperaFragmentViews,
     buildTemperaTextViews,
@@ -90,6 +91,11 @@ export interface TemperaShotView {
     revealDoneTime: number;
     /** `hashTemperaSeed(shot.id)`, hashed once here: the frame picks the breath phase and pan direction off it. */
     idHash: number;
+    /**
+     * 歌词字形静止位置的外接框（shot 本地坐标，含半个字号的余量）；没有字形时为 null。
+     * 有安全区时镜头按它把推拉和横移收在安全区之内，见 temperaShotFrame.ts。
+     */
+    lyricBounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
 }
 
 export interface TemperaSceneView extends TemperaSceneFilterTarget {
@@ -123,6 +129,11 @@ export interface TemperaSceneBuildOptions {
     imageTextures: Map<string, import('pixi.js').Texture>;
     /** Bakes the depth blur of the watermark and pictures once per shot; null leaves them sharp. */
     renderer: import('pixi.js').Renderer | null;
+    /**
+     * 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）：歌词构图和散字排在安全区之间那一段里；水印、色块、
+     * 图片仍铺满整块画布。缺省或都是 0 时与原来相同。
+     */
+    safeSides?: SafeAreaSides;
 }
 
 export interface TemperaCreditsMetadata {
@@ -388,6 +399,28 @@ const applyTemperaScenePostProcess = (
     return filters;
 };
 
+// 歌词字形静止位置的外接框；每个字按半个字号往外扩（中日韩字宽约等于字号，拉丁字母更窄，宁可多算），
+// 再算上唱完之后字距慢慢张开的那一点（RELEASE_TRACKING），整块最宽时也在框里。
+const resolveTemperaLyricBounds = (
+    placements: readonly { x: number; y: number; fontSize: number; trackingX: number; trackingY: number }[],
+): TemperaShotView['lyricBounds'] => {
+    if (placements.length === 0) return null;
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const placement of placements) {
+        const half = placement.fontSize / 2;
+        const x = placement.x + placement.trackingX * RELEASE_TRACKING;
+        const y = placement.y + placement.trackingY * RELEASE_TRACKING;
+        minX = Math.min(minX, placement.x - half, x - half);
+        maxX = Math.max(maxX, placement.x + half, x + half);
+        minY = Math.min(minY, placement.y - half, y - half);
+        maxY = Math.max(maxY, placement.y + half, y + half);
+    }
+    return { minX, maxX, minY, maxY };
+};
+
 export const buildTemperaScene = (
     pixi: PixiModule,
     options: TemperaSceneBuildOptions,
@@ -402,6 +435,8 @@ export const buildTemperaScene = (
     const sceneSeed = hashTemperaSeed(`${options.programSeed}:${paragraph.id}`);
     const fontFamily = resolveThemeFontStack(options.theme);
     const fontWeight = resolveThemeFontWeight(options.theme, 600);
+    // 歌词能用的那一段横向范围；没有安全区时就是整块画布的宽，下面的字号与原来相同。
+    const lyricBand = resolveTemperaSafeBand(width, options.safeSides);
 
     // A translucent paper wash unifies the block colors with the shell background, and the
     // dot lattice on top gives the whole frame its printed-paper grain. Both are built once
@@ -469,7 +504,7 @@ export const buildTemperaScene = (
             segments => segments.reduce((sum, segment) => sum + segment.graphemes.length, 0),
         ));
         const baseFontSize = Math.max(34, Math.min(150, (
-            width / Math.max(5, maxGraphemes * 1.05)
+            lyricBand.width / Math.max(5, maxGraphemes * 1.05)
         ) * 1.5)) * options.lyricsFontScale;
 
         const shotSeed = sceneSeed + shotIndex * 97;
@@ -530,6 +565,7 @@ export const buildTemperaScene = (
             seed: shotSeed,
             segmentColors,
             settleStretch: tuning.glyphSettleStretch,
+            safeSides: options.safeSides,
         });
         const glyphs = buildTemperaTextViews(pixi, {
             placements,
@@ -566,6 +602,7 @@ export const buildTemperaScene = (
                 width,
                 height,
                 layer: textLayer,
+                safeSides: options.safeSides,
             });
         }
         // Scoped to the text layer only: blendRequired copies the pixels under these bounds
@@ -607,6 +644,7 @@ export const buildTemperaScene = (
             depth,
             revealDoneTime,
             idHash: hashTemperaSeed(shot.id),
+            lyricBounds: resolveTemperaLyricBounds(placements),
         };
     });
 

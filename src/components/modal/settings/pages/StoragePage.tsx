@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { LYRIC_EXPORT_COMMAND_ID } from '../../../command-palette/commands/lyricExportCommands';
 import ConfirmDialog from '../../../shared/ConfirmDialog';
 import { clearAllData } from '../../../../services/db';
+import { omni } from '../../../../services/onlineMusic/omni';
 import { openCommandPaletteCommand } from '../../../../stores/useAppViewStore';
 import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore';
 import { closeSettings } from '../../../../stores/useSettingsModalStore';
@@ -10,7 +11,8 @@ import { Button, CopyValue, FoldedGroup, Group, Row, Select, Toggle, Value, useS
 import { useSettingsPage } from './settingsPageContext';
 import ConfigTransferRows from './storage/ConfigTransferRows';
 import FolderWatchGroup from './storage/FolderWatchGroup';
-import { BACKUP, CACHE_ROWS, CACHES, MEDIA, O } from './storage/options';
+import { setStatusMessage } from '../../../../stores/useStatusMessageStore';
+import { BACKUP, CACHE_ROWS, CACHES, LOGINS, MEDIA, O } from './storage/options';
 
 // src/components/modal/settings/pages/StoragePage.tsx
 // The 存储与备份 page: what Folia keeps on disk and how to carry its look to another Folia. The
@@ -34,12 +36,24 @@ const StoragePage: React.FC = () => {
     const cacheLimitGb = useAudioSettingsStore(state => state.mediaCacheLimitGb);
     const setCacheLimitGb = useAudioSettingsStore(state => state.handleSetMediaCacheLimitGb);
     const [clearingAll, setClearingAll] = useState<'no' | 'asking' | 'running'>('no');
+    const [clearingLogins, setClearingLogins] = useState<'no' | 'asking' | 'running'>('no');
 
     // Everything the app stored goes, so it starts again from an empty state.
     const clearEverything = async () => {
         setClearingAll('running');
         await clearAllData();
         window.location.reload();
+    };
+
+    // Every signed-in platform is signed out; settings, local files and caches stay.
+    const clearAllLogins = async () => {
+        setClearingLogins('running');
+        try {
+            await omni.signOutAllAccounts();
+            setStatusMessage({ type: 'info', text: t('options.clearAllLoginsDone') });
+        } finally {
+            setClearingLogins('no');
+        }
     };
 
     return (
@@ -107,6 +121,14 @@ const StoragePage: React.FC = () => {
                 ))}
             </Group>
 
+            <Group def={LOGINS}>
+                <Row option={O.clearAllLogins} hint={t('options.clearAllLoginsDesc')}>
+                    <Button onClick={() => setClearingLogins('asking')} disabled={clearingLogins === 'running'}>
+                        {clearingLogins === 'running' ? t('options.clearAllLoginsRunning') : t('options.clearAllLoginsAction')}
+                    </Button>
+                </Row>
+            </Group>
+
             <FolderWatchGroup />
 
             <FoldedGroup def={BACKUP}>
@@ -121,6 +143,16 @@ const StoragePage: React.FC = () => {
                 isDaylight={isDaylight}
                 onConfirm={() => void clearEverything()}
                 onClose={() => setClearingAll('no')}
+            />
+            <ConfirmDialog
+                isOpen={clearingLogins === 'asking'}
+                title={t('options.clearAllLogins')}
+                description={t('options.clearAllLoginsConfirm')}
+                confirmText={t('options.clearAllLoginsAction')}
+                confirmVariant="danger"
+                isDaylight={isDaylight}
+                onConfirm={() => void clearAllLogins()}
+                onClose={() => setClearingLogins('no')}
             />
         </>
     );

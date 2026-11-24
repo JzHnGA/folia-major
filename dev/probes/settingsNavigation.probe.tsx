@@ -37,6 +37,7 @@ const LABELS: Record<string, string> = {
     'options.settingsGroupMusic': 'Music',
     'options.settingsGroupApp': 'App',
     'options.settingsGroupAdvanced': 'Advanced',
+    'ponder.navigation.all': 'All tutorials',
 };
 
 /** Stands in for i18n so the probe reads the same as the shipped English copy. */
@@ -102,7 +103,7 @@ const ProbeBody: React.FC = () => {
                         groups={groups}
                         activeId={activeSection}
                         onSelectSection={setActiveSection}
-                        onSelectHelp={() => {}}
+                        onOpenPonderNavigation={() => {}}
                         query=""
                         onQueryChange={() => {}}
                         onSubmitQuery={() => {}}

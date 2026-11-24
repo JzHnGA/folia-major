@@ -62,6 +62,26 @@ const makeTexture = (canvas: HTMLCanvasElement): THREE.CanvasTexture => {
     return texture;
 };
 
+/**
+ * Frees a raster texture completely: the GPU copy (dispose) AND the canvas it was painted on. Every
+ * raster texture owns its canvas alone (makeTexture is called on a fresh one each time), so emptying it
+ * cannot blank another texture.
+ *
+ * dispose() alone left the canvas to the garbage collector. A canvas is a tiny JS object over a large
+ * pixel buffer, so the collector got to it late; on iOS WebKit backs a canvas with a graphics surface
+ * charged to the web process, and a song's worth of line and glyph rasters (two canvases each) piled up
+ * per song change until iOS killed the process at its 2 GB limit (2026-11-20 device log). Zeroing the
+ * size releases the buffer now.
+ */
+export const releaseDioramaTexture = (texture: THREE.Texture): void => {
+    texture.dispose();
+    const image: unknown = texture.image;
+    if (typeof HTMLCanvasElement !== 'undefined' && image instanceof HTMLCanvasElement) {
+        image.width = 0;
+        image.height = 0;
+    }
+};
+
 // Bakes a PURE HALO of the glyph (cadenza's blur ladder: tight core / mid halo / faint outer air) at
 // FULL strength - live intensity/colour come from the additive material's opacity/colour per frame.
 //

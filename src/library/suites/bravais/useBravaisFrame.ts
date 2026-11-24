@@ -37,6 +37,9 @@ export type BravaisFrameState = {
     tiltSettled: boolean;
     /** 倾斜着换锚点时两半墙垫的那一段（屏幕 px，补间到 0；bravaisFrame 的 liftY / reanchorLift）。 */
     tiltLiftY: number;
+    /** 屏幕左右被系统占掉的安全区（iOS 横屏的灵动岛 / 刘海，px），由 BravaisStage 量到后写进来。 */
+    safeLeft: number;
+    safeRight: number;
 };
 
 export type BravaisFrameRefs = {
@@ -67,6 +70,8 @@ export const useBravaisFrame = (refs: BravaisFrameRefs) => {
         seamFollowsTilt: false,
         tiltSettled: true,
         tiltLiftY: 0,
+        safeLeft: 0,
+        safeRight: 0,
     });
     /** 上一次写给轨道与缝的 transform（连同写给的节点）：只在变了时写（读回的 style.transform 会被浏览器规范化，不能拿来比）。 */
     const writtenRef = useRef<{ trackNode: HTMLElement | null; track: string; seamNode: HTMLElement | null; seam: string; insetsNode: HTMLElement | null; insets: string }>({
@@ -87,6 +92,8 @@ export const useBravaisFrame = (refs: BravaisFrameRefs) => {
             poster: state.poster,
             tiltDeg: state.tiltDeg,
             liftY: state.tiltLiftY,
+            safeLeft: state.safeLeft,
+            safeRight: state.safeRight,
         });
         const { left, right, seam, seamTrack, seamContent, tab, hint } = refs;
         if (left.current) left.current.style.transform = withTilt(formatWorldTransform(frame.left.x, frame.left.y, frame.scale), frame.tilt);

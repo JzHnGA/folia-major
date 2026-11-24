@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, type RefObject } from 'react';
+import React, { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { motion, type MotionValue } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import type { BravaisLayer } from './bravaisLayer';
@@ -10,13 +10,17 @@ import type { BravaisPanelActions } from './BravaisListPanel';
 import BravaisSeamContent from './BravaisSeamContent';
 import { BravaisSeamNavigation } from './BravaisSeamCrumbs';
 import type { LibraryNavigationContext } from '../../core/suite/suite.contract';
+import { useSupportsFinePointer } from '../../../hooks/useSupportsFinePointer';
+import { isNativeAppShell } from '../../../utils/appSurface';
+import { useBravaisUiStore } from './bravaisUiStore';
+import { useBravaisHomeUiStore } from './bravaisHomeUiStore';
 
 // src/library/suites/bravais/BravaisSeam.tsx
 // 缝与它的边缘标签。缝的屏幕位置、宽度、内容透明度、标签显隐都由 stage 每帧直接写（bravaisFrame），这里只在
 // 渲染的内容换了时渲染。内容层按「此刻渲染的这一套」的宽度排版、居中，被变窄的缝裁掉（翻转不重排）；底部内边距
 // 绑在播放条安全区的 MotionValue 上。标签：自动出屏收起时点它在当前视口裂开新缝，手动折叠时点它恢复。
 // 登录与切换确认不在缝里：登录是共用的登录窗口（src/components/login），确认框是回退到的 grid account surface。
-// fb4（缝内的过渡）：每一次整条翻走——转出的半圈（降低动效时的淡出）里旧内容一律 inert + aria-hidden，
+// fb4（缝内的过渡）：换层时整条翻走（首页换页签就地换，不翻不压暗）——转出的半圈（降低动效时的淡出）里旧内容一律 inert + aria-hidden，
 // 读屏与用例只看得到要换上的那一层。
 // 当前页过滤（设计稿 §7.6）：输入位在缝的内容里（BravaisSeamFilterField，随内容翻牌），不再给命令面板的内联框留锚点。
 // 信息条横向（axis 'y'）：缝是一道横条（data-bravais-seam-axis="y"，bravaisSeamRow.css），内容按「此刻渲染的这一套」的
@@ -53,6 +57,9 @@ type BravaisSeamProps = {
     openShortcut?: (shortcut: BravaisHomeShortcut) => void;
 };
 
+/** 完整信息条/首页窄缝在触屏上闲置这么久后收回书脊，把墙让出来（用户要求）。 */
+const IDLE_COLLAPSE_MS = 8_000;
+
 const BravaisSeam: React.FC<BravaisSeamProps> = ({
     seamRef,
     trackRef,
@@ -75,6 +82,30 @@ const BravaisSeam: React.FC<BravaisSeamProps> = ({
 }) => {
     const { t } = useTranslation();
     const width = contentWidth;
+    const supportsFinePointer = useSupportsFinePointer();
+    const filterEditing = useBravaisUiStore(state => state.filterEditing);
+    const panelOpen = useBravaisUiStore(state => state.panelFor !== null);
+    const homePopover = useBravaisHomeUiStore(state => state.popover);
+    // 触屏上，展开的完整信息条 / 首页窄缝闲置 8 秒后自动收成书脊；面板、过滤输入和「⋯」菜单开着时不收。
+    const idleCollapseEnabled = (isNativeAppShell() || !supportsFinePointer) && (variant === 'full' || variant === 'home');
+    useEffect(() => {
+        if (!idleCollapseEnabled || level !== 'full' || filterEditing || panelOpen || homePopover !== null) return undefined;
+        let timer = 0;
+        const arm = () => {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => setLevel('spine'), IDLE_COLLAPSE_MS);
+        };
+        arm();
+        window.addEventListener('pointerdown', arm, true);
+        window.addEventListener('keydown', arm, true);
+        window.addEventListener('wheel', arm, { capture: true, passive: true });
+        return () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('pointerdown', arm, true);
+            window.removeEventListener('keydown', arm, true);
+            window.removeEventListener('wheel', arm, true);
+        };
+    }, [filterEditing, homePopover, idleCollapseEnabled, level, panelOpen, setLevel]);
     const row = axis === 'y';
     const tabLabel = currentLayer?.seam.title ?? '';
     const hideLeaving = leaving;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { useRowNaming } from './Row';
 import { Tooltip } from './Tooltip';
@@ -31,22 +31,33 @@ type ButtonProps = {
     /** Shown in the kit's tooltip on hover and on keyboard focus; the name of a button that is only an icon. */
     tip?: string;
     disabled?: boolean;
+    /**
+     * Why it is disabled, when the reason is something the listener can change (sign in first, turn on
+     * another setting). The button then stays tappable but does nothing except show this in the tooltip.
+     */
+    disabledReason?: string;
     children?: React.ReactNode;
 };
 
-export const Button: React.FC<ButtonProps> = ({ onClick, variant, icon: Icon, tip, disabled, children }) => {
+/** Looks like a disabled button but still takes the tap that explains it. */
+const EXPLAINED_CLASS = 'cursor-not-allowed opacity-40';
+
+export const Button: React.FC<ButtonProps> = ({ onClick, variant, icon: Icon, tip, disabled, disabledReason, children }) => {
     const { labelId } = useRowNaming();
+    const [flash, setFlash] = useState(0);
+    const explained = Boolean(disabled && disabledReason);
 
     return (
-        <Tooltip text={tip} className="inline-flex shrink-0">
+        <Tooltip text={explained ? disabledReason : tip} flash={flash} className="inline-flex shrink-0">
             <button
                 type="button"
-                onClick={onClick}
-                disabled={disabled}
+                onClick={explained ? () => setFlash(count => count + 1) : onClick}
+                disabled={disabled && !explained}
+                aria-disabled={explained || undefined}
                 aria-label={children ? undefined : tip}
                 // An icon alone says what it does, not to what: the row it sits in says that.
                 aria-describedby={children ? undefined : labelId}
-                className={`${BASE_CLASS} ${(children ? TEXT_CLASS : ICON_CLASS)[variant ?? 'fill']}`}
+                className={`${BASE_CLASS} ${(children ? TEXT_CLASS : ICON_CLASS)[variant ?? 'fill']}${explained ? ` ${EXPLAINED_CLASS}` : ''}`}
             >
                 {Icon && <Icon size={14} />}
                 {children}

@@ -278,7 +278,7 @@ const SheetFrame: React.FC<SheetFrameProps> = ({
             // What hasOpenSheet (utils/keyboardTargets) looks for.
             data-folia-sheet={isPresent ? 'true' : undefined}
             inert={!isPresent}
-            className={`fixed inset-0 z-[200] flex justify-center p-4 ${restHeight ? 'items-start' : 'items-center'}`}
+            className={`fixed inset-0 z-[200] flex items-end justify-center p-0 sm:p-4 sm:items-center ${restHeight ? 'sm:items-start' : ''}`}
             style={restHeight
                 ? { ...overlayTokens(isDaylight, theme), paddingTop: `max(16px, calc(50vh - ${restHeight / 2}px))` }
                 : overlayTokens(isDaylight, theme)}
@@ -307,7 +307,7 @@ const SheetFrame: React.FC<SheetFrameProps> = ({
                 initial={cameFrom}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1, transition: kitTransition('unfold', reduced) }}
                 exit={exit}
-                className={`st-window relative flex max-h-[min(720px,100%)] max-w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[var(--sheet-shadow),0_0_0_1px_var(--st-line2)] ${SIZE_CLASS[size]}${underlay ? ' isolate' : ''}`}
+                className={`st-window relative flex max-h-[min(720px,100%)] max-w-full flex-col overflow-hidden rounded-t-3xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[var(--sheet-shadow),0_0_0_1px_var(--st-line2)] max-sm:rounded-b-none max-sm:pb-[env(safe-area-inset-bottom)] sm:rounded-2xl ${SIZE_CLASS[size]}${underlay ? ' isolate' : ''}`}
                 // The panel holds focus without a mark of its own.
                 style={{ outline: 'none', ...panelTokens(isDaylight, theme, reduced) }}
             >

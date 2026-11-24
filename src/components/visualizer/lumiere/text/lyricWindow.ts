@@ -4,7 +4,7 @@ import type { Line } from '../../../../types';
 import { compressLight, lightAt, type ResolvedBeam } from '../light/rig';
 import type { LightSprites } from '../light/sprites';
 import { hexOf, mixRgb, WHITE, type Rgb } from '../color';
-import { createTextMeasurer, frameBand } from './lineWrap';
+import { createTextMeasurer, frameBand, type FrameSafeSides } from './lineWrap';
 import { flashEnvelope } from './reveal';
 import { MAX_WORD_SCALE } from './wordStyle';
 import { keywordColorsOf, lineTimingOf, type LineView, type Point } from './windowLines';
@@ -61,6 +61,8 @@ export { freePlacements } from './windowSlots';
 export interface LyricWindowOptions {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）：画框的放字范围再往里让这么多。不给 = 0（桌面 / 竖屏）。 */
+    safeSides?: FrameSafeSides;
     lines: Line[];
     font: string;
     weight: number;
@@ -141,7 +143,7 @@ export const createLyricWindow = (pixi: PixiModule, options: LyricWindowOptions)
     const nextAlpha = options.neighbors >= 2 ? 0.95 : 0;
     // 长度上限：横排用画框内的整个宽度（纵横交错留一成给四周的行），竖排用画框内的整个高度（避开底部字幕）。
     // 文字区只决定中心，不再限制行长。
-    const band = frameBand(options.width, height);
+    const band = frameBand(options.width, height, options.safeSides);
     const columnCap = (band.bottom - band.top) * height;
     const maxWidthOf = (kind: WindowTypography) => (band.right - band.left) * height * (kind === 'crossed' ? 0.9 : 1);
     const measurer = createTextMeasurer(options.font, options.weight, options.letterSpacing ?? 0);

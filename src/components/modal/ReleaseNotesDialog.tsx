@@ -5,8 +5,8 @@ import { NewFeaturesIntro } from './NewFeaturesIntro';
 import { USER_GUIDE_AUTO_OPEN_VERSION } from './userGuideContent';
 
 // src/components/modal/ReleaseNotesDialog.tsx
-// The 版本更新 dialog: what the current release brought. Opened from the Help page, and by the app
-// shell on the first start of a new release.
+// The 版本更新 dialog: what the current release brought. The app shell opens it on the first start
+// of a new release.
 
 type ReleaseNotesDialogProps = {
     isOpen: boolean;

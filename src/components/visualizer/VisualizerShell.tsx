@@ -242,7 +242,14 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
                         resolvedOnBack();
                     }}
                     className={`absolute ${lowerBackButton ? 'top-12' : 'top-6'} left-6 z-30 h-10 w-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md bg-black/20 hover:bg-white/10 text-white/60 pointer-events-auto`}
-                    style={{ pointerEvents: isBackButtonVisible ? 'auto' : 'none' }}
+                    style={{
+                        pointerEvents: isBackButtonVisible ? 'auto' : 'none',
+                        // 边到边：背景铺到状态栏后面，这颗按钮自己避开状态栏与刘海。
+                        top: lowerBackButton
+                            ? 'calc(env(safe-area-inset-top) + 3rem)'
+                            : 'calc(env(safe-area-inset-top) + 1.5rem)',
+                        left: 'calc(env(safe-area-inset-left) + 1.5rem)',
+                    }}
                 >
                     <ChevronLeft size={20} />
                 </motion.button>

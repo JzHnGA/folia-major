@@ -25,6 +25,8 @@ const AppOverlays: React.FC<AppOverlaysProps> = ({ model }) => {
     // 拖卡片位置的时候例外（那是给宽屏用的位置，得让人看见卡片才能拖）。
     useBottomLayoutTracking();
     const isCompact = useBottomDockStore(state => state.layout === 'compact');
+    // 胶囊自动收起时整条滑出屏幕（用户看不见它），卡片不能再「由胶囊携带」——否则常驻卡片会跟着消失。
+    const dockCapsule = useBottomDockStore(state => state.capsule);
     const isPositioningCard = useNowPlayingCardLayoutStore(state => state.isPositioning);
     const {
         searchOverlay,
@@ -42,8 +44,11 @@ const AppOverlays: React.FC<AppOverlaysProps> = ({ model }) => {
     const transitionCue = useTransitionBorderCue();
     const cardMustStay = nowPlayingToast !== null && nowPlayingToast !== undefined
         && (nowPlayingToast.mode === 'always' || nowPlayingToast.isNextUp === true || transitionCue !== null);
+    // 自动收起和播放页控件隐藏一样：只有「必须在场」的卡片（常驻、预告下一首、混音描边）退回宽屏卡片；
+    // 限时显示的报幕跟着胶囊一起收，不然每次收起都会把它重新弹出来。
+    const capsuleHidden = Boolean(floatingControls?.isHidden) || dockCapsule === 'none';
     const capsuleCarriesCard = isCompact && showsCapsule && !floatingControls?.hideControlBar
-        && !(floatingControls?.isHidden && cardMustStay);
+        && !(capsuleHidden && cardMustStay);
 
     return (
         <>

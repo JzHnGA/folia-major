@@ -166,7 +166,11 @@ const pushLocaleToMainProcess = (value: string | null | undefined) => {
     return;
   }
 
-  void window.electron?.setAppLocale?.(normalizeSupportedLanguage(value));
+  const locale = normalizeSupportedLanguage(value);
+  void window.electron?.setAppLocale?.(locale);
+  // The iOS shell draws its Face ID lock screen natively, before this bundle loads, so it keeps
+  // its own copy of the language too.
+  void window.Capacitor?.Plugins?.EcriaSecurity?.setAppLocale?.({ locale }).catch(() => undefined);
 };
 
 i18n.on('languageChanged', lng => {

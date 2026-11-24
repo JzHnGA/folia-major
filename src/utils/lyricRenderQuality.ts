@@ -1,4 +1,5 @@
 import type { LyricAntialias, LyricRenderOverride, LyricRenderQuality, LyricRenderScale } from '../types';
+import { isNativeAppShell } from './appSurface';
 
 // src/utils/lyricRenderQuality.ts
 // 歌词画布的分辨率与抗锯齿（#929）：「动画与性能」里一个全局挡位，用 canvas / WebGL 画的歌词样式各自有一份覆盖，
@@ -19,7 +20,22 @@ export const DEFAULT_LYRIC_RENDER_OVERRIDE: LyricRenderOverride = { scale: 'glob
 /** 超采样后的渲染倍率最多到这么大（2 倍屏上再超采样 2 倍会是 4，显存和填充率都吃不消）。 */
 export const MAX_LYRIC_PIXEL_RATIO = 3;
 
-export const isLyricRenderScale = (value: unknown): value is LyricRenderScale => (LYRIC_RENDER_SCALES as readonly unknown[]).includes(value);
+/**
+ * 原生 iOS 壳里画布按屏幕密度最多画到这么大。3 倍屏上全屏画布按 3 倍画是 2 倍的 2.25 倍像素，而网页进程和整台手机
+ * 共用内存、超了就被系统杀掉（封面那边同样封顶在 2，见 coverUrl.ts 的 COVER_MAX_PIXEL_RATIO）。桌面和网页版不封顶。
+ */
+export const NATIVE_SHELL_MAX_DEVICE_PIXEL_RATIO = 2;
+
+/** 歌词画布当底的屏幕密度：浏览器报的 devicePixelRatio，原生 iOS 壳里封顶在 NATIVE_SHELL_MAX_DEVICE_PIXEL_RATIO。 */
+export const lyricDevicePixelRatio = (
+    devicePixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio,
+    nativeShell = isNativeAppShell(),
+) => {
+    const safe = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+    return nativeShell ? Math.min(safe, NATIVE_SHELL_MAX_DEVICE_PIXEL_RATIO) : safe;
+};
+
+export const isLyricRenderScale =(value: unknown): value is LyricRenderScale => (LYRIC_RENDER_SCALES as readonly unknown[]).includes(value);
 
 /** 存着的（或模组给的）全局挡位读成合法值，缺的、不认识的取默认。 */
 export const normalizeLyricRenderQuality = (raw: unknown): LyricRenderQuality => {

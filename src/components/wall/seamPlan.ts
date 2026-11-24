@@ -89,6 +89,12 @@ export type BlockSeamPlanInput = {
     /** Keep this boundary (the split is visible and stays put); only the camera may yield. */
     preferX?: number;
     edge?: number;
+    /**
+     * Screen px already taken on the left / right by something the split must also clear (the iOS
+     * landscape safe area). Added on top of `edge`; default 0 keeps the symmetric plan.
+     */
+    edgeBefore?: number;
+    edgeAfter?: number;
 };
 
 type AxisPlanInput = {
@@ -99,13 +105,17 @@ type AxisPlanInput = {
     blockSpan: number;
     prefer?: number;
     edge: number;
+    edgeBefore?: number;
+    edgeAfter?: number;
     axis: SeamAxis;
 };
 
-const planOnAxis = ({ camera, openWidth, view, metrics, blockSpan, prefer, edge, axis }: AxisPlanInput) => {
+const planOnAxis = ({ camera, openWidth, view, metrics, blockSpan, prefer, edge, edgeBefore = 0, edgeAfter = 0, axis }: AxisPlanInput) => {
     const line = getViewLine(view, axis);
     const extent = getViewExtent(view, axis);
     const need = openWidth / 2 + edge;
+    const lower = edgeBefore + need;
+    const upper = extent - edgeAfter - need;
     const base = Math.round((camera + metrics.gap / 2) / blockSpan);
     const candidates = prefer !== undefined
         ? [prefer]
@@ -115,7 +125,10 @@ const planOnAxis = ({ camera, openWidth, view, metrics, blockSpan, prefer, edge,
     let bestScore = Number.POSITIVE_INFINITY;
     for (const at of candidates) {
         const screen = line + (at - camera) * view.scale;
-        const fit = Math.max(need, Math.min(extent - need, screen));
+        // The opening must stay inside [lower, upper]; a viewport too narrow for both centres it.
+        const fit = upper >= lower
+            ? Math.min(upper, Math.max(lower, screen))
+            : (edgeBefore + extent - edgeAfter) / 2;
         const nextCamera = at - (fit - line) / view.scale;
         const shift = Math.abs(nextCamera - camera) * view.scale;
         const score = shift + Math.abs(fit - line) * SEAM_LINE_DISTANCE_WEIGHT;
@@ -140,8 +153,10 @@ export const blockSeamPlan = ({
     blockWidth = getBlockSize(metrics).width,
     preferX,
     edge = SEAM_EDGE_MARGIN,
+    edgeBefore = 0,
+    edgeAfter = 0,
 }: BlockSeamPlanInput): SeamPlan => {
-    const plan = planOnAxis({ camera: cameraX, openWidth, view, metrics, blockSpan: blockWidth, prefer: preferX, edge, axis: 'x' });
+    const plan = planOnAxis({ camera: cameraX, openWidth, view, metrics, blockSpan: blockWidth, prefer: preferX, edge, edgeBefore, edgeAfter, axis: 'x' });
     return { x: plan.at, cameraX: plan.camera, shift: plan.shift };
 };
 
@@ -163,6 +178,8 @@ export const blockSeamPlanY = ({
     blockHeight = getBlockSize(metrics).height,
     preferY,
     edge = SEAM_EDGE_MARGIN,
+    edgeBefore = 0,
+    edgeAfter = 0,
 }: {
     cameraY: number;
     openWidth: number;
@@ -171,8 +188,10 @@ export const blockSeamPlanY = ({
     blockHeight?: number;
     preferY?: number;
     edge?: number;
+    edgeBefore?: number;
+    edgeAfter?: number;
 }): RowSeamPlan => {
-    const plan = planOnAxis({ camera: cameraY, openWidth, view, metrics, blockSpan: blockHeight, prefer: preferY, edge, axis: 'y' });
+    const plan = planOnAxis({ camera: cameraY, openWidth, view, metrics, blockSpan: blockHeight, prefer: preferY, edge, edgeBefore, edgeAfter, axis: 'y' });
     return { y: plan.at, cameraY: plan.camera, shift: plan.shift };
 };
 
@@ -186,11 +205,27 @@ export type SeamGeometry = {
     side: 'left' | 'right';
 };
 
-const geometryOnAxis = (anchor: number, camera: number, openWidth: number, view: WallView, edge: number, axis: SeamAxis) => {
+const geometryOnAxis = (
+    anchor: number,
+    camera: number,
+    openWidth: number,
+    view: WallView,
+    edge: number,
+    axis: SeamAxis,
+    keepWidth: boolean,
+    edgeBefore = 0,
+    edgeAfter = 0,
+) => {
     const line = getViewLine(view, axis);
     const screen = line + (anchor - camera) * view.scale;
-    const room = Math.min(screen, getViewExtent(view, axis) - screen) - edge;
-    const width = Math.max(0, Math.min(openWidth, room * 2));
+    const extent = getViewExtent(view, axis);
+    const room = Math.min(screen - edgeBefore, extent - edgeAfter - screen) - edge;
+    // A narrow seam (the home rail / spine) has a fixed 120 / 64 px layout: squeezing it near the
+    // viewport edge clips the tools and the "..." menu. Keep its full opening while its centre is
+    // on screen, and let the part beyond the edge go off screen instead.
+    const width = keepWidth && screen > edgeBefore && screen < extent - edgeAfter
+        ? openWidth
+        : Math.max(0, Math.min(openWidth, room * 2));
     return { screen, width, collapsed: openWidth > 1 && width < 2, before: screen < line };
 };
 
@@ -201,8 +236,21 @@ export const getSeamGeometry = ({
     openWidth,
     view,
     edge = SEAM_EDGE_MARGIN,
-}: { anchorX: number; cameraX: number; openWidth: number; view: WallView; edge?: number }): SeamGeometry => {
-    const geometry = geometryOnAxis(anchorX, cameraX, openWidth, view, edge, 'x');
+    keepWidth = false,
+    edgeBefore = 0,
+    edgeAfter = 0,
+}: {
+    anchorX: number;
+    cameraX: number;
+    openWidth: number;
+    view: WallView;
+    edge?: number;
+    keepWidth?: boolean;
+    /** Screen px taken before / after the opening (the iOS landscape safe area); see BlockSeamPlanInput. */
+    edgeBefore?: number;
+    edgeAfter?: number;
+}): SeamGeometry => {
+    const geometry = geometryOnAxis(anchorX, cameraX, openWidth, view, edge, 'x', keepWidth, edgeBefore, edgeAfter);
     return { screenX: geometry.screen, width: geometry.width, collapsed: geometry.collapsed, side: geometry.before ? 'left' : 'right' };
 };
 
@@ -222,20 +270,40 @@ export const getSeamGeometryY = ({
     openWidth,
     view,
     edge = SEAM_EDGE_MARGIN,
-}: { anchorY: number; cameraY: number; openWidth: number; view: WallView; edge?: number }): RowSeamGeometry => {
-    const geometry = geometryOnAxis(anchorY, cameraY, openWidth, view, edge, 'y');
+    edgeBefore = 0,
+    edgeAfter = 0,
+}: {
+    anchorY: number;
+    cameraY: number;
+    openWidth: number;
+    view: WallView;
+    edge?: number;
+    edgeBefore?: number;
+    edgeAfter?: number;
+}): RowSeamGeometry => {
+    const geometry = geometryOnAxis(anchorY, cameraY, openWidth, view, edge, 'y', false, edgeBefore, edgeAfter);
     return { screenY: geometry.screen, width: geometry.width, collapsed: geometry.collapsed, side: geometry.before ? 'top' : 'bottom' };
 };
 
-const cameraSpanOnAxis = (anchor: number, openWidth: number, view: WallView, edge: number, axis: SeamAxis) => {
+const cameraSpanOnAxis = (
+    anchor: number,
+    openWidth: number,
+    view: WallView,
+    edge: number,
+    axis: SeamAxis,
+    edgeBefore = 0,
+    edgeAfter = 0,
+) => {
     const line = getViewLine(view, axis);
     const extent = getViewExtent(view, axis);
     const need = openWidth / 2 + edge;
-    const min = anchor - (extent - need - line) / view.scale;
-    const max = anchor + (line - need) / view.scale;
+    const lower = edgeBefore + need;
+    const upper = extent - edgeAfter - need;
+    const min = anchor - (upper - line) / view.scale;
+    const max = anchor + (line - lower) / view.scale;
     if (min <= max) return { min, max };
-    // Wider than the viewport: the only sensible spot is centred.
-    const centred = anchor - (extent / 2 - line) / view.scale;
+    // Wider than the usable viewport: the only sensible spot is centred in it.
+    const centred = anchor - ((edgeBefore + extent - edgeAfter) / 2 - line) / view.scale;
     return { min: centred, max: centred };
 };
 
@@ -248,8 +316,17 @@ export const getSeamCameraSpan = ({
     openWidth,
     view,
     edge = SEAM_EDGE_MARGIN,
-}: { anchorX: number; openWidth: number; view: WallView; edge?: number }) => (
-    cameraSpanOnAxis(anchorX, openWidth, view, edge, 'x')
+    edgeBefore = 0,
+    edgeAfter = 0,
+}: {
+    anchorX: number;
+    openWidth: number;
+    view: WallView;
+    edge?: number;
+    edgeBefore?: number;
+    edgeAfter?: number;
+}) => (
+    cameraSpanOnAxis(anchorX, openWidth, view, edge, 'x', edgeBefore, edgeAfter)
 );
 
 /** Camera y range that keeps a row split's whole opening on screen (see getSeamCameraSpan). */
@@ -258,8 +335,17 @@ export const getSeamCameraSpanY = ({
     openWidth,
     view,
     edge = SEAM_EDGE_MARGIN,
-}: { anchorY: number; openWidth: number; view: WallView; edge?: number }) => (
-    cameraSpanOnAxis(anchorY, openWidth, view, edge, 'y')
+    edgeBefore = 0,
+    edgeAfter = 0,
+}: {
+    anchorY: number;
+    openWidth: number;
+    view: WallView;
+    edge?: number;
+    edgeBefore?: number;
+    edgeAfter?: number;
+}) => (
+    cameraSpanOnAxis(anchorY, openWidth, view, edge, 'y', edgeBefore, edgeAfter)
 );
 
 /**

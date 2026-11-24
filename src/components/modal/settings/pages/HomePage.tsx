@@ -12,6 +12,7 @@ import { chooseLibrarySuite, listLibrarySuiteOptions, useActiveLibrarySuiteId } 
 import { isGridLibraryActive, useIsGridLibraryActive } from '../../../../library/app/gridLibraryActive';
 import { hasLibrarySuiteChoice } from '../../../../library/registry';
 import { omni } from '../../../../services/onlineMusic/omni';
+import { getLocalLibraryAvailability } from '../../../../services/localLibraryAvailability';
 import { useGridViewSettingsStore } from '../../../../stores/useGridViewSettingsStore';
 import { useHomeLayoutSettingsStore } from '../../../../stores/useHomeLayoutSettingsStore';
 import { useOnlineProviderAccountStore } from '../../../../stores/useOnlineProviderAccountStore';
@@ -35,7 +36,7 @@ const SUITE: SettingsGroupDef = { id: 'librarySuite', titleKey: 'options.library
 const HOME: SettingsGroupDef = { id: 'homeScreen', titleKey: 'options.settingsHeadingHome' };
 const GRID: SettingsGroupDef = { id: 'gridViewCardSettings', titleKey: 'options.gridViewCardSettings', available: isGridLibraryActive };
 const GRID_ONLY = { available: isGridLibraryActive };
-const SCRATCHPAD: SettingsGroupDef = { id: 'scratchpadSettings', titleKey: 'options.scratchpadSettings' };
+const SCRATCHPAD: SettingsGroupDef = { id: 'scratchpadSettings', titleKey: 'options.scratchpadSettings', mobileHidden: true };
 
 const O = {
     suite: option(SUITE, 'librarySuiteChoice', 'options.librarySuite'),
@@ -44,7 +45,7 @@ const O = {
     tabRadio: option(HOME, 'showHomeTabRadio', 'options.showHomeTabRadio'),
     tabExplore: option(HOME, 'showHomeTabExplore', 'options.showHomeTabExplore'),
     tabAlbums: option(HOME, 'showHomeTabAlbums', 'options.showHomeTabAlbums'),
-    tabLocal: option(HOME, 'showHomeTabLocal', 'options.showHomeTabLocal'),
+    tabLocal: option(HOME, 'showHomeTabLocal', 'options.showHomeTabLocal', { available: () => getLocalLibraryAvailability().supported }),
     cardStyle: option(HOME, 'grid3dCardStyle', 'options.grid3dCardStyle', GRID_ONLY),
     rememberPosition: option(HOME, 'rememberHomeCardPosition', 'options.rememberHomeCardPosition', GRID_ONLY),
     fullBleedCover: option(GRID, 'gridViewFullBleedCover', 'options.gridViewFullBleedCover'),
@@ -101,6 +102,7 @@ const HomePage: React.FC = () => {
     })));
     // The capsule has an explore tab only where the platform in use has an explore page.
     const hasExplore = useOnlineProviderAccountStore(() => omni.getActiveCapabilities().explore === true);
+    const localAvailable = getLocalLibraryAvailability().supported;
     const isDefaultFalloff = grid.minCardScale === HEX_CARD_MIN_SCALE_DEFAULT && grid.minCardOpacity === HEX_CARD_MIN_OPACITY_DEFAULT;
 
     return (
@@ -127,7 +129,7 @@ const HomePage: React.FC = () => {
                             { id: O.tabRadio.id, label: t('home.radioTab'), checked: home.tabRadio, onChange: home.setTabRadio },
                             { id: O.tabExplore.id, label: t('home.explore'), checked: home.tabExplore, onChange: home.setTabExplore, disabled: !hasExplore },
                             { id: O.tabAlbums.id, label: t('home.albums'), checked: home.tabAlbums, onChange: home.setTabAlbums },
-                            { id: O.tabLocal.id, label: t('localMusic.folder'), checked: home.tabLocal, onChange: home.setTabLocal },
+                            ...(localAvailable ? [{ id: O.tabLocal.id, label: t('localMusic.folder'), checked: home.tabLocal, onChange: home.setTabLocal }] : []),
                         ]}
                     />
                 </Row>

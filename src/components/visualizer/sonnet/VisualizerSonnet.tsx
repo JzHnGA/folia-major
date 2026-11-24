@@ -14,6 +14,7 @@ import { useVisualizerSongCommit } from '../songHandover';
 import { useFoliumTunings } from '@/mods/folium/registries/tunings';
 import { useVisualizerSettingsStore } from '../../../stores/useVisualizerSettingsStore';
 import { smartBeatActive } from '../../../services/beatFx/beatEffects';
+import { useSafeAreaSidesPx, type SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import VisualizerShell from '../VisualizerShell';
 import VisualizerSubtitleOverlay from '../VisualizerSubtitleOverlay';
 import type {
@@ -26,6 +27,7 @@ import { compileSonnetProgram } from './sonnetProgram';
 // src/components/visualizer/sonnet/VisualizerSonnet.tsx
 // Mounts the lazily loaded Pixi director while React retains shell and subtitle responsibilities.
 const EMPTY_SONNET_LINES: Line[] = [];
+const NO_SAFE_SIDES: SafeAreaSides = { left: 0, right: 0 };
 
 const VisualizerSonnet: React.FC<VisualizerSharedProps> = (props) => {
     const {
@@ -78,6 +80,12 @@ const VisualizerSonnet: React.FC<VisualizerSharedProps> = (props) => {
     const smartBeatEnabled = useVisualizerSettingsStore(state => smartBeatActive(state.smartBeat));
     const smartBeatEnabledRef = useRef(smartBeatEnabled);
     smartBeatEnabledRef.current = smartBeatEnabled;
+    // iPhone 横屏时灵动岛 / 刘海占掉左右两侧：歌词排版和镜头跟踪让开它。就地推给运行时，不重建上下文。
+    // 预览（样式架小图、样式窗口）不贴屏幕边，不让。
+    const screenSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : screenSafeSides;
+    const safeSidesRef = useRef(safeSides);
+    safeSidesRef.current = safeSides;
     const latestSongMetadataRef = useRef<SonnetSongMetadata>({
         title: songTitle,
         artist: songArtist,
@@ -182,12 +190,14 @@ const VisualizerSonnet: React.FC<VisualizerSharedProps> = (props) => {
                 songAlbum: metadata.album,
                 signal,
                 modulation,
+                safeSides: safeSidesRef.current,
             });
             runtime.setSongMetadata(latestSongMetadataRef.current);
             // The tuning may have moved on while Pixi was importing or initializing.
             runtime.setTuning(sonnetTuningRef.current);
             runtime.setRenderScale(renderScaleRef.current);
             runtime.setSmartBeatEnabled(smartBeatEnabledRef.current);
+            runtime.setSafeSides(safeSidesRef.current);
             // The pause state may have changed while Pixi was importing or initializing.
             runtime.setPaused(pausedRef.current);
             return runtime;
@@ -216,6 +226,10 @@ const VisualizerSonnet: React.FC<VisualizerSharedProps> = (props) => {
     useEffect(() => {
         runtimeRef.current?.setSmartBeatEnabled(smartBeatEnabled);
     }, [smartBeatEnabled]);
+
+    useEffect(() => {
+        runtimeRef.current?.setSafeSides(safeSides);
+    }, [runtimeRef, safeSides]);
 
     useEffect(() => {
         runtimeRef.current?.setModulation(modulation);

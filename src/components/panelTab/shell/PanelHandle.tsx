@@ -5,7 +5,7 @@ import { Settings2, X, Command } from 'lucide-react';
 import type { Theme } from '../../../types';
 import { usePlayerBottomBarBottomPx } from '../../../hooks/usePlayerBottomBarBottomPx';
 import { usePlayerOverlayObstacle } from '../../../hooks/usePlayerOverlayLayout';
-import { holdCompanionHover, releaseCompanionHover, useBottomDockStore, useIsDockCompactWithCapsule } from '../../../stores/useBottomDockStore';
+import { holdCompanionHover, isDockCompactWithCapsule, releaseCompanionHover, useBottomDockStore, useIsDockCompactWithCapsule } from '../../../stores/useBottomDockStore';
 
 // src/components/panelTab/shell/PanelHandle.tsx
 // The round button at the bottom right of the playing page that opens the panel and, white, closes
@@ -54,7 +54,10 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     // 位置由 bottomDock.css 按 <html data-bottom-layout> 平移过去。挂着时没有左滑开命令面板的手势：
     // 滑轨会横在胶囊上；命令面板从点胶囊或快捷行最右那一格开。
     const isDocked = useIsDockCompactWithCapsule();
-    const canSlideOpenCommandPalette = !isOpen && Boolean(onOpenCommandPalette) && !isDocked;
+    // 胶囊空闲自动收起时，挂着的按钮跟着滑出屏幕：和胶囊一样 inert，键盘与读屏都碰不到这颗看不见的按钮。
+    const isSlidOutWithCapsule = useBottomDockStore(state => isDockCompactWithCapsule(state) && state.capsuleAutoHidden);
+    // 触屏没有悬停：面板按钮的左滑/热区不再打开命令面板，只保留点按。
+    const canSlideOpenCommandPalette = supportsHover && !isOpen && Boolean(onOpenCommandPalette) && !isDocked;
     // 按钮这一刻画不画（下面 AnimatePresence 的条件）。它被拿掉时浏览器不会补发 pointerleave：
     // 不在这里清掉，胶囊会一直当作还在悬停、一直展开着。
     const isButtonShown = !hideToggleButton && (!isOpen || showOpenPanelCloseButton) && !isCommandPaletteOpen;
@@ -75,7 +78,8 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
         ? 'translate-x-0 opacity-100'
         : supportsHover
             ? 'translate-x-1/2 opacity-60 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105'
-            : 'translate-x-1/2 opacity-60';
+            // 触屏没有悬停：不半藏在屏幕边外，整颗留在安全区里。
+            : 'translate-x-0 opacity-100';
     const setCommandDestinationFeedback = (progress: number) => {
         const iconContainer = trackEndIconRef.current;
         if (!iconContainer) {
@@ -361,6 +365,8 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
                     onTransitionEnd={invalidateLayout}
                     style={{ bottom: bottomBarBottomPx }}
                     className={`dock-companion dock-companion--panel ${isDocked ? 'is-docked' : ''} pointer-events-auto fixed right-0 z-[60] pr-4 md:pr-8 group w-20 flex justify-end`}
+                    inert={isSlidOutWithCapsule}
+                    aria-hidden={isSlidOutWithCapsule || undefined}
                     onMouseEnter={handleToggleButtonMouseEnter}
                     onMouseLeave={handleToggleButtonMouseLeave}
                     onPointerEnter={handleCompanionPointerEnter}

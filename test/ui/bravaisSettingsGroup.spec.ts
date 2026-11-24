@@ -28,7 +28,7 @@ const bootHome = async (page: Page, suite: 'bravais' | 'grid') => {
 const openGeneralSettings = (page: Page, anchorId?: string) => page.evaluate(async (anchor) => {
     const path = '/src/stores/useSettingsModalStore.ts';
     const { useSettingsModalStore } = await import(/* @vite-ignore */ path);
-    useSettingsModalStore.getState().openSettings('options', 'general', null, anchor ?? null);
+    useSettingsModalStore.getState().openSettings('general', null, anchor ?? null);
 }, anchorId);
 
 const group = (page: Page) => page.locator('[data-bravais-settings]');

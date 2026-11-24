@@ -48,7 +48,10 @@ async function initialize(host: HTMLElement, initial: LatticeLyricInput, signal:
     const pixi = await loadPixi();
     if (signal.aborted) return null;
     const app = new pixi.Application();
-    try { await app.init({ preference: 'webgl', backgroundAlpha: 0, antialias: true,
+    // No MSAA: every glyph is a pre-rasterized texture on an axis-aligned quad, so multisampling smooths
+    // nothing visible, and on a phone it multiplied the full-screen drawing buffer (measured: 28 MB -> 5.6 MB
+    // at 1520x968, the largest single allocation of this renderer; iOS killed the web process under memory pressure).
+    try { await app.init({ preference: 'webgl', backgroundAlpha: 0, antialias: false,
         width: 1, height: 1, resolution: latticeLyricResolution(window.devicePixelRatio), autoDensity: true, autoStart: false, sharedTicker: false }); }
     catch (error) {
         if (app.renderer) destroyApplication(app);

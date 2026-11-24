@@ -183,6 +183,8 @@ const VisualizerPartita: React.FC<VisualizerPartitaProps> = (props) => {
             <motion.div
                 ref={lyricAreaRef}
                 className="relative z-10 w-full h-[70vh] flex items-center justify-center p-8 pointer-events-none will-change-transform"
+                // 横屏时灵动岛 / 刘海在左右两侧：让开安全区（没有安全区时仍是 p-8；useOverlapFit 读算好的内边距）。
+                style={{ paddingLeft: 'max(2rem, env(safe-area-inset-left))', paddingRight: 'max(2rem, env(safe-area-inset-right))' }}
                 animate={lyricContainerFloat.animate}
                 transition={lyricContainerFloat.transition}
             >

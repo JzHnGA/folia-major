@@ -13,3 +13,8 @@ export const obsSourceKind = searchParams.get('obsSource');
 export const isRemoteControlSurface = !isObsBrowserSourceSurface && searchParams.get('remote') === '1';
 
 export const isMainAppSurface = typeof window !== 'undefined' && !isObsBrowserSourceSurface && !isRemoteControlSurface;
+
+/** Capacitor 原生壳（iOS）：有原生启动层与原生插件；网页与桌面端没有这个桥。 */
+export const isNativeAppShell = (): boolean => (
+    typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true
+);

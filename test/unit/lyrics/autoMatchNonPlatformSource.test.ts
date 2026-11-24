@@ -9,6 +9,9 @@ import { fetchAmllDbLyrics } from '@/utils/lyrics/providers/amllDbProvider';
 // the app: the automatic pick must pass it over, not ask AMLL DB a second time in its place.
 
 vi.mock('@/services/onlineMusic/netease/netease', () => ({
+    resolveConfiguredNeteaseApiBase: () => null,
+    getNeteaseRemoteApiBase: () => null,
+    setNeteaseApiBaseOverride: () => undefined,
     neteaseApi: { cloudSearch: vi.fn(), getLyric: vi.fn(), getSongDetail: vi.fn(), getChorus: vi.fn() },
 }));
 vi.mock('@/utils/lyrics/neteaseProcessing', () => ({ parseNeteaseChorusRanges: vi.fn(() => []), processNeteaseLyrics: vi.fn() }));

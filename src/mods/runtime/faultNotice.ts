@@ -63,7 +63,7 @@ const openModRow = async (modId: string) => {
         // Without the list the window still opens on the mods page.
     }
     useModsStore.getState().selectMod(modId);
-    openSettings('options', settingsAnchorSubview('modList'), null, 'modList', modSettingsRowId(modId));
+    openSettings(settingsAnchorSubview('modList'), null, 'modList', modSettingsRowId(modId));
 };
 
 const show = ({ modId, piece, shows }: PendingNotice) => {

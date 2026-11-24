@@ -3,9 +3,9 @@ import { ChevronLeft } from 'lucide-react';
 import './WallBackButton.css';
 
 // src/components/wall/WallBackButton.tsx
-// 海报墙左上角的返回按钮（.lattice-back：40px 圆、白 8%、模糊），Lattice 与 bravais 共用。
-// Lattice 常驻显示；bravais 用隐藏式（concealed）：平时不显示，鼠标进入左上角热区或键盘聚焦时出现，
-// 与播放页 VisualizerShell 左上角那颗的显隐方式相同（热区同为 120px）。
+// 海报墙左上角的返回按钮（.lattice-back：40px 圆、白 8%、模糊），Lattice 与其它海报墙共用。
+// Lattice 常驻显示；concealed 是隐藏式：平时不显示，鼠标进入左上角热区或键盘聚焦时出现，
+// 与播放页 VisualizerShell 左上角那颗的显隐方式相同（热区同为 120px）。bravais 现在不画这颗（用户定，移动端）。
 
 /** 左上角热区的边长，与 VisualizerShell 的 PLAYER_CHROME_HOTSPOT_SIZE 相同。 */
 export const WALL_BACK_HOTSPOT_PX = 120;

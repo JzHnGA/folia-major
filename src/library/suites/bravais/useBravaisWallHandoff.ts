@@ -9,10 +9,10 @@ import {
     WALL_HANDOFF_FLIP_OUT_MS,
     WALL_HANDOFF_IN_EASE,
     WALL_HANDOFF_OUT_EASE,
-    WALL_HANDOFF_PERSPECTIVE_PX,
     type WallHandoffRect,
 } from '../../../components/wall/wallHandoff';
 import { cameraFromViewCenter } from '../../../components/wall/wallView';
+import { wallFlipKeyframe } from '../../../components/wall/wallFlip';
 import {
     resolveWallHandoffRole,
     useWallHandoffStore,
@@ -73,7 +73,6 @@ export const resolveBravaisWallHandoffState = (session: WallHandoffSession | nul
     };
 };
 
-const rotation = (degrees: number) => `perspective(${WALL_HANDOFF_PERSPECTIVE_PX}px) rotateY(${degrees}deg)`;
 const OUT_EASE = cubicBezierCss(WALL_HANDOFF_OUT_EASE);
 const IN_EASE = cubicBezierCss(WALL_HANDOFF_IN_EASE);
 /** veil 淡入 / 淡出（与 bravais.css 的 .bravais-handoff-veil 一致）。 */
@@ -256,11 +255,11 @@ export const useBravaisWallHandoff = ({
             const spot = getWallHandoffSpot(rect, origin, pitchPx);
             animations.push(role === 'out'
                 ? face.animate(
-                    [{ transform: rotation(0) }, { transform: rotation(90 * spot.direction) }],
+                    [wallFlipKeyframe(0), wallFlipKeyframe(90 * spot.direction)],
                     { duration: WALL_HANDOFF_FLIP_OUT_MS, delay: Math.max(0, startedAt + spot.outAt - now), easing: OUT_EASE, fill: 'forwards' },
                 )
                 : face.animate(
-                    [{ transform: rotation(-90 * spot.direction) }, { transform: rotation(0) }],
+                    [wallFlipKeyframe(-90 * spot.direction), wallFlipKeyframe(0)],
                     { duration: WALL_HANDOFF_FLIP_IN_MS, delay: Math.max(0, startedAt + spot.inAt - now), easing: IN_EASE, fill: 'backwards' },
                 ));
         }

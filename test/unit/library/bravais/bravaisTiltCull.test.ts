@@ -59,6 +59,8 @@ const stateAt = (patch: Partial<BravaisFrameState> = {}): BravaisFrameState => (
     seamFollowsTilt: false,
     tiltSettled: true,
     tiltLiftY: 0,
+    safeLeft: 0,
+    safeRight: 0,
     ...patch,
 });
 

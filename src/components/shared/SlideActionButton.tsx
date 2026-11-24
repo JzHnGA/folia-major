@@ -34,6 +34,8 @@ export interface SlideActionButtonProps {
      * （胶囊的玻璃就是它的底），也没有左滑那一下（滑轨会横在胶囊上），只剩点按。位置由调用方平移。
      */
     docked?: boolean;
+    /** 触屏没有悬停：左滑那一下没有可用的引导，关掉它，只保留点按。 */
+    canSlide?: boolean;
 }
 
 export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
@@ -48,6 +50,7 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
     accentForeground = '#ffffff',
     disabled = false,
     docked = false,
+    canSlide = true,
 }) => {
     const [showGuideLine, setShowGuideLine] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -59,11 +62,10 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
     const supportsHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     const motionClass = docked
         ? 'translate-x-0 opacity-100 scale-[0.8333] origin-right'
-        : showGuideLine || isDragging
+        : showGuideLine || isDragging || !supportsHover
+            // 触屏没有悬停：不半藏在屏幕边外，整颗留在安全区里。
             ? 'translate-x-0 opacity-100'
-            : supportsHover
-                ? 'translate-x-1/2 opacity-60 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105'
-                : 'translate-x-1/2 opacity-60';
+            : 'translate-x-1/2 opacity-60 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105';
 
     const setDestinationFeedback = (progress: number) => {
         const icon = trackEndIconRef.current;
@@ -184,8 +186,8 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                 type="button"
                 disabled={disabled}
                 onPointerDown={(event) => {
-                    // 挂在胶囊上（docked）时没有滑动，按下就是一次普通的点按。
-                    if (disabled || docked) return;
+                    // 挂在胶囊上（docked）或触屏（canSlide=false）时没有滑动，按下就是一次普通的点按。
+                    if (disabled || docked || !canSlide) return;
                     gestureRef.current = { startX: event.clientX, startY: event.clientY, triggered: false };
                     suppressClickRef.current = false;
                     setShowGuideLine(false);
@@ -209,7 +211,7 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                 }}
                 onPointerUp={clearGesture}
                 onPointerCancel={clearGesture}
-                onMouseEnter={() => { if (supportsHover && !docked) setShowGuideLine(true); }}
+                onMouseEnter={() => { if (supportsHover && !docked && canSlide) setShowGuideLine(true); }}
                 onMouseLeave={() => { if (supportsHover) setShowGuideLine(false); }}
                 onClick={(event) => {
                     if (suppressClickRef.current) {

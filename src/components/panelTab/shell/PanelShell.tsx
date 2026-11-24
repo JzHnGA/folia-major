@@ -100,6 +100,8 @@ const PanelSurface: React.FC<PanelSurfaceProps> = ({ hasHandle, isCover, tabKey,
             animate={{ opacity: 1, scale: 1, transition: kitTransition('unfold', reduced) }}
             exit={{ ...away, transition: kitTransition('move', reduced) }}
             data-testid="unified-panel-surface"
+            // 面板里的横向拖动（列表、卡片）不当作切歌手势。
+            data-player-swipe-ignore
             data-still={isStill || undefined}
             className="st-window pointer-events-auto @container hide-scrollbar flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-y-auto overflow-x-hidden rounded-[20px] bg-[var(--pn-glass)] text-[color:var(--st-t1)] shadow-[var(--pn-shadow)] backdrop-blur-[40px] backdrop-saturate-[1.3] [&[data-still]_*]:transition-none"
             style={{

@@ -103,7 +103,7 @@ App.tsx
 
 ## Settings, i18n and types
 
-- 设置总入口：`components/modal/SettingsModal.tsx`；十三个类别各一页，在 `components/modal/settings/pages/<Name>Page.tsx`（`Appearance`、`Player`、`Home`、`Playback`、`Lyrics`、`General`、`Interaction`、`Integration`、`Storage`、`Desktop`、`Graphics`、`Mods`、`Developer`，由 `pages/index.ts` 登记），帮助页是 `pages/HelpPage.tsx`；类别的分组和顺序在 `navigation/settingsNavModel.ts`，控件在 `kit/`，页面从窗口拿的东西在 `pages/settingsPageContext.ts`。
+- 设置总入口：`components/modal/SettingsModal.tsx`；十三个类别各一页，在 `components/modal/settings/pages/<Name>Page.tsx`（`Appearance`、`Player`、`Home`、`Playback`、`Lyrics`、`General`、`Interaction`、`Integration`、`Storage`、`Desktop`、`Graphics`、`Mods`、`Developer`，由 `pages/index.ts` 登记）；类别的分组和顺序在 `navigation/settingsNavModel.ts`，控件在 `kit/`，页面从窗口拿的东西在 `pages/settingsPageContext.ts`。
 - 视觉配置 import/export：`components/modal/settings/pages/storage/visualConfigTransfer.ts` 的 `buildCurrentConfig`、`planConfigImport`、`applyImportedConfig`，画它的行在同目录的 `ConfigTransferRows.tsx`；编码在 `utils/appearanceCodec.ts` 的 `compressConfig`、`decompressConfig`。
 - 命令注册：`components/command-palette/commandRegistry.ts`；上下文和命令类型在 `types.ts`。
 - 本地化：`i18n/locales/en.ts`、`zh-CN.ts`、`in.ts`，配置在 `i18n/config.ts`。

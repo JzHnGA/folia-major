@@ -9,6 +9,9 @@ import ObsBrowserSourceApp from './components/obs/ObsBrowserSourceApp';
 import ObsNowPlayingSourceApp from './components/obs/ObsNowPlayingSourceApp';
 import ObsPlayerCapSourceApp from './components/obs/ObsPlayerCapSourceApp';
 import { initializeLocalCoverRuntime } from './services/localCoverRuntime';
+import { startStartupAccountReads } from './services/onlineMusic/startupAccountReads';
+import { installSecureSession } from './services/security/secureSession';
+import { installCarPlayBridge } from './services/carplay/carplayBridge';
 import { installFoliumHomePageDismissal } from './components/app/home/foliumHomePageDismissal';
 import { installLibrarySuiteChromeCommands } from './library/app/installLibrarySuiteChromeCommands';
 import { noteFoliumFirstScreenMounted, startFoliumForMainWindow } from './mods/runtime/mainWindowStart';
@@ -17,7 +20,7 @@ import { prewarmSavedVisualizer, prewarmVisualizersWhenIdle } from './components
 import { bootNavidromeServerPreset } from './services/navidromeServerPreset';
 import { isNavidromeEnabled } from './services/navidromeService';
 import { setNavidromeEnabledState } from './stores/useLibraryStore';
-import { isMainAppSurface, isObsBrowserSourceSurface, isRemoteControlSurface, obsSourceKind } from './utils/appSurface';
+import { isMainAppSurface, isNativeAppShell, isObsBrowserSourceSurface, isRemoteControlSurface, obsSourceKind } from './utils/appSurface';
 // 副作用 import：store 在模块加载时就把 `<html data-reduce-motion>` 写好并保持同步。放在 bootstrap
 // 而不是 App 里，是因为下面按 URL 挂的根不止 App —— 远程控制窗口的进度辉光也读这个属性。
 import './stores/useMotionSettingsStore';
@@ -59,6 +62,19 @@ const isRemoteControl = isRemoteControlSurface;
 // also has the Electron bridge, but mod state pushes only reach the main
 // window, so a client activated there would never be torn down.
 const isMainApp = isMainAppSurface;
+// iOS 壳：启动动画还在的时候就把账户读起来，并用「谁登录着已有答案（最多 3 秒）」决定何时撤动画。
+// 别的窗口没有原生启动层，维持原来的节奏。
+// 先把网易云 cookie 从 localStorage 迁进 Keychain，再让启动读账户去读它；否则第一次读到的还是明文旧值。
+const secureSessionReady = isMainApp && isNativeAppShell()
+    ? installSecureSession()
+    : Promise.resolve();
+const startupAccounts = isMainApp && isNativeAppShell()
+    ? secureSessionReady.then(() => startStartupAccountReads())
+    : null;
+// 车机上的 Ecria：等网易云会话进了 Keychain 再接车机的请求（它要读账户与歌单）。
+if (isMainApp && isNativeAppShell()) {
+    void secureSessionReady.then(() => installCarPlayBridge());
+}
 
 // Its effect runs after the effects of everything inside it in the same commit, so by then every
 // mod `mount` of the first screen has returned: the moment the mods' start counts as over.
@@ -72,7 +88,7 @@ const FirstScreenMounted: React.FC<{ children: React.ReactNode }> = ({ children 
 
 const renderApp = () => root.render(
     <React.StrictMode>
-      <AppSplashGate>
+      <AppSplashGate waitFor={startupAccounts}>
         {isNowPlayingObsSource
           ? <ObsNowPlayingSourceApp />
           : isPlayerCapObsSource

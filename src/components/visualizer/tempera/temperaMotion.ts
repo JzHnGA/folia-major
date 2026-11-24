@@ -64,7 +64,7 @@ const ECHO_ALPHA = 0.5;
  */
 const MAX_REVEAL_WINDOW = 1.35;
 /** How much wider the sung block gets. Deliberately small: this is tracking, not drift. */
-const RELEASE_TRACKING = 0.055;
+export const RELEASE_TRACKING = 0.055;
 
 // Resolves one glyph's entrance plus the post-sung tracking release that keeps a finished
 // line alive without breaking its layout.

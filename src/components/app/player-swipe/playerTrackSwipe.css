@@ -1,0 +1,96 @@
+/* src/components/app/player-swipe/playerTrackSwipe.css
+   播放页左右滑动切歌的箭头层：手势由 usePlayerTrackSwipe 写 data 属性与 CSS 变量，
+   这里只负责摆放与动画。层不吃指针，动画只动 opacity / transform。 */
+
+.player-swipe-hint {
+    position: fixed;
+    inset: 0;
+    /* 高于播放页的面板与底部条（z-60），低于速记簿抽屉（95）、设置与 Sheet；不吃指针，只做反馈。 */
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 max(20px, 13%);
+    pointer-events: none;
+    /* 深色底盘 + 白箭头：日光主题的深色图标落在封面 / 歌词上对比度不够。 */
+    color: #fff;
+}
+
+.player-swipe-arrow {
+    display: grid;
+    width: 84px;
+    height: 84px;
+    place-items: center;
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 34%);
+    box-shadow: 0 12px 36px rgb(0 0 0 / 30%), 0 0 0 1px rgb(255 255 255 / 10%) inset;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%));
+    opacity: 0;
+    transform: translateX(0) scale(0.92);
+    transition: opacity 120ms ease-out;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* 手指划向哪边，哪边的箭头点亮：透明度跟着进度走，位置跟手一小截。 */
+.player-swipe-hint[data-player-swipe-direction='prev'] .player-swipe-arrow--prev,
+.player-swipe-hint[data-player-swipe-direction='next'] .player-swipe-arrow--next {
+    opacity: var(--player-swipe-progress, 0);
+    transform: translateX(var(--player-swipe-shift, 0px)) scale(calc(0.92 + 0.18 * var(--player-swipe-progress, 0)));
+}
+
+/* 认下这一下：箭头顺着滑动方向再滑出去并淡掉，提示已经切歌。 */
+.player-swipe-hint[data-player-swipe-commit='prev'] .player-swipe-arrow--prev {
+    animation: player-swipe-prev-out 380ms cubic-bezier(0.2, 0.7, 0.25, 1) forwards;
+}
+
+.player-swipe-hint[data-player-swipe-commit='next'] .player-swipe-arrow--next {
+    animation: player-swipe-next-out 380ms cubic-bezier(0.2, 0.7, 0.25, 1) forwards;
+}
+
+@keyframes player-swipe-prev-out {
+    from {
+        opacity: 1;
+        transform: translateX(var(--player-swipe-shift, 0px)) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(64px) scale(1.14);
+    }
+}
+
+@keyframes player-swipe-next-out {
+    from {
+        opacity: 1;
+        transform: translateX(var(--player-swipe-shift, 0px)) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(-64px) scale(1.14);
+    }
+}
+
+/* 降低动态效果：箭头不跟手位移、不放大，提交时只淡出。 */
+:root[data-reduce-motion~='uiMicroMotion'] .player-swipe-hint[data-player-swipe-direction] .player-swipe-arrow {
+    transform: none;
+}
+
+:root[data-reduce-motion~='uiMicroMotion'] .player-swipe-hint[data-player-swipe-commit] .player-swipe-arrow {
+    animation: player-swipe-fade-out 160ms ease-out forwards;
+}
+
+@keyframes player-swipe-fade-out {
+    to {
+        opacity: 0;
+    }
+}
+
+/* 小屏 / 窄横屏：箭头别太大，别压住两侧的返回与工具按钮。 */
+@media (max-width: 560px) {
+    .player-swipe-arrow {
+        width: 64px;
+        height: 64px;
+    }
+}

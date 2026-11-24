@@ -4,6 +4,7 @@ import { Hourglass } from 'lucide-react';
 import { DEFAULT_FUME_TUNING, FumeTuning } from '../../../types';
 import { getLineRenderEndTime } from '../../../utils/lyrics/renderHints';
 import { useLyricRenderQuality } from '../renderQuality/useLyricRenderQuality';
+import { useSafeAreaSidesPx, type SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { colorWithAlpha } from '../colorMix';
 
 import { type VisualizerSharedProps } from '../definition';
@@ -53,6 +54,8 @@ const keepFumeLayout = (key: string, article: FumeArticleLayout | null) => {
 
 const LAYOUT_REBUILD_DEBOUNCE_MS = 96;
 
+const NO_SAFE_SIDES: SafeAreaSides = { left: 0, right: 0 };
+
 const VisualizerFume: React.FC<VisualizerProps> = (props) => {
     const {
         currentTime,
@@ -84,6 +87,10 @@ const VisualizerFume: React.FC<VisualizerProps> = (props) => {
     const layoutBuildVersionRef = useRef(0);
     const hasResolvedArticleRef = useRef(false);
     const [viewport, setViewport] = useState<ViewportSize>({ width: 0, height: 0 });
+    // Side safe areas (landscape iPhone's Dynamic Island): only the write-head and the overview keep
+    // clear of them. A preview is a small box inside the page, nowhere near the island, so it takes none.
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : deviceSafeSides;
     const [article, setArticle] = useState<FumeArticleLayout | null>(null);
     const [isLayoutPending, setIsLayoutPending] = useState(false);
     const [hasPrintedContent, setHasPrintedContent] = useState(false);
@@ -252,8 +259,8 @@ const VisualizerFume: React.FC<VisualizerProps> = (props) => {
         [article?.height, article?.paperBounds, article?.width, seed, theme.name, viewport],
     );
     const overviewCamera = useMemo(
-        () => (article ? resolveArticleOverviewCamera(article, viewport) : null),
-        [article, viewport],
+        () => (article ? resolveArticleOverviewCamera(article, viewport, safeSides) : null),
+        [article, safeSides, viewport],
     );
     const cameraSpeed = resolvedFumeTuning.cameraSpeed;
     const glowIntensity = resolvedFumeTuning.glowIntensity;
@@ -277,6 +284,7 @@ const VisualizerFume: React.FC<VisualizerProps> = (props) => {
         lines,
         theme,
         viewport,
+        safeSides,
         backgroundScene,
         overviewCamera,
         overviewStartTime,
@@ -300,6 +308,7 @@ const VisualizerFume: React.FC<VisualizerProps> = (props) => {
         overviewStartTime,
         passedFadeDuration,
         resolvedFumeTuning.cameraTrackingMode,
+        safeSides,
         showPrintStamp,
         showText,
         staticMode,

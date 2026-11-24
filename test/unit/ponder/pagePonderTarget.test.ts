@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openCurrentPagePonder, openSettingsFromPonder, readCurrentPagePonderTarget, readVisiblePagePonderScope, resolvePagePonderTarget } from '@/services/ponder/pagePonderTarget';
+import { openCurrentPagePonder, openPonderNavigation, openSettingsFromPonder, readCurrentPagePonderTarget, readVisiblePagePonderScope, resolvePagePonderTarget } from '@/services/ponder/pagePonderTarget';
 import { useAppViewStore } from '@/stores/useAppViewStore';
 import { usePonderStore } from '@/stores/usePonderStore';
 import { useSettingsModalStore } from '@/stores/useSettingsModalStore';
@@ -111,6 +111,16 @@ describe('resolvePagePonderTarget', () => {
      * 都压在它上面。从导航页进的那条路只关教程的话，设置会开在导航页底下 ——
      * 屏幕上什么都没变，读起来就是「这颗按钮没反应」。
      */
+    it('侧栏底部的入口先收掉设置窗口，再打开教程索引', () => {
+        useSettingsModalStore.getState().openSettings();
+        expect(useSettingsModalStore.getState().settingsModalState.isOpen).toBe(true);
+
+        openPonderNavigation();
+
+        expect(useSettingsModalStore.getState().settingsModalState.isOpen, '设置没收掉，教程索引会开在它上面').toBe(false);
+        expect(usePonderStore.getState().isNavigationOpen).toBe(true);
+    });
+
     it('「直接去那儿」会把教程层和导航页一起收掉，设置才不会开在它们底下', () => {
         const ponder = usePonderStore.getState();
         ponder.openNavigation();

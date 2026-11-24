@@ -117,7 +117,3 @@
 :root[data-reduce-motion~='lattice'] :is(.bravais-seam-body, .bravais-seam-tab) {
     transition: none;
 }
-
-/* 左上角隐藏式返回（WallBackButton）：在缝之下（缝 5、边缘标签 6）。缝恰好开在左上角时让缝的 ‹ 与面包屑在上面，
-   免得把「回到播放页」叠在「层返回」上误点；墙、暗角（3）与颗粒（2）之上。 */
-.bravais-root .lattice-back { z-index: 4; }

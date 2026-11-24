@@ -167,3 +167,44 @@
         0 0 0 2px var(--st-swatch-gap, var(--st-card)),
         0 0 0 3.5px var(--st-t1);
 }
+
+/* ---- the arrows over the ends of a sideways PictureGrid row: the one that nudges moves a little the
+   way it points, over and over. Still for anyone who asks the system for less motion. */
+@keyframes st-nudge {
+    0%,
+    60%,
+    100% {
+        transform: translateX(0);
+    }
+
+    30% {
+        transform: translateX(3px);
+    }
+}
+
+.st-nudge {
+    animation: st-nudge 1.5s var(--st-ease-in-out, ease-in-out) infinite;
+}
+
+@keyframes st-nudge-back {
+    0%,
+    60%,
+    100% {
+        transform: translateX(0);
+    }
+
+    30% {
+        transform: translateX(-3px);
+    }
+}
+
+.st-nudge-back {
+    animation: st-nudge-back 1.5s var(--st-ease-in-out, ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .st-nudge,
+    .st-nudge-back {
+        animation: none;
+    }
+}

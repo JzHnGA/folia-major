@@ -20,13 +20,16 @@ import { useSettingsPage } from './settingsPageContext';
 const SOURCE: SettingsGroupDef = { id: 'lyrics', titleKey: 'options.settingsHeadingLyricSource' };
 const ADJUST: SettingsGroupDef = { id: 'lyricAdjust', titleKey: 'options.settingsHeadingLyricTiming' };
 const WORDS: SettingsGroupDef = { id: 'lyricWordSegmentation', titleKey: 'options.settingsHeadingLyricSegmentation' };
-const FORMATS: SettingsGroupDef = { id: 'localLyricFormatOrder', titleKey: 'options.localLyricFormatOrder' };
+const FORMATS: SettingsGroupDef = { id: 'localLyricFormatOrder', titleKey: 'options.localLyricFormatOrder', mobileHidden: true };
+
+// The NetEase-only shell has one platform to match from: the priority row has nothing to choose.
+const NETEASE_ONLY_BUILD = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_FOLIA_NETEASE_ONLY === 'true';
 
 const O = {
     autoBest: option(SOURCE, 'autoUseBestLyric', 'options.autoUseBestLyric'),
-    matchPriority: option(SOURCE, 'lyricMatchPriority', 'settings.lyricMatchPriority'),
+    matchPriority: option(SOURCE, 'lyricMatchPriority', 'settings.lyricMatchPriority', { available: () => !NETEASE_ONLY_BUILD }),
     keepProviderWordTiming: option(SOURCE, 'keepProviderWordTiming', 'options.keepProviderWordTiming'),
-    localPriority: option(SOURCE, 'localLyricsPriority', 'options.localLyricsPriority'),
+    localPriority: option(SOURCE, 'localLyricsPriority', 'options.localLyricsPriority', { mobileHidden: true }),
     globalOffset: option(ADJUST, 'globalLyricTimelineOffset', 'options.globalLyricTimelineOffset'),
     filter: option(ADJUST, 'lyricFilterRegex', 'options.lyricFilterRegex'),
     autoAiSegmentation: option(WORDS, 'autoAiLyricSegmentation', 'options.autoAiLyricSegmentation'),
@@ -54,6 +57,7 @@ const LyricsPage: React.FC = () => {
         setAutoAiSegmentation: state.handleToggleAutoAiLyricSegmentation,
     })));
     const sources = useLyricMatchSources();
+    const showMatchPriority = !NETEASE_ONLY_BUILD;
     // A choice that is not on offer now is not in force either: the matcher falls back the same way.
     const shownSource = sources.includes(lyric.preferredSource) ? lyric.preferredSource : DEFAULT_PREFERRED_LYRIC_SOURCE;
 
@@ -88,13 +92,15 @@ const LyricsPage: React.FC = () => {
                 <Row option={O.autoBest} note={t(sources.includes('spotify') ? 'options.autoUseBestLyricDescSpotify' : 'options.autoUseBestLyricDesc')}>
                     <Toggle checked={lyric.autoBest} onChange={lyric.setAutoBest} />
                 </Row>
-                <Row option={O.matchPriority} note={t('settings.lyricMatchPriorityDesc')}>
-                    <Select
-                        value={shownSource}
-                        options={sources.map(source => ({ value: source, label: getLyricProviderPreferenceLabel(source) }))}
-                        onChange={lyric.setPreferredSource}
-                    />
-                </Row>
+                {showMatchPriority && (
+                    <Row option={O.matchPriority} note={t('settings.lyricMatchPriorityDesc')}>
+                        <Select
+                            value={shownSource}
+                            options={sources.map(source => ({ value: source, label: getLyricProviderPreferenceLabel(source) }))}
+                            onChange={lyric.setPreferredSource}
+                        />
+                    </Row>
+                )}
                 <Row option={O.keepProviderWordTiming} note={t('options.keepProviderWordTimingDesc')}>
                     <Toggle checked={lyric.keepProviderWordTiming} onChange={lyric.setKeepProviderWordTiming} />
                 </Row>

@@ -7,6 +7,8 @@ import { useAppViewStore } from '../../stores/useAppViewStore';
 import { usePonderStore } from '../../stores/usePonderStore';
 import { useSettingsModalStore } from '../../stores/useSettingsModalStore';
 import { openCurrentPagePonder } from '../../services/ponder/pagePonderTarget';
+import { isNightstandSupported } from '../nightstand/nightstandPlatform';
+import { useIsLandscape } from '../nightstand/useIsLandscape';
 import type { Theme } from '../../types';
 import { ponderMotionTokens } from './ponderMotion';
 import { ponderLayerTokens, ponderWindowTokens } from './ponderTheme';
@@ -44,6 +46,8 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
     const isOnboardingOpen = useSettingsModalStore(state => state.isUserGuideModalOpen);
     const showTouchButton = usePonderStore(state => state.showPonderTouchButton);
     const view = useAppViewStore(state => state.view);
+    // 床头钟横屏时整块屏幕是小组件覆盖层，这颗浮动钮不该浮在上面。
+    const nightstandLandscape = useIsLandscape() && isNightstandSupported();
 
     const [isRevealed, setIsRevealed] = useState(true);
     const hideTimerRef = useRef<number | null>(null);
@@ -72,7 +76,7 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
 
     // 换页时重新露一次：这颗按钮讲的是「思索当前页面」，页面换了就值得再说一遍自己在。
     useEffect(() => {
-        if (!isCoarsePointer || !showTouchButton) {
+        if (!isCoarsePointer || !showTouchButton || nightstandLandscape) {
             return undefined;
         }
         reveal();
@@ -82,12 +86,12 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
                 hideTimerRef.current = null;
             }
         };
-    }, [isCoarsePointer, reveal, showTouchButton, view]);
+    }, [isCoarsePointer, nightstandLandscape, reveal, showTouchButton, view]);
 
     // 右上角热区。按坐标判而不是摆一个元素：摆元素就会挡住底下的东西，
     // 而「不挡路」正是这颗按钮从右下角搬过来的全部理由。
     useEffect(() => {
-        if (!isCoarsePointer || !showTouchButton || typeof window === 'undefined') {
+        if (!isCoarsePointer || !showTouchButton || nightstandLandscape || typeof window === 'undefined') {
             return undefined;
         }
 
@@ -111,9 +115,9 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
 
         window.addEventListener('pointerdown', handlePointerDown, { passive: true, capture: true });
         return () => window.removeEventListener('pointerdown', handlePointerDown, { capture: true });
-    }, [isCoarsePointer, reveal, showTouchButton]);
+    }, [isCoarsePointer, nightstandLandscape, reveal, showTouchButton]);
 
-    if (!isCoarsePointer || !showTouchButton || hasSession || isOnboardingOpen) {
+    if (!isCoarsePointer || !showTouchButton || hasSession || isOnboardingOpen || nightstandLandscape) {
         return null;
     }
 

@@ -252,7 +252,13 @@ export const createAccountReads = <R>(deps: AccountReadsDeps<R>) => {
     // Asks the platform who is signed in. Answers with the user, or with how the read ends: nobody
     // is signed in (the account, if one was shown, has left), or the platform could not be asked
     // or did not answer within WHO_WAIT_MS (the account stays as shown, marked as failed).
-    const askWho = async (provider: OnlineMusicProvider, reads: PlatformReads, generation: number, said: string): Promise<ProviderUser | AccountReadOutcome> => {
+    const askWho = async (
+        provider: OnlineMusicProvider,
+        reads: PlatformReads,
+        generation: number,
+        said: string,
+        keptOnFailure?: () => Promise<ProviderAccountSnapshot | null>,
+    ): Promise<ProviderUser | AccountReadOutcome> => {
         const had = shownUser(provider.id);
         let user: ProviderUser | null;
         try {
@@ -262,8 +268,25 @@ export const createAccountReads = <R>(deps: AccountReadsDeps<R>) => {
             if (!isAuthRequired(error)) {
                 reads.whoUnknownAt = deps.now();
                 reads.whoUnknownTimes += 1;
-                markFailed(provider.id, error);
-                console.warn(`[Account] ${said}: who is signed in could not be asked, the account stays as it is shown: ${messageOf(error)}`);
+                // 启动时没有先画缓存账号、但要求「问不到时仍显示」的平台：把存着的账号显示出来并标成失败，
+                // 而不是把已登录的人显示成未登录。
+                const kept = keptOnFailure ? await keptOnFailure() : null;
+                if (reads.generation !== generation) return 'unknown';
+                if (kept) {
+                    store().updateAccount(provider.id, {
+                        status: 'authenticated',
+                        user: kept.user,
+                        collections: kept.collections,
+                        likedSongIds: kept.likedSongIds,
+                        hydration: 'ready',
+                        freshness: 'error',
+                        error: messageOf(error),
+                        lastUpdatedAt: kept.savedAt,
+                    });
+                } else {
+                    markFailed(provider.id, error);
+                }
+                console.warn(`[Account] ${said}: who is signed in could not be asked, ${kept ? 'the kept account stays' : 'the account stays as it is shown'}: ${messageOf(error)}`);
                 return 'unknown';
             }
             user = null;
@@ -310,6 +333,12 @@ export const createAccountReads = <R>(deps: AccountReadsDeps<R>) => {
         const generation = reads.generation;
         const current = () => reads.generation === generation;
         const showsKept = provider.auth.showsKeptAccountAtStart === true;
+        // 启动时没有先画缓存账号、但要求「问不到时仍显示」的平台：问不到时再把它显示出来。
+        const keptOnFailure = reason === 'start'
+            && !showsKept
+            && provider.auth.showsKeptAccountOnStartFailure === true
+            ? () => keptAccount(provider).catch(() => null)
+            : undefined;
         if (reason === 'start') {
             if (showsKept) {
                 const kept = await keptAccount(provider);
@@ -337,7 +366,7 @@ export const createAccountReads = <R>(deps: AccountReadsDeps<R>) => {
             error: undefined,
         });
 
-        const who = await askWho(provider, reads, generation, said);
+        const who = await askWho(provider, reads, generation, said, keptOnFailure);
         if (typeof who === 'string') return who;
         const user = who;
         try {

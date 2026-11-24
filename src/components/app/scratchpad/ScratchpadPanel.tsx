@@ -7,7 +7,7 @@ import ScratchpadBand, { ScratchpadSlim } from './ScratchpadBand';
 import ScratchpadGreeting from './ScratchpadGreeting';
 import { useScratchpadHistory } from './useScratchpadHistory';
 import { SCRATCHPAD_TABS } from './scratchpadLook';
-import { PAPER_FACE_VARIANTS, panelPaperFrame, usePaperMotions, useViewSize } from './scratchpadPaper';
+import { PAPER_FACE_VARIANTS, panelLeftFor, panelPaperFrame, usePaperMotions, useViewSize, type PanelDock } from './scratchpadPaper';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 
 // src/components/app/scratchpad/ScratchpadPanel.tsx
@@ -36,10 +36,12 @@ type ScratchpadPanelProps = {
     onExpand: () => void;
     expandRef: React.Ref<HTMLButtonElement>;
     children: React.ReactNode;
+    /** 面板贴哪条边（缺省左缘）。 */
+    dock?: PanelDock;
 };
 
 const ScratchpadPanel: React.FC<ScratchpadPanelProps> = ({
-    tab, notesCount, queueCount, slimOrder, onSelectTab, onClose, expandLabel, expandDisabled, onExpand, expandRef, children,
+    tab, notesCount, queueCount, slimOrder, onSelectTab, onClose, expandLabel, expandDisabled, onExpand, expandRef, children, dock = 'left',
 }) => {
     const { t } = useTranslation();
     const calm = useReducedMotionFor('uiMicroMotion');
@@ -54,7 +56,9 @@ const ScratchpadPanel: React.FC<ScratchpadPanelProps> = ({
         <>
             {SCRATCHPAD_TABS.map(id => {
                 const mode: PaperMode = id === tab ? 'band' : 'slim';
-                const frame = panelPaperFrame(mode === 'band' ? 'band' : slimOrder.indexOf(id), view.width, view.height);
+                // 纸画在面板这一层里：窗口坐标减去面板自己的左边。
+                const windowFrame = panelPaperFrame(mode === 'band' ? 'band' : slimOrder.indexOf(id), view.width, view.height, dock);
+                const frame = { ...windowFrame, left: windowFrame.left - panelLeftFor(view.width, dock) };
                 // 绕一圈去底部时从窗口上方出去、从窗口下面回来。
                 const paperMotion = motionOf(id, mode, frame, { calm, above: -24, below: view.height + 24 });
                 const title = t(TAB_TITLE_KEYS[id]);

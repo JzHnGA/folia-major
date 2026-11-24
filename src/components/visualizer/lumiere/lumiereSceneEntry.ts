@@ -6,6 +6,7 @@ import type { LumiereAudioFrame } from './lumiereKernel';
 import type { LumiereProgram } from './lumiereProgram';
 import { createLumiereUnit, type LumiereUnit } from './lumiereUnit';
 import type { LightSprites } from './light/sprites';
+import type { FrameSafeSides } from './text/lineWrap';
 import { LUMIERE_BLOOM, type LumiereSceneTuning } from './types';
 
 // src/components/visualizer/lumiere/lumiereSceneEntry.ts
@@ -34,6 +35,8 @@ export interface LumiereSceneQuality {
 export interface LumiereSceneBuildContext {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）。 */
+    safeSides?: FrameSafeSides;
     /** 文字光栅化与合成用的渲染分辨率（满分辨率，不随画质降）。 */
     resolution: number;
     program: LumiereProgram;
@@ -79,6 +82,7 @@ export const buildLumiereSceneEntry = (
         paragraph: context.program.paragraphs[index]!,
         width,
         height,
+        safeSides: context.safeSides,
         resolution: context.resolution,
         programSeed: context.program.seed,
         theme: context.theme,

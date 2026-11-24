@@ -152,7 +152,7 @@ const SearchWorkspace: React.FC<SearchWorkspaceProps> = ({
                     initial={{ opacity: 0, y: 28 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 28 }}
-                    className={`search-workspace fixed inset-0 flex flex-col overflow-hidden px-4 py-5 sm:px-8 sm:py-7 ${
+                    className={`search-workspace overlay-safe fixed inset-0 flex flex-col overflow-hidden px-4 py-5 sm:px-8 sm:py-7 ${
                         hasCollection ? 'z-[5]' : 'z-50'
                     }`}
                     style={{

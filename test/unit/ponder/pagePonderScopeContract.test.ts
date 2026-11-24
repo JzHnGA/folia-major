@@ -17,7 +17,7 @@ const PAGE_SCOPE_OWNERS = {
         'library/suites/grid/artist/ArtistGridView.tsx',
     ],
     'local-grid-map-page': ['library/suites/grid/directory/GridMap.tsx'],
-    'help-page': ['components/modal/SettingsModal.tsx'],
+    'help-page': ['components/ponder/PonderNavigationPage.tsx'],
     'settings-page': ['components/modal/SettingsModal.tsx'],
     'bravais-wall': [
         'library/suites/bravais/BravaisHome.tsx',

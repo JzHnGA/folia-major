@@ -12,6 +12,7 @@ import { resolveSubtitleFontSizes } from '../subtitleFontSizes';
 import VisualizerShell from '../VisualizerShell';
 import VisualizerSubtitleOverlay from '../VisualizerSubtitleOverlay';
 import { useLyricRenderQuality } from '../renderQuality/useLyricRenderQuality';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
 import { NebbiaRuntime } from './createNebbiaRuntime';
 import { nebbiaSeesThrough } from './nebbiaBehind';
 import { DEFAULT_NEBBIA_TUNING, type NebbiaTuning } from './types';
@@ -21,6 +22,7 @@ import { DEFAULT_NEBBIA_TUNING, type NebbiaTuning } from './types';
 // 每帧的时间只在运行时的循环里读 currentTime，不进 React state。WebGL2 不可用或上下文丢了，就退回只显示当前这句。
 // 窗外换成共用背景（或播放页透明）时画布要带透明通道，只能新建上下文；窗外在街景和水族箱之间换时着色器要按另一套编：都是运行时整个重建。
 const EMPTY_LINES: Line[] = [];
+const NO_SAFE_SIDES = { left: 0, right: 0 };
 
 type Props = VisualizerSharedProps & { nebbiaTuning?: NebbiaTuning };
 
@@ -44,6 +46,9 @@ const VisualizerNebbia: React.FC<Props> = (props) => {
     // 分辨率（#929）：全屏着色器没有 MSAA，只跟分辨率倍数；预览的小图保持原来的像素密度
     const renderQuality = useLyricRenderQuality(nebbiaTuning.render);
     const renderScale = isPreviewMode ? 1 : renderQuality.scale;
+    // 横屏时灵动岛 / 刘海压在左右两侧：歌词排进安全区里。预览的小图不贴屏幕边，不用让
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : deviceSafeSides;
     const seeThrough = nebbiaSeesThrough(nebbiaTuning, props.background, props.isPreviewMode);
     // 透出后面时（播放页透明）窗外不画，但选了水族箱时水珠里折射的还是水族箱（水母照样游，车不颠）；选了共用背景就折射街景
     const scene = nebbiaTuning.behind === 'aquarium' ? 'aquarium' : 'night';
@@ -57,8 +62,8 @@ const VisualizerNebbia: React.FC<Props> = (props) => {
         [committedLines, committed.seed, songTitle, songArtist],
     );
 
-    const latest = useRef({ theme, tuning: nebbiaTuning, renderScale, song, lyricsFontScale, showText, isDaylight, paused, staticMode, firstFrameDrawn });
-    latest.current = { theme, tuning: nebbiaTuning, renderScale, song, lyricsFontScale, showText, isDaylight, paused, staticMode, firstFrameDrawn };
+    const latest = useRef({ theme, tuning: nebbiaTuning, renderScale, song, lyricsFontScale, safeSides, showText, isDaylight, paused, staticMode, firstFrameDrawn });
+    latest.current = { theme, tuning: nebbiaTuning, renderScale, song, lyricsFontScale, safeSides, showText, isDaylight, paused, staticMode, firstFrameDrawn };
 
     useEffect(() => {
         const host = hostRef.current;
@@ -78,6 +83,7 @@ const VisualizerNebbia: React.FC<Props> = (props) => {
                 onRestored: () => setGeneration(value => value + 1),
             }, l.theme, l.tuning, l.renderScale);
             runtime.setFontScale(l.lyricsFontScale);
+            runtime.setSafeSides(l.safeSides);
             runtime.setShowText(l.showText);
             runtime.setDaylight(l.isDaylight);
             runtime.setPlayback(l.paused, l.staticMode);
@@ -102,6 +108,7 @@ const VisualizerNebbia: React.FC<Props> = (props) => {
     useEffect(() => { runtimeRef.current?.setRenderScale(renderScale); }, [renderScale]);
     useEffect(() => { runtimeRef.current?.setTheme(theme); }, [theme]);
     useEffect(() => { runtimeRef.current?.setFontScale(lyricsFontScale); }, [lyricsFontScale]);
+    useEffect(() => { runtimeRef.current?.setSafeSides(safeSides); }, [safeSides]);
     useEffect(() => { runtimeRef.current?.setShowText(showText); }, [showText]);
     useEffect(() => { runtimeRef.current?.setDaylight(isDaylight); }, [isDaylight]);
     useEffect(() => { runtimeRef.current?.setPlayback(paused, staticMode); }, [paused, staticMode]);

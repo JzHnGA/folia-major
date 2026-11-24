@@ -37,7 +37,7 @@ const deferred = <T>(): Deferred<T> => {
 const settle = async () => { for (let turn = 0; turn < 5; turn += 1) await Promise.resolve(); };
 
 const sessionOf = (providerId: string, phase: LibraryLoginPhase): LibraryLoginSessionSnapshot => ({
-    id: 1, providerId, phase, methods: [], selectedMethodId: null, inBrowser: false, codeImage: '', canReopenLoginPage: true,
+    id: 1, providerId, phase, methods: [], selectedMethodId: null, inBrowser: false, codeImage: '', codeUrl: '', canReopenLoginPage: true,
     failure: null, selfCheck: null, localService: { available: false, failed: false, error: null, restarting: false }, texts: null,
     checksAfterLogin: false,
 });
@@ -93,6 +93,35 @@ describe('the sign-in window\'s host', () => {
         expect(host.getState()).toEqual({ chosen: null, done: false });
         // Whatever sign-in was left is stopped when the window opens.
         expect(said).toEqual(['stop']);
+    });
+
+    it('opened with no platform and only one row: chooses that row, so the picker step never shows', () => {
+        const { host, said, rows } = setup();
+        rows.length = 0;
+        rows.push(row('code-a'));
+        host.opened(null);
+        expect(host.getState()).toEqual({ chosen: { providerId: 'code-a', lead: 'sign-in' }, done: false });
+        expect(said).toEqual(['stop', 'start code-a']);
+    });
+
+    it('opened before the platform list arrived: the only selectable row is chosen when it does', () => {
+        const { host, said, rows } = setup();
+        rows.length = 0;
+        host.opened(null);
+        expect(host.getState()).toEqual({ chosen: null, done: false });
+        rows.push(row('code-a'));
+        host.rowsChanged();
+        expect(host.getState()).toEqual({ chosen: { providerId: 'code-a', lead: 'sign-in' }, done: false });
+        expect(said).toEqual(['stop', 'start code-a']);
+    });
+
+    it('opened before the platform list arrived: several selectable rows stay unchosen', () => {
+        const { host, rows } = setup();
+        rows.length = 0;
+        host.opened(null);
+        rows.push(row('code-a'), row('code-b'));
+        host.rowsChanged();
+        expect(host.getState()).toEqual({ chosen: null, done: false });
     });
 
     it('a chosen row leads on: a sign-in starts at once for a row that needs one, an account or no sign-in for the others', () => {

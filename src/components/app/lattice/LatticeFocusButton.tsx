@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { House } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useIsBottomLayoutCompact } from '../../../stores/useBottomDockStore';
 import { usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { usePlayingSongLocatorStore } from '../../../stores/usePlayingSongLocatorStore';
 import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
@@ -19,8 +20,8 @@ import { locatePlayingSongOnWall, useWallPageKey } from './wallLocate';
 // 洗牌、主题、队列、播放器四格与音量也由 wall 从 App 的墙面工具宿主组装（与 bravais 同一套结构）。
 // 这里只给 Lattice 自己的：destination（主页：总是回首页）与帮助内容，以及按钮上方的定位按钮（`above`）：
 // 一个集合页的定位按钮（GridLocateButton），意思和在那里一样——正在播放的歌在这面墙上有封面时亮起，按下是向墙要
-// 那张封面（wallLocate.ts）。「聚焦当前歌曲」与「切歌时自动聚焦」两项不在面板里：定位由上方的按钮做，自动聚焦的
-// 开关在命令面板（「Lattice 自动聚焦」）。
+// 那张封面（wallLocate.ts）。它现在单独站在墙的左下角。「聚焦当前歌曲」与「切歌时自动聚焦」两项不在面板里：自动聚焦
+// 的开关在命令面板（「Lattice 自动聚焦」）。
 export default function LatticeFocusButton({ isDaylight, tiles, onGoHome }: { isDaylight: boolean; tiles: LatticeTile[]; onGoHome?: () => void }) {
     const { t } = useTranslation();
     // The song the locator asks about (a collection's page reads the same), and this wall's question.
@@ -30,6 +31,8 @@ export default function LatticeFocusButton({ isDaylight, tiles, onGoHome }: { is
     const isPlayingSongHere = useMemo(() => (
         playingSongKey !== null && tiles.some(tile => tile.id === playingSongKey)
     ), [playingSongKey, tiles]);
+    // 紧凑档（窗口窄于 960，progress-bar v3）里定位由底部胶囊左端的封面 / 进度位那一颗做，左下角这颗不画。
+    const isCompact = useIsBottomLayoutCompact();
 
     const destination: WallToolsQuickAction | undefined = onGoHome ? {
         id: 'go-home',
@@ -38,7 +41,7 @@ export default function LatticeFocusButton({ isDaylight, tiles, onGoHome }: { is
         onSelect: onGoHome,
     } : undefined;
 
-    // 紧凑档里上方的定位按钮不画，定位由进度条胶囊的封面按（progress-bar v3）。
+    // 紧凑档里左下角的定位按钮不画，定位由进度条胶囊的封面按（progress-bar v3）。
     useRegisterWallLocate('lattice', playingSongKey !== null ? {
         run: locatePlayingSongOnWall,
         isHere: isPlayingSongHere,
@@ -47,39 +50,44 @@ export default function LatticeFocusButton({ isDaylight, tiles, onGoHome }: { is
     } : null, true);
 
     return (
-        <WallToolsButton
-            idPrefix="lattice-tools"
-            label={t('home.latticeTools')}
-            isDaylight={isDaylight}
-            destination={destination}
-            entries={[]}
-            above={playingSongKey !== null ? (
-                <GridLocateButton
-                    isDaylight={isDaylight}
-                    accentColor="var(--text-accent)"
-                    isHere={isPlayingSongHere}
-                    isSeeking={isLocateAsked}
-                    title={t('playlist.locatePlaying')}
-                    onLocate={locatePlayingSongOnWall}
-                />
-            ) : undefined}
-            help={(
-                <>
-                    <li>
-                        <span>{t('home.latticeHelpPoster')}</span>
-                        <span className="lattice-tools-help-key"><kbd>ESC</kbd>{t('home.latticeHelpReturn')}</span>
-                    </li>
-                    <li><span>{t('home.latticeHelpMove')}</span></li>
-                    <li>
-                        <span>{t('home.latticeHelpCommands')}</span>
-                        <kbd>S</kbd>
-                    </li>
-                    <li>
-                        <span>{t('home.latticeHelpOpen')}</span>
-                        <kbd>{PRIMARY_MODIFIER_LABEL} + B</kbd>
-                    </li>
-                </>
+        <>
+            <WallToolsButton
+                idPrefix="lattice-tools"
+                label={t('home.latticeTools')}
+                isDaylight={isDaylight}
+                destination={destination}
+                entries={[]}
+                help={(
+                    <>
+                        <li>
+                            <span>{t('home.latticeHelpPoster')}</span>
+                            <span className="lattice-tools-help-key"><kbd>ESC</kbd>{t('home.latticeHelpReturn')}</span>
+                        </li>
+                        <li><span>{t('home.latticeHelpMove')}</span></li>
+                        <li>
+                            <span>{t('home.latticeHelpCommands')}</span>
+                            <kbd>S</kbd>
+                        </li>
+                        <li>
+                            <span>{t('home.latticeHelpOpen')}</span>
+                            <kbd>{PRIMARY_MODIFIER_LABEL} + B</kbd>
+                        </li>
+                    </>
+                )}
+            />
+            {playingSongKey !== null && !isCompact && (
+                <div className="lattice-tools wall-locate-corner">
+                    <GridLocateButton
+                        placement="corner"
+                        isDaylight={isDaylight}
+                        accentColor="var(--text-accent)"
+                        isHere={isPlayingSongHere}
+                        isSeeking={isLocateAsked}
+                        title={t('playlist.locatePlaying')}
+                        onLocate={locatePlayingSongOnWall}
+                    />
+                </div>
             )}
-        />
+        </>
     );
 }

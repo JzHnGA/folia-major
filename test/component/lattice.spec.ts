@@ -381,9 +381,13 @@ test('the locate button of the wall goes to the playing song', async ({ mount, p
     const wall = await mount('lattice');
     await settle(page);
     await wall.locator('.lattice-field').dispatchEvent('wheel', { deltaX: 600, deltaY: 400 });
-    // The button a collection's page has, above the wall's tools button: lit, for the song has a tile here.
+    // The button a collection's page has, here in the wall's bottom-left corner: lit, for the song has a tile here.
     const locate = wall.locator('[data-grid-locate]');
     await expect(locate).toHaveAttribute('data-grid-locate', 'here');
+    const wallBox = (await wall.boundingBox())!;
+    const locateBox = (await locate.boundingBox())!;
+    expect(locateBox.x - wallBox.x).toBeLessThan(80);
+    expect((wallBox.y + wallBox.height) - (locateBox.y + locateBox.height)).toBeLessThan(80);
     await wall.screenshot({ path: 'test-results/lattice-focus-button.png' });
     await locate.click();
     await expectExpandedCentered(wall);

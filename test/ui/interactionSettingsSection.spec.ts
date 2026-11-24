@@ -33,7 +33,7 @@ const openInteractionSettings = async (page: import('@playwright/test').Page) =>
     await page.evaluate(async () => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options');
+        useSettingsModalStore.getState().openSettings();
     });
 
     await expect(page.getByText('App', { exact: true }).first()).toBeVisible();
@@ -117,7 +117,7 @@ test('lands on the section a command names, not the top of its page', async ({ p
     const openPlayerPage = (anchorId: string | null) => page.evaluate(async (anchor) => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options', 'player', null, anchor);
+        useSettingsModalStore.getState().openSettings('player', null, anchor);
     }, anchorId);
 
     const contentsEntry = (label: string) => page.locator('header').getByRole('button', { name: label, exact: true });
@@ -136,11 +136,19 @@ test('lands on the section a command names, not the top of its page', async ({ p
     await expect(lastGroup).toBeInViewport();
     await expect(lastGroup.locator('button[aria-expanded]').first()).toHaveAttribute('aria-expanded', 'true');
 
+    // 点页头里的分组标签也一样：落到一个折叠的分组上，要把它打开。
+    await lastGroup.locator('button[aria-expanded]').first().click();
+    await expect(lastGroup.locator('button[aria-expanded]').first()).toHaveAttribute('aria-expanded', 'false');
+    await contentsEntry('View').click();
+    await contentsEntry('Player Page UI').click();
+    await expect(lastGroup).toBeInViewport();
+    await expect(lastGroup.locator('button[aria-expanded]').first()).toHaveAttribute('aria-expanded', 'true');
+
     // 有些锚点现在落在分组里的某一行上，而不是一个分组上。
     await page.evaluate(async () => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options', 'home', null, 'grid3dCardStyle');
+        useSettingsModalStore.getState().openSettings('home', null, 'grid3dCardStyle');
     });
     await expect(page.getByRole('heading', { name: 'Home & playlists', exact: true })).toBeVisible();
     await expect(page.locator('[data-settings-row="grid3dCardStyle"]')).toBeInViewport();

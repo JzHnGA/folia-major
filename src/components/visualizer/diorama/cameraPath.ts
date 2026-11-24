@@ -136,6 +136,20 @@ export const smoothDamp = (
     return { value, velocity: newVelocity };
 };
 
+/** No safe area: what previews frame with (they are small scaled boxes, never under the island). */
+export const NO_SAFE_SIDES = { left: 0, right: 0 } as const;
+
+/**
+ * The aspect of the part of the frame lyrics may use: the full aspect less the left and right safe areas
+ * (the Dynamic Island / notch in landscape). Fitting and framing with it keeps a centred line clear of
+ * both sides; with no safe area it is the camera's aspect unchanged.
+ */
+export const resolveSafeFrameAspect = (aspect: number, viewportWidthPx: number, insetLeftPx: number, insetRightPx: number): number => {
+    if (viewportWidthPx <= 0) return aspect;
+    const safeFraction = Math.max(0.5, 1 - (insetLeftPx + insetRightPx) / viewportWidthPx);
+    return aspect * safeFraction;
+};
+
 /** World half-width visible at `distance` from a perspective camera (three.js `fov` is VERTICAL). */
 export const frameHalfWidth = (distance: number, verticalFovDeg: number, aspect: number): number =>
     distance * Math.tan((verticalFovDeg * DEG_TO_RAD) / 2) * aspect;

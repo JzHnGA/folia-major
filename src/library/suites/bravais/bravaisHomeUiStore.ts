@@ -18,9 +18,22 @@ type BravaisHomeUiState = {
     searchOpen: boolean;
     openRequest: BravaisHomeOpenRequest | null;
     popover: BravaisHomePopover | null;
+    /**
+     * 信息条横向、页签被缩成一个字母时，用户点开的那个页签：它临时展开成全名，中间那段让出宽度。
+     * 2.5 秒后或点到别处收起；切页签翻内容时不丢。
+     */
+    revealedTabKey: string | null;
+    /** 这个展开到什么时候（performance.now 的时间基准，Date.now 也行；这里用 Date.now）。 */
+    revealedUntil: number | null;
 };
 
-export const useBravaisHomeUiStore = create<BravaisHomeUiState>(() => ({ searchOpen: false, openRequest: null, popover: null }));
+export const useBravaisHomeUiStore = create<BravaisHomeUiState>(() => ({
+    searchOpen: false,
+    openRequest: null,
+    popover: null,
+    revealedTabKey: null,
+    revealedUntil: null,
+}));
 
 export const setBravaisSearchOpen = (open: boolean) => {
     if (useBravaisHomeUiStore.getState().searchOpen !== open) useBravaisHomeUiStore.setState({ searchOpen: open });
@@ -39,4 +52,18 @@ export const setBravaisHomePopover = (popover: BravaisHomePopover | null) => {
 /** 收起某一个弹层：此刻开着的正是它才收（别的弹层开着时不动）。 */
 export const closeBravaisHomePopover = (popover: BravaisHomePopover) => {
     if (useBravaisHomeUiStore.getState().popover === popover) useBravaisHomeUiStore.setState({ popover: null });
+};
+
+/** 页签展开全名：`until` 是 Date.now() 的截止时刻。 */
+export const revealBravaisHomeTab = (key: string, until: number) => {
+    const state = useBravaisHomeUiStore.getState();
+    if (state.revealedTabKey === key && state.revealedUntil === until) return;
+    useBravaisHomeUiStore.setState({ revealedTabKey: key, revealedUntil: until });
+};
+
+/** 收起展开的页签；没有展开时不动。 */
+export const clearBravaisHomeTab = () => {
+    const state = useBravaisHomeUiStore.getState();
+    if (state.revealedTabKey === null) return;
+    useBravaisHomeUiStore.setState({ revealedTabKey: null, revealedUntil: null });
 };

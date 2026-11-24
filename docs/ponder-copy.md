@@ -6,8 +6,6 @@
 
 | Key | 中文文案 | 对应组件 / 场景 |
 | --- | --- | --- |
-| `help.ponder` | 思索帮助页 | src/components/modal/settings/pages/HelpPage.tsx |
-| `help.ponderDescription` | 了解 Folia 的基本操作与运行逻辑 | src/components/modal/settings/pages/HelpPage.tsx |
 | `options.ponderHints` | 思索教程提示 | src/components/modal/settings/pages/GeneralPage.tsx |
 | `options.ponderHintsDesc` | 指针停在可教学的控件上时提示长按 G。 | src/components/modal/settings/pages/GeneralPage.tsx |
 | `options.ponderHintsAlways` | 始终显示 | src/components/modal/settings/pages/GeneralPage.tsx |
@@ -27,6 +25,8 @@
 | `commandPalette.commands.ponder-touch-button-toggle.description` | 显示或隐藏触屏右上角那颗灯泡 | src/components/command-palette/commands/settingsCommands.ts |
 | `commandPalette.commands.ponder-current-page.title` | 思索当前页面 | src/components/command-palette/commands/settingsCommands.ts |
 | `commandPalette.commands.ponder-current-page.description` | 打开当前页面的交互式介绍 | src/components/command-palette/commands/settingsCommands.ts |
+| `commandPalette.commands.ponder-navigation.title` | 打开帮助 | src/components/command-palette/commands/settingsCommands.ts |
+| `commandPalette.commands.ponder-navigation.description` | 浏览全部交互教程 | src/components/command-palette/commands/settingsCommands.ts |
 
 ## 2. 教程目标、对应组件和场景
 
@@ -1036,7 +1036,7 @@
         "grid": "这是浏览用的海报墙：搜索和歌单导航在卡片上方，选中一张卡片就会进入它的歌曲列表。",
         "gridNavigation": "滚动、滑动或用方向键在卡片间移动，然后选中当前卡片进入其中。",
         "gridSearch": "网格处于当前页面时直接输入文字即可筛选本页内容；按 Esc 关闭筛选。",
-        "gridHelp": "左侧齿轮打开帮助页；有新版本时，更新提示也会出现在这里。Help 内仍可打开版本更新说明和本页 Ponder。",
+        "gridHelp": "左侧齿轮打开设置；有新版本时，更新提示也会出现在这里，点它打开「通用」页的更新行。全部教程在设置侧栏底部。",
         "gridTabs": "中间页签切换歌单、电台、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。",
         "gridSearchBox": "右侧是跨当前来源的歌曲搜索。输入后按 Enter 会进入搜索工作台；它不会筛选下方的集合海报。",
         "gridTabResult": "切换页签后，下方 3D 轨道会换成该来源的集合，并记住各来源最后聚焦的位置。",
@@ -1359,7 +1359,6 @@
 
 ## 4. 修改时的定位速查
 
-- 改入口卡片标题和说明：第 1 节，settings/pages/HelpPage.tsx。
 - 改教程目标和章节归属：第 2 节，再回到对应的 targets/<那一屏>/*.target.ts。
 - 改通用提示、导航、章节控制和退出文案：第 3 节中的 navigation、onboarding、legend 及顶层 key；组件主要在 PonderNavigationPage.tsx、PonderHost.tsx、PonderChrome.tsx、PonderCaptionBlock.tsx、PonderNextChapterCue.tsx。
 - 改教程长段说明：第 3 节中的 captions；实际渲染组件是 PonderCaptionBlock.tsx（画面下方固定的那一块）。
@@ -1466,7 +1465,7 @@
 | `grid-action-button` | `grid-action-button-list` | 点一下开曲目列表 | `ponder.captions.gridActionButton.list` | 列表里一行一首，点哪首播哪首。本地文件夹的列表顶上还多两颗排序控件。 | listPanel：曲目列表 | `ponder.anchors.gridActionButton.list` |
 | `grid-action-button` | `grid-action-button-slide` | 往左滑是第二个动作 | `ponder.captions.gridActionButton.track` | 它背后还藏着一条向左的滑轨，平时看不见 —— 和播放页右缘那颗手柄是同一个手势。按住按钮往左拖。 | track：隐藏的滑轨 | `ponder.anchors.gridActionButton.track` |
 | `grid-action-button` | `grid-action-button-slide` | 往左滑是第二个动作 | `ponder.captions.gridActionButton.slideTarget` | 松手后打开本页筛选，也可在设置 · 快捷操作中改为命令窗口。 | filterBar：本页筛选 | `ponder.anchors.gridActionButton.slideTarget` |
-| `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridHelp` | 左侧齿轮打开帮助页；有新版本时，更新提示也会出现在这里。Help 内仍可打开版本更新说明和本页 Ponder。 | help：Folia 与帮助入口 | `ponder.anchors.grid.help` |
+| `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridHelp` | 左侧齿轮打开设置；有新版本时，更新提示也会出现在这里，点它打开「通用」页的更新行。全部教程在设置侧栏底部。 | help：Ecria 与设置入口 | `ponder.anchors.grid.help` |
 | `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridTabs` | 中间页签切换歌单、电台、专辑、本地库、Navidrome 与 Stage。Lattice 图标只在已有播放队列时出现。 | tabs：内容来源页签 | `ponder.anchors.grid.tabs` |
 | `grid-page` | `grid-page-structure` | 页头的每个入口 | `ponder.captions.pages.gridSearchBox` | 右侧是跨当前来源的歌曲搜索。输入后按 Enter 会进入搜索工作台；它不会筛选下方的集合海报。 | search：歌曲搜索 | `ponder.anchors.grid.search` |
 | `grid-page` | `grid-page-tabs` | 切换来源与专属操作 | `ponder.captions.pages.gridTabResult` | 切换页签后，下方 3D 轨道会换成该来源的集合，并记住各来源最后聚焦的位置。 | tabs：内容来源页签 | `ponder.anchors.grid.tabs` |

@@ -103,6 +103,8 @@ export type AppOverlaysDeps = {
     toggleLoop: FloatingControlsProps['onToggleLoop'];
     navigateToPlayer: () => void;
     navigateFromPlayerCapsule: () => void;
+    /** 此刻首页那套 suite 是不是资料库墙（App 的 isWallLibrarySuite）；墙上的胶囊回可视化播放页。 */
+    homeIsWall: boolean;
     shouldHidePlayerProgressBar: boolean;
     onSeekMainAudio: (time: number) => void;
     onStagePlayerSeek: () => Promise<unknown>;
@@ -129,6 +131,7 @@ type BuildAppOverlaysModelParams = AppOverlaysAmbient & AppOverlaysDeps;
 // Builds the full overlay model, including detail overlays and floating playback controls.
 export const buildAppOverlaysModel = ({
     currentView,
+    homeIsWall,
     isSearchOpen,
     theme,
     isDaylight,
@@ -294,6 +297,9 @@ export const buildAppOverlaysModel = ({
                 onTogglePlay: togglePlay,
                 onToggleLoop: toggleLoop,
                 onNavigateToPlayer: navigateFromPlayerCapsule,
+                // 资料库墙上点控制条回可视化播放页（用户定，移动端）。「播放后进入的视图」选队列拼贴时，胶囊在播放页
+                // 与网格首页仍按偏好去 Lattice；只有墙这一下不被偏好带走（网格首页没有这次删掉的返回键）。
+                onReturnToVisualizer: homeIsWall ? navigateToPlayer : undefined,
                 onFocusLatticeCurrentSong: locatePlayingSongOnWall,
                 noTrackText,
                 primaryColor: 'var(--text-primary)',

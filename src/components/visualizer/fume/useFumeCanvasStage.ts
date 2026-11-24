@@ -1,12 +1,13 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { drawFumeBackground } from './FumeBackground';
 import { isGlowBlurQuantized } from '../../../utils/glowBlurQuantize';
-import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
+import { lyricDevicePixelRatio, resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import type { LyricRenderScale } from '../../../types';
 import type { StaticBlockSnapshot } from './fumeTypes';
 import { resolveFumeBackgroundView, stepFumeCamera, syncFumeCameraToArticle } from './fumeCameraStep';
 import { isFumeBlockOnScreen, resolveFumeBlockTiming, resolveFumeGlowBases, resolveFumeStaticLayers, type FumeStaticLayerInput } from './fumeBlockFrame';
 import { clamp } from './fumeMath';
+import { resolveFumeSafeSpan } from './fumeCamera';
 import { createStaticBlockSnapshot, drawFumeLiveBlock, type FumeLiveBlockParams } from './fumeCanvasText';
 import { FumeLiveRaster } from './fumeLiveRaster';
 import { readFumeAudioLevels, type FumeStageDriver, type FumeStageScene } from './fumeStage';
@@ -69,7 +70,7 @@ export const useFumeCanvasStage = (
         }
 
         const {
-            lines, viewport, backgroundScene, overviewCamera, overviewStartTime, passedFadeDuration, cameraSpeed,
+            lines, viewport, safeSides, backgroundScene, overviewCamera, overviewStartTime, passedFadeDuration, cameraSpeed,
             cameraTrackingMode, glowIntensity, backgroundObjectOpacity, showPrintStamp, textHoldRatio, showText, staticMode,
         } = scene;
         const { currentTime, cameraState } = driver;
@@ -80,7 +81,7 @@ export const useFumeCanvasStage = (
         const width = Math.max(Math.floor(viewport.width), 1);
         const height = Math.max(Math.floor(viewport.height), 1);
         // 舞台画布的像素密度与文字快照的光栅密度，都按样式原来的算法乘上分辨率倍数。
-        const resolveStagePixelRatio = () => resolveLyricPixelRatio(window.devicePixelRatio || 1, renderScale);
+        const resolveStagePixelRatio = () => resolveLyricPixelRatio(lyricDevicePixelRatio(), renderScale);
         const resolveSnapshotScale = () => resolveLyricPixelRatio(clamp(window.devicePixelRatio || 1, 1, 2), renderScale);
         const dpr = resolveStagePixelRatio();
 
@@ -120,7 +121,10 @@ export const useFumeCanvasStage = (
             context.clearRect(0, 0, currentWidth, currentHeight);
 
             const time = currentTime.get();
-            const viewportCenterX = viewport.width * 0.5;
+            // The camera's look point (the write-head, or the overview's centre) is projected to the
+            // middle of the span between the side safe areas, so it never prints under the Dynamic
+            // Island; the page and its neighbours still run to the screen edges. No insets: width * 0.5.
+            const viewportCenterX = resolveFumeSafeSpan(viewport, safeSides).centerX;
             const viewportCenterY = viewport.height * 0.5;
             const fumeBackgroundAudioLevels = readFumeAudioLevels(driver);
 
@@ -225,14 +229,15 @@ export const useFumeCanvasStage = (
                 visible: {
                     left: camera.x - viewportCenterX / screenScale - margin,
                     top: camera.y - viewportCenterY / screenScale - margin,
-                    right: camera.x + viewportCenterX / screenScale + margin,
+                    // The look point may sit off the middle, so the right edge is measured from it.
+                    right: camera.x + (viewport.width - viewportCenterX) / screenScale + margin,
                     bottom: camera.y + viewportCenterY / screenScale + margin,
                 },
             };
 
             if (showText) {
                 for (const block of article.blocks) {
-                    if (!isFumeBlockOnScreen(block, camera, viewport)) {
+                    if (!isFumeBlockOnScreen(block, camera, viewport, undefined, viewportCenterX)) {
                         continue;
                     }
 

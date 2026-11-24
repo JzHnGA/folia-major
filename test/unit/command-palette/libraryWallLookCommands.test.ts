@@ -179,7 +179,7 @@ describe('library wall windows picker', () => {
         expect(toggle.execute('', context)).toBe(true);
         expect(toggleLibraryWallStackEdges).toHaveBeenCalledTimes(1);
         expect(anchor.execute('', context)).toBe(true);
-        expect(openSettings).toHaveBeenCalledWith('options', 'home', null, 'bravaisSettings');
+        expect(openSettings).toHaveBeenCalledWith('home', null, 'bravaisSettings');
     });
 });
 

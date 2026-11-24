@@ -70,6 +70,7 @@ export const BRAVAIS_SEAM_FLIP_IN_MS = 240;
 /** 磁贴翻牌：前半段转到 90°，后半段转回来；两段合计等于 wall 的 FLIP_DURATION_MS（360）。 */
 export const BRAVAIS_TILE_FLIP_OUT_MS = 150;
 export const BRAVAIS_TILE_FLIP_IN_MS = 210;
+
 /**
  * 降低动态效果时（B11，bravaisMotion）翻牌换成的淡出 → 换内容 → 淡入：两段合计 0.18s（与宿主中性背景板同一个时长），
  * 所有磁贴同时、不错开；整墙波次（换页签、从搜索 / 播放页进出）也换成它。

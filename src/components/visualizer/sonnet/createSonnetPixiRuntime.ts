@@ -1,5 +1,6 @@
 import type { MotionValue } from 'framer-motion';
 import type { AudioBands, LyricRenderScale, SonnetTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import type { SonnetProgram } from './types';
 import { findSonnetParagraphIndexAtTime } from './sonnetProgram';
@@ -96,6 +97,11 @@ export interface SonnetRuntimeOptions {
     signal?: AbortSignal;
     /** Mod-driven per-frame multipliers (e.g. `{ cameraScale: 1.4 }`). Defaults to 1 = no change. */
     modulation?: Record<string, number>;
+    /**
+     * 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）：歌词排版和镜头跟踪让开这两段。缺省或都是 0 时
+     * 与原来一样。就地改，见 setSafeSides。
+     */
+    safeSides?: SafeAreaSides;
 }
 
 /**
@@ -358,6 +364,7 @@ export class SonnetPixiRuntime {
             lyricsFontScale: this.options.lyricsFontScale,
             staticMode: this.options.staticMode,
             transparentBackground: this.options.transparentBackground,
+            safeSides: this.options.safeSides,
         }, iconTextures, song.program.paragraphs[index]);
     }
 
@@ -419,6 +426,7 @@ export class SonnetPixiRuntime {
             audioPower: this.options.audioPower,
             mod: this.mod,
             beatFx,
+            safeSides: this.options.safeSides,
         };
 
         this.sceneCache.forEach((scene, index) => {
@@ -696,6 +704,18 @@ export class SonnetPixiRuntime {
         const resolution = resolveSonnetRenderResolution(this.lastWidth, this.lastHeight, this.options.tuning, renderScale);
         if (resolution === this.app.renderer.resolution) return;
         this.app.renderer.resize(this.lastWidth, this.lastHeight, resolution);
+        this.rebuildScenes();
+    }
+
+    /**
+     * 换左右安全区（转屏、灵动岛出现或消失）：排版宽度跟着变，所以和 setRenderScale 一样在现有上下文上
+     * 把场景重建一遍；画布本身不动。
+     */
+    setSafeSides(safeSides: SafeAreaSides) {
+        const previous = this.options.safeSides;
+        if (this.destroyed) return;
+        if ((previous?.left ?? 0) === safeSides.left && (previous?.right ?? 0) === safeSides.right) return;
+        this.options.safeSides = safeSides;
         this.rebuildScenes();
     }
 

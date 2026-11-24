@@ -13,6 +13,7 @@ import { createLineArt } from './lineart/lineArt';
 import { mergeSpecs, protractorHalo, scatteredSparks, viewfinderFrame } from './lineart/recipes';
 import { FOG, GLARE, MOTES, shaft } from './rigs/base';
 import { LUMIERE_SHADER_NO_DARK, resolveLumierePalette } from './scene';
+import type { FrameSafeSides } from './text/lineWrap';
 import { createLyricWindow } from './text/lyricWindow';
 import { LUMIERE_BLOOM, type LumiereSceneTuning } from './types';
 
@@ -85,6 +86,8 @@ export interface LumiereCredits {
 export const createLumiereCredits = (pixi: PixiModule, options: {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）：长曲名放大到画框宽时不钻到灵动岛下面。不给 = 0。 */
+    safeSides?: FrameSafeSides;
     resolution: number;
     theme: Theme;
     metadata: SongMetadata;
@@ -136,6 +139,7 @@ export const createLumiereCredits = (pixi: PixiModule, options: {
         ? createLyricWindow(pixi, {
             width,
             height,
+            safeSides: options.safeSides,
             lines: [titleLine(title)],
             font,
             weight: resolveThemeFontWeight(theme, 600),

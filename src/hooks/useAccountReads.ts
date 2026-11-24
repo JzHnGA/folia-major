@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import i18n from '../i18n/config';
 import { omni } from '../services/onlineMusic/omni';
+import { startStartupAccountReads } from '../services/onlineMusic/startupAccountReads';
 import { useAppViewStore } from '../stores/useAppViewStore';
 import { useCollectionNavigationStore } from '../stores/useCollectionNavigationStore';
 import { usePlaybackStore } from '../stores/usePlaybackStore';
@@ -30,9 +31,7 @@ export const useAccountReads = () => {
     const atHome = isHome && !hasCollection;
 
     useEffect(() => {
-        omni.getProviderSummaries().forEach(provider => {
-            if (provider.requiresAccount) void omni.readAccount(provider.providerId, 'start');
-        });
+        void startStartupAccountReads();
     }, []);
 
     useEffect(() => {

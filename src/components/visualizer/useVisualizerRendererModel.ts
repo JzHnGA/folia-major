@@ -5,7 +5,7 @@ import type { VisualizerBackgroundConfig } from './backgrounds/definition';
 import { audioBands, audioPower, lyricCurrentTime } from '../../stores/motionSignals';
 import { useAppViewStore } from '../../stores/useAppViewStore';
 import { useAppChromeStore } from '../../stores/useAppChromeStore';
-import { useSettingsModalStore } from '../../stores/useSettingsModalStore';
+import { selectSettingsCoversApp, useSettingsModalStore } from '../../stores/useSettingsModalStore';
 import { useThemeSettingsStore } from '../../stores/useThemeSettingsStore';
 import { useTypographySettingsStore } from '../../stores/useTypographySettingsStore';
 import { usePlayerChromeSettingsStore } from '../../stores/usePlayerChromeSettingsStore';
@@ -74,7 +74,8 @@ export const useVisualizerRendererModel = ({
     const isPanelOpen = useAppViewStore(state => state.isPanelOpen);
     const isPlayerChromeHidden = useAppChromeStore(state => state.isPlayerChromeHidden);
     const onPlayerPanelGuideHotspotChange = useAppChromeStore(state => state.setIsPlayerPanelGuideHotspotActive);
-    const isSettingsModalOpen = useSettingsModalStore(state => state.settingsModalState.isOpen);
+    // Lowered for a preview on a phone, the settings window leaves the lyrics in view.
+    const isSettingsModalOpen = useSettingsModalStore(selectSettingsCoversApp);
     const isSettingsSubviewOpen = useSettingsModalStore(state => state.isSubSettingsViewOpen);
     // 首页墙后面透出来的 visualizer 要不要画歌词（bravais「墙后的画面」，stage 经契约报告；没有 stage 时为 false）。
     const backdropLyrics = useLibraryPlayerOcclusionStore(state => selectLibraryPlayerBackdrop(state).lyrics);

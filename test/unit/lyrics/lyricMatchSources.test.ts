@@ -9,6 +9,9 @@ import { searchQQLyrics } from '@/services/onlineMusic/qq/qqLyricProvider';
 // Covers source-specific lyric matching orchestration.
 
 vi.mock('@/services/onlineMusic/netease/netease', () => ({
+    resolveConfiguredNeteaseApiBase: () => null,
+    getNeteaseRemoteApiBase: () => null,
+    setNeteaseApiBaseOverride: () => undefined,
     neteaseApi: {
         cloudSearch: vi.fn(),
         getLyric: vi.fn(),

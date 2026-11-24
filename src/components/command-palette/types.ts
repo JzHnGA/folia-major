@@ -12,7 +12,7 @@ import type { GridSurfaceHandle } from '../../types/gridCommandSurface';
 import type { LibraryDirectorySurfaceHandle } from '../../library/core/directory/directory.contract';
 import type { LibraryArtistSurfaceHandle } from '../../library/core/artist/artist.contract';
 import type { LibrarySuiteChromeHandle } from '../../library/core/suite/suiteChrome.contract';
-import { type SettingsModalInitialTab, type SettingsSubviewId, type VisualizerSettingsSection } from '../../stores/useSettingsModalStore';
+import { type SettingsSubviewId, type VisualizerSettingsSection } from '../../stores/useSettingsModalStore';
 import type { SettingsAnchorId } from '../modal/settings/navigation/settingsAnchorModel';
 import type { LyricStaffAbsorbMode, LyricStaffPolicy } from '../../utils/lyrics/staffCreditsPolicy';
 import type { AudioEqualizerModeId } from '../../utils/audioEqualizer';
@@ -263,7 +263,6 @@ export type CommandPalettePanelContext = {
 
 export type CommandPaletteSettingsContext = {
     openSettings: (
-        initialTab?: SettingsModalInitialTab,
         initialSubview?: SettingsSubviewId | null,
         initialVisualizerSection?: VisualizerSettingsSection | null,
         initialAnchorId?: SettingsAnchorId | null,

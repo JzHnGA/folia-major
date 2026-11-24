@@ -2,6 +2,7 @@ import { Lightbulb } from 'lucide-react';
 import i18n from '../../i18n/config';
 import { usePonderStore } from '../../stores/usePonderStore';
 import { setStatusMessage, useStatusMessageStore } from '../../stores/useStatusMessageStore';
+import { isNightstandSupported } from '../../components/nightstand/nightstandPlatform';
 
 // src/services/ponder/loopShuffleHint.ts
 // 连点循环按钮时的「想找随机播放吗」提示。
@@ -105,6 +106,8 @@ const presentHint = () => {
  * 挂起期间又点了就重新计时，一整串连点只会合并成一次提示。
  */
 export const noteLoopButtonPress = (now = Date.now()) => {
+    // iOS 壳不挂 Ponder：这条提示没有可打开的教程，直接不出现。
+    if (isNightstandSupported()) return;
     const next = advanceLoopPressStreak(streak, now);
     streak = next.streak;
     if (!next.triggered && pendingHintTimer === null) {

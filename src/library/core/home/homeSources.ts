@@ -122,7 +122,8 @@ export const resolveHomeTabs = ({
     ...(visibility.radio ? [{ key: 'radio' as const, label: { key: 'home.radioTab' }, disabledReason: resolveOnlineTabUnavailableReason(online, 'radio') }] : []),
     ...(visibility.explore && online.canUseExplore ? [{ key: 'explore' as const, label: { key: 'home.explore' } }] : []),
     ...(visibility.albums ? [{ key: 'albums' as const, label: { key: 'home.albums' }, disabledReason: resolveOnlineTabUnavailableReason(online, 'albums') }] : []),
-    ...(visibility.local ? [{ key: 'local' as const, label: { key: 'localMusic.folder' }, disabledReason: resolveLocalUnavailableReason(localAvailability) }] : []),
+    // iOS 等拿不到 File System Access 的构建里，本地页签永远不可用：直接不生成，而不是留一个灰着的页签。
+    ...(visibility.local && localAvailability.supported ? [{ key: 'local' as const, label: { key: 'localMusic.folder' } }] : []),
     ...(navidromeEnabled ? [{ key: 'navidrome' as const, label: { key: 'navidrome.title', fallback: 'Navidrome' } }] : []),
 ];
 

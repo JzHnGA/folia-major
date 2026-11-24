@@ -4,7 +4,7 @@ import type { Theme } from '../../../types';
 import { hashVisualizerSeed } from '../visualizerSeedHash';
 import type { HanabiProgram } from './hanabiProgram';
 import { resolveShotProfile, shotLine } from './program';
-import { createHanabiScene, type HanabiScene, type HanabiSceneShot } from './scene';
+import { createHanabiScene, type HanabiSafeSides, type HanabiScene, type HanabiSceneShot } from './scene';
 import type { HanabiTextures, HanabiTuning, PixiModule } from './types';
 
 // src/components/visualizer/hanabi/hanabiSceneEntry.ts
@@ -23,6 +23,8 @@ export interface HanabiSceneEntry {
 export interface HanabiSceneBuildContext {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）：文字区让开灵动岛 / 刘海。 */
+    safeSides?: HanabiSafeSides;
     resolution: number;
     program: HanabiProgram;
     theme: Theme;
@@ -71,6 +73,7 @@ export const buildHanabiSceneEntry = (pixi: PixiModule, context: HanabiSceneBuil
     const scene = createHanabiScene(pixi, {
         width,
         height,
+        safeSides: context.safeSides,
         resolution: context.resolution,
         seed: `${program.seed}:${paragraph.id}`,
         theme: context.theme,

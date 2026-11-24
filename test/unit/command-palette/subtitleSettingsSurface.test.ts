@@ -19,7 +19,7 @@ describe('the subtitle settings surface', () => {
 
         props.onOpenMoreSettings();
 
-        expect(openSettings).toHaveBeenCalledWith('options', 'visualizer', 'subtitle');
+        expect(openSettings).toHaveBeenCalledWith('visualizer', 'subtitle');
         expect(calls).toEqual(['close', 'open']);
     });
 });

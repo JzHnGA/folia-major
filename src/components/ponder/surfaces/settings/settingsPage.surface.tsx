@@ -1,9 +1,9 @@
 import React from 'react';
-import { CircleHelp, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import type { PonderSurfaceDeclarations } from '../surfaceDeclarations';
 
 // src/components/ponder/surfaces/settings/settingsPage.surface.tsx
-// 设置窗口整体：左边一列是搜索框、分成四组的各页（界面、音乐、应用、高级）和最底下的帮助；
+// 设置窗口整体：左边一列是搜索框、分成四组的各页（界面、音乐、应用、高级）和最底下的教程索引；
 // 右边上面是这一页的名字和页内几组的名字，下面是这一页的几组设置，一组一张卡。
 
 /** 左边那一列里四组各有几页：界面 3、音乐 2、应用 6、高级 2。 */
@@ -43,10 +43,6 @@ const SettingsPageContents: React.FC<{ line: string; outline: string; accent: st
                 </React.Fragment>
             ))}
             <span className="min-h-0 flex-1" />
-            <span data-ponder-settings-help className="flex h-[4.3%] shrink-0 items-center gap-[7%] px-[6%]">
-                <CircleHelp className="h-[60%] w-auto shrink-0 opacity-50" />
-                <span className="h-[16%] w-[22%] rounded-full" style={{ backgroundColor: line }} />
-            </span>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">

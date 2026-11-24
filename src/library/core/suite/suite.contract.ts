@@ -406,12 +406,6 @@ export type LibrarySuiteStageProps = {
      * 复位都是两项 false（首页 visualizer 不画文字、不模糊，与没有 stage 的 suite 一样）。引用同一次挂载内稳定。
      */
     reportPlayerBackdrop: (backdrop: LibraryPlayerBackdrop) => void;
-    /**
-     * 回到播放页（首页数据的 onBackToPlayer，与网格首页右下角 › 同一个回调）。stage 横跨首页与集合层，所以在这里给，
-     * 而不是只给首页 surface（实测反馈 1）。bravais 左上角的隐藏式返回在首页根层、有正在播放 / 已加载的歌时用它；
-     * 不在根层时那颗按钮是缝里 ‹ 的层返回，不用它。缺省时首页根层不画那颗按钮。
-     */
-    onBackToPlayer?: () => void;
     /** fb3：暂停 / 继续正在播放的那首（首页数据的 onTogglePlayback）。正在播放的聚焦卡上的播放键用它。缺省时照旧立即播放。 */
     onTogglePlayback?: () => void;
     /**

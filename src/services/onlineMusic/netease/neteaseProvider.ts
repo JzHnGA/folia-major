@@ -17,9 +17,10 @@ import type {
 import { getPersonalFmRequestOptions } from '../../../stores/usePersonalFmModeStore';
 import { parseNeteaseChorusRanges, processNeteaseLyrics } from '../../../utils/lyrics/neteaseProcessing';
 import { getPlaybackSourceRef } from '../../../utils/appPlaybackGuards';
+import { isNativeAppShell } from '../../../utils/appSurface';
 import { toFiniteNumber } from '../../../utils/replayGain';
 import { createProviderSongMetadata } from '../../../utils/songMetadata';
-import { NeteaseLoginHttpError, getNeteaseRemoteApiBase, httpErrorStatusOf, neteaseApi, resolveNeteaseSongAvailability } from './netease';
+import { NeteaseLoginHttpError, getNeteaseRemoteApiBase, httpErrorStatusOf, neteaseApi, resolveConfiguredNeteaseApiBase, resolveNeteaseSongAvailability, setNeteaseApiBaseOverride } from './netease';
 import i18n from '../../../i18n/config';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from '../providerStorage';
 import { readNeteaseOldAccountCache, removeNeteaseOldAccountCache } from './neteaseOldAccountCache';
@@ -381,6 +382,12 @@ export const neteaseProvider: OnlineMusicProvider = {
     watch: watchNeteaseLocalService,
     describeFailure: describeNeteaseFailure,
     getAvailability: () => ({ configured: true }),
+    // 没有内嵌后端的壳（iOS）里远端实例地址由用的人在应用内填一次；桌面端内嵌后端时
+    // resolveConfigured 回 null，不谈覆盖。
+    apiBaseOverride: {
+        resolveConfigured: resolveConfiguredNeteaseApiBase,
+        setOverride: setNeteaseApiBaseOverride,
+    },
     capabilities: {
         search: true,
         playback: true,
@@ -540,6 +547,11 @@ export const neteaseProvider: OnlineMusicProvider = {
         localService: neteaseLocalService,
         async getLoginStatus() {
             cookieAskedWith = readProviderSessionValue('netease', 'cookie', ['netease_cookie']);
+            // 页面里没有登录 cookie 时不必问网易云：答案只能是没人登录。iOS 冷启动因此不用等网络。
+            if (!cookieAskedWith && isNativeAppShell()) {
+                noteLoginStatusCheck(diagnosticLine`no stored sign-in cookie`);
+                return null;
+            }
             const loginResponse = await neteaseApi.getLoginStatus();
             throwIfLoginCheckRefused(loginResponse, 'login/status');
             const loginProfile = loginResponse?.data?.profile;
@@ -581,7 +593,10 @@ export const neteaseProvider: OnlineMusicProvider = {
             }
             console.log('[NeteaseProvider] The sign-in that ran out was replaced meanwhile: the new cookie stays');
         },
-        showsKeptAccountAtStart: true,
+        // iOS 壳里缓存账号要等网易云确认后才画：远端 API 可能比启动动画慢，先画缓存会闪一下已登录。
+        showsKeptAccountAtStart: !isNativeAppShell(),
+        // 但远端 API 问不到（离线、5xx）时仍要显示缓存账号，不能把已登录的人显示成未登录。
+        showsKeptAccountOnStartFailure: isNativeAppShell(),
         oldKeptAccount: () => readNeteaseOldAccountCache({ user: normalizeUser, collection: normalizeCollection }),
         // 旧版本的四份缓存只交出一次：accountRead.ts 把交出的账号存成快照之后才删。留着的话，快照哪一次读不出来，它们又会被
         // 存成快照，盖掉更新的那一份；先删的话，快照没存上时账号就两处都没了。删不掉不碍事，下次启动有快照，不会再读它们。
@@ -607,6 +622,9 @@ export const neteaseProvider: OnlineMusicProvider = {
             if (image) return image;
             throw new OnlineProviderError('invalid-response', `NetEase QR image request failed: ${describeQrResponse(response)}`, 'netease', response);
         },
+        // 二维码指向的登录页（接口回的 qrurl 也是这个地址）：手机端交给系统打开，装着网易云音乐 App 就
+        // 跳进去点确认，和扫码是同一个 key，Folia 这边的轮询照常等到 803。
+        getLoginCodeUrl: key => `https://music.163.com/login?codekey=${encodeURIComponent(key)}`,
         async checkLogin(key) {
             let response: any;
             try {

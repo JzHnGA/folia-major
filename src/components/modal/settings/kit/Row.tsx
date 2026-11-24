@@ -2,13 +2,15 @@ import React, { createContext, useContext, useId, useRef, useState } from 'react
 import { ChevronRight, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SettingsOptionDef } from './options';
+import { useSettingsDevice } from './device';
 import { Unfold } from './Reveal';
 
 // src/components/modal/settings/kit/Row.tsx
 // The one row every option is drawn as: label at the left, the control at the right, a hairline
 // above every row but a card's first. One short line may sit under the label; a longer explanation
 // sits behind the "i" beside the label and unfolds under the row. When the control does not fit
-// beside the label (narrow window, long translation) it drops to the next line by itself.
+// beside the label (narrow window, long translation) it drops to the next line by itself, with the
+// row gap between the two lines.
 
 type RowNaming = {
     /** The id of the row's label, when it has one. */
@@ -60,6 +62,7 @@ type RowProps = {
 
 export const Row: React.FC<RowProps> = ({ option, label, notice, hint, note, sub, onClick, disabled: disabledByPage, desktopOnly, tag, below, children }) => {
     const { t } = useTranslation();
+    const { isMobile } = useSettingsDevice();
     const [noteOpen, setNoteOpen] = useState(false);
     const linkRef = useRef<HTMLButtonElement>(null);
     const id = useId();
@@ -72,6 +75,9 @@ export const Row: React.FC<RowProps> = ({ option, label, notice, hint, note, sub
         hintId: !notice && text && hint ? `${id}hint` : undefined,
     };
     const noteId = `${id}note`;
+
+    // Phone shell: a desktop-shaped row (cursor, window, OBS) is not drawn at all.
+    if (isMobile && option?.mobileHidden) return null;
 
     // A click on a control in the row, or in a menu one of them opened, is that control's; any
     // other click in the row, and the keyboard on the link itself, opens the link.
@@ -87,7 +93,7 @@ export const Row: React.FC<RowProps> = ({ option, label, notice, hint, note, sub
             data-settings-row={option?.id}
             data-sub={sub || undefined}
             onClick={isLink && !disabled ? openLink : undefined}
-            className={`st-row relative flex min-h-14 flex-wrap items-center gap-x-6 py-2.5 pr-4 ${sub ? 'pl-10' : 'pl-4'}${isLink && !disabled ? ' st-t-fast cursor-pointer transition-colors hover:bg-[var(--st-fill)]' : ''}`}
+            className={`st-row relative flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2.5 py-2.5 pr-4 ${sub ? 'pl-10' : 'pl-4'}${isLink && !disabled ? ' st-t-fast cursor-pointer transition-colors hover:bg-[var(--st-fill)]' : ''}`}
         >
             <RowNamingContext.Provider value={naming}>
                 {isLink && (
@@ -136,7 +142,7 @@ export const Row: React.FC<RowProps> = ({ option, label, notice, hint, note, sub
                             )}
                         </div>
                         {hint && (
-                            <div id={naming.hintId} className={`mt-0.5 text-xs leading-[18px] text-[color:var(--st-t2)]${disabled ? ' opacity-40' : ''}`}>
+                            <div id={naming.hintId} className={`mt-1 text-xs leading-[18px] text-[color:var(--st-t2)]${disabled ? ' opacity-40' : ''}`}>
                                 {hint}
                             </div>
                         )}
@@ -150,13 +156,14 @@ export const Row: React.FC<RowProps> = ({ option, label, notice, hint, note, sub
                     </div>
                 )}
                 {note && (
-                    <Unfold open={noteOpen} className="relative basis-full">
+                    // Always in the row, open or not: its negative margin cancels the row gap above it.
+                    <Unfold open={noteOpen} className="relative -mt-2.5 basis-full">
                         <div id={noteId} className="max-w-[540px] pb-0.5 pt-1.5 text-xs leading-[19px] text-[color:var(--st-t2)]">
                             {note}
                         </div>
                     </Unfold>
                 )}
-                {below && <div inert={disabled} className="relative mb-1 mt-2.5 min-w-0 basis-full">{below}</div>}
+                {below && <div inert={disabled} className="relative mb-1 min-w-0 basis-full">{below}</div>}
             </RowNamingContext.Provider>
         </div>
     );

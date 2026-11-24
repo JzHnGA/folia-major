@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { MotionValue } from 'framer-motion';
 import { findLatestActiveLineIndex } from '../../../../utils/appPlaybackHelpers';
@@ -19,6 +19,7 @@ import { omni } from '../../../../services/onlineMusic/omni';
 import { tickBeatFx } from '../../../../services/beatFx/beatFxLive';
 import { useBeatFxTrack } from '../../../../hooks/useBeatFxTrack';
 import { readIncomingLyricClock } from './incomingLyricClock';
+import { EMPTY_SPECTRUM, createSpectrumFrames } from './spectrumFrames';
 import { isBackgroundLyricHeld, setHeldLyricTime, useBackgroundLyricHoldStore } from '../../backgroundThrottling/backgroundLyricHoldStore';
 import { getHifiPosition } from '../../../../services/hifi/hifiPlayback';
 import { getExternalPosition, isExternalPlaybackSounding } from '../../../../services/onlineMusic/externalPlayback';
@@ -226,6 +227,9 @@ export function usePlaybackVisualizerBridge({
         };
     }, [audioRef, getDisplayElement, lyricClipStartSec]);
 
+    // The spectrum buffers the loop writes into, two in turn (spectrumFrames.ts): no new array per frame.
+    const [nextSpectrumFrame] = useState(createSpectrumFrames);
+
     const updateLoop = useCallback(() => {
         // 后台节流 holds the lyric animation while the window is minimised or hidden: the clocks below
         // keep running, while the lyric read-head, the line and the audio bands stay where they are
@@ -255,8 +259,7 @@ export function usePlaybackVisualizerBridge({
         if (backgroundHold) {
             // The bands keep their last values: nothing draws from them while held.
         } else if (hasAudibleSignal && analyserRef.current) {
-            const bufferLength = analyserRef.current.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
+            const dataArray = nextSpectrumFrame(analyserRef.current.frequencyBinCount);
             analyserRef.current.getByteFrequencyData(dataArray);
             audioBands.spectrum?.set(dataArray);
 
@@ -297,7 +300,7 @@ export function usePlaybackVisualizerBridge({
             audioBands.mid.set(breath);
             audioBands.vocal.set(breath);
             audioBands.treble.set(breath);
-            audioBands.spectrum?.set(new Uint8Array(0));
+            audioBands.spectrum?.set(EMPTY_SPECTRUM);
         }
 
         if (isExternalRouteActive) {
@@ -427,6 +430,7 @@ export function usePlaybackVisualizerBridge({
         isPlayerCapStageActive,
         lyrics,
         incomingLyrics,
+        nextSpectrumFrame,
         playerState,
         setCurrentLineIndex,
         setPlayerState,

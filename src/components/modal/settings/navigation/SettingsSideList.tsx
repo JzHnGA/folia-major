@@ -1,19 +1,23 @@
 import React, { useRef } from 'react';
-import { CircleHelp, Search, X, type LucideIcon } from 'lucide-react';
+import { Lightbulb, Search, X, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useDragToScroll } from '../../../../hooks/useDragToScroll';
 import type { SettingsNavGroup, SettingsSectionId } from './settingsNavModel';
 // src/components/modal/settings/navigation/SettingsSideList.tsx
-// The settings' side list: a search field, then the categories under their group names, and Help at
-// the foot. It lists categories only; what a page holds is in that page's header. Under 768px the
-// same list is a search field over one strip of category names that scrolls sideways.
+// The settings' side list: a search field, then the categories under their group names. It lists
+// categories only; what a page holds is in that page's header. Under 768px the same list is a
+// search field over one strip of category names that scrolls sideways.
 
 type SettingsSideListProps = {
     groups: SettingsNavGroup[];
-    /** The category on screen, 'help', or null while search results are shown. */
-    activeId: SettingsSectionId | 'help' | null;
+    /** The category on screen, or null while search results are shown. */
+    activeId: SettingsSectionId | null;
     onSelectSection: (sectionId: SettingsSectionId) => void;
-    onSelectHelp: () => void;
+    /** Opens the Ponder tutorial index, which lists every tutorial beyond this page's own. */
+    onOpenPonderNavigation: () => void;
+    /** 手机壳：底部那颗换成新手教程；Ponder 在 iOS 构建里不挂载。 */
+    mobile?: boolean;
+    onOpenMobileTutorial?: () => void;
     query: string;
     onQueryChange: (query: string) => void;
     /** Enter in the search field. */
@@ -25,7 +29,9 @@ export const SettingsSideList: React.FC<SettingsSideListProps> = ({
     groups,
     activeId,
     onSelectSection,
-    onSelectHelp,
+    onOpenPonderNavigation,
+    mobile = false,
+    onOpenMobileTutorial,
     query,
     onQueryChange,
     onSubmitQuery,
@@ -50,7 +56,7 @@ export const SettingsSideList: React.FC<SettingsSideListProps> = ({
         }
     };
 
-    const renderItem = (id: SettingsSectionId | 'help', Icon: LucideIcon, label: string, onSelect: () => void) => {
+    const renderItem = (id: SettingsSectionId, Icon: LucideIcon, label: string, onSelect: () => void) => {
         const isActive = activeId === id;
         return (
             <button
@@ -107,7 +113,32 @@ export const SettingsSideList: React.FC<SettingsSideListProps> = ({
                     </div>
                 ))}
                 <div className="contents md:mt-auto md:block md:pt-3">
-                    {renderItem('help', CircleHelp, t('help.title'), onSelectHelp)}
+                    {mobile ? (
+                        <button
+                            type="button"
+                            data-testid="settings-mobile-tutorial"
+                            onClick={() => {
+                                if (!isWide && hasDragged()) return;
+                                onOpenMobileTutorial?.();
+                            }}
+                            className="flex h-8 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 text-left text-[13px] text-[color:var(--st-t2)] transition-colors hover:bg-[var(--st-fill)] md:w-full"
+                        >
+                            <Lightbulb size={16} className="hidden shrink-0 opacity-70 md:block" />
+                            <span className="truncate">{t('mobileTutorial.open')}</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!isWide && hasDragged()) return;
+                                onOpenPonderNavigation();
+                            }}
+                            className="flex h-8 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 text-left text-[13px] text-[color:var(--st-t2)] transition-colors hover:bg-[var(--st-fill)] md:w-full"
+                        >
+                            <Lightbulb size={16} className="hidden shrink-0 opacity-70 md:block" />
+                            <span className="truncate">{t('ponder.navigation.all')}</span>
+                        </button>
+                    )}
                 </div>
             </nav>
         </aside>

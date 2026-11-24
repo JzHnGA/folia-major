@@ -3,12 +3,12 @@ import { Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AI_PROVIDER_PRESETS, inferAiProviderFromUrl, modelAlwaysThinks, resolveAiConnection, resolveAiProviderPreset, retiredModelHint } from '../../../../../services/aiText';
 import { openAIEndpointOf } from '../../../../../utils/openAIEndpoint';
-import { Button, FoldedGroup, NumberField, Reveal, Row, Select, TextField, Toggle, Value, option, parseNumberText, type SettingsGroupDef, type SettingsOptionDef } from '../../kit';
+import { Button, Group, NumberField, Reveal, Row, Select, TextField, Toggle, Value, option, parseNumberText, type SettingsGroupDef, type SettingsOptionDef } from '../../kit';
 import { AiConnectionTestReply, AiConnectionTestStatus, useAiConnectionTest } from '../AiConnectionTest';
 import { useSettingsPage, type AiApiKeyName, type ElectronSettingsState } from '../settingsPageContext';
 import { AiModelPicker } from './AiModelPicker';
 
-// AI connection settings, separated from appearance layout; requests stay behind services/aiText.
+// The desktop app's AI connection settings, on the AI page; requests stay behind services/aiText.
 const AI: SettingsGroupDef = { id: 'electronSettings', titleKey: 'options.electronSettings', electronOnly: true };
 const O = {
     provider: option(AI, 'aiProvider', 'options.aiProvider'),
@@ -50,7 +50,7 @@ const requestAddressOf = (url: string) => {
 };
 
 /** Saved keys remain in the main process; this field contains only a typed replacement. */
-const AiKeyField: React.FC<{ value: string; saved: boolean; onChange: (key: string) => void; onClear: () => void }> = ({ value, saved, onChange, onClear }) => {
+export const AiKeyField: React.FC<{ value: string; saved: boolean; onChange: (key: string) => void; onClear: () => void }> = ({ value, saved, onChange, onClear }) => {
     const { t } = useTranslation();
     return (
         <span className="flex min-w-0 items-center gap-2">
@@ -136,7 +136,7 @@ const AiProviderSettings: React.FC = () => {
     const temperature = adapter.temperature;
 
     return (
-        <FoldedGroup def={AI} summary={t('options.aiProvider_' + preset.id)}>
+        <Group def={AI}>
             <Row option={O.provider}>
                 <Select value={preset.id} options={AI_PROVIDER_PRESETS.map(value => ({ value: value.id, label: t('options.aiProvider_' + value.id) }))} onChange={selectProvider} />
             </Row>
@@ -195,7 +195,7 @@ const AiProviderSettings: React.FC = () => {
                     {t(electronSaveStatus === 'saving' ? 'options.settingsSaving' : 'options.save')}
                 </Button>
             </Row>
-        </FoldedGroup>
+        </Group>
     );
 };
 

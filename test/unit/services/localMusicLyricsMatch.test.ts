@@ -20,6 +20,9 @@ vi.mock('@/services/localLibraryEntityRepository', () => ({
     getLocalLibraryCatalogSnapshot: vi.fn().mockResolvedValue({ entities: [], assignments: [] }),
 }));
 vi.mock('@/services/onlineMusic/netease/netease', () => ({
+    resolveConfiguredNeteaseApiBase: () => null,
+    getNeteaseRemoteApiBase: () => null,
+    setNeteaseApiBaseOverride: () => undefined,
     neteaseApi: {
         cloudSearch: vi.fn(),
         getLyric: vi.fn(),

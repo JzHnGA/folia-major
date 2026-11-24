@@ -146,7 +146,9 @@ const BravaisFocusCardBody: React.FC<BravaisFocusCardBodyProps> = ({ slotKey, it
                     className="bravais-chrome-button is-icon"
                     data-bravais-action="play"
                     data-bravais-playback={toggles ? (isPlaying ? 'playing' : 'paused') : undefined}
-                    disabled={item.unavailable && !toggles}
+                    // 放不了的歌也不禁用：点下去交给播放（playSong 会说这首为什么放不了，有别的版本时问要不要换）。原先
+                    // 禁用了，图标却照常亮着（.is-icon 的不透明度盖过 :disabled），点了没有任何反应。
+                    data-bravais-unavailable={item.unavailable && !toggles ? 'true' : undefined}
                     aria-label={playLabel}
                     title={playLabel}
                     onClick={handled(() => actions.play(slotKey))}

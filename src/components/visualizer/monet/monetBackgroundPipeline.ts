@@ -13,6 +13,38 @@ interface PictureEntry {
 
 const monetBackgroundCache = new Map<string, PictureEntry>();
 
+/**
+ * How many pictures no layer holds any more stay cached. A released picture can still be on screen
+ * (the layer lets go when its inputs change, and keeps showing it while the next one is made and
+ * faded in), and going back to a recent cover or theme finds it ready. Past this, the oldest is
+ * dropped and its blob URL revoked: before this cap every song played in Monet kept its picture for
+ * the rest of the session.
+ */
+const MAX_IDLE_PICTURES = 4;
+/** Cache keys of the pictures no layer holds, oldest first. */
+const idlePictureKeys: string[] = [];
+
+const forgetIdle = (cacheKey: string) => {
+    const index = idlePictureKeys.indexOf(cacheKey);
+    if (index >= 0) idlePictureKeys.splice(index, 1);
+};
+
+/** Notes a picture no layer holds any more, and drops the oldest idle ones past MAX_IDLE_PICTURES. */
+const noteIdlePicture = (cacheKey: string, entry: PictureEntry) => {
+    if (monetBackgroundCache.get(cacheKey) !== entry) return;
+    forgetIdle(cacheKey);
+    idlePictureKeys.push(cacheKey);
+    while (idlePictureKeys.length > MAX_IDLE_PICTURES) {
+        const oldestKey = idlePictureKeys.shift()!;
+        const oldest = monetBackgroundCache.get(oldestKey);
+        if (!oldest || oldest.holders > 0) continue;
+        monetBackgroundCache.delete(oldestKey);
+        void oldest.url.then((url) => {
+            if (url) URL.revokeObjectURL(url);
+        });
+    }
+};
+
 interface BuildMonetBackgroundOptions {
     coverUrl?: string | null;
     monetBackgroundImage?: MonetBackgroundImage | null;
@@ -242,8 +274,9 @@ const buildMonetBackgroundUrl = async ({
 };
 
 /**
- * The picture for these inputs, made once and kept. The caller releases it once it no longer wants
- * it: a picture no one wants by its turn in the worker is not made, and is made if asked for again.
+ * The picture for these inputs, made once and kept while it is held or among the last few released
+ * (MAX_IDLE_PICTURES). The caller releases it once it no longer wants it: a picture no one wants by
+ * its turn in the worker is not made, and is made if asked for again.
  */
 export const wantMonetBackgroundUrl = (options: BuildMonetBackgroundOptions): { url: Promise<string | null>; release: () => void } => {
     const cacheKey = getMonetBackgroundCacheKey(options);
@@ -265,6 +298,7 @@ export const wantMonetBackgroundUrl = (options: BuildMonetBackgroundOptions): { 
     }
     const held = entry;
     held.holders += 1;
+    forgetIdle(cacheKey);
     let released = false;
     return {
         url: held.url,
@@ -272,6 +306,7 @@ export const wantMonetBackgroundUrl = (options: BuildMonetBackgroundOptions): { 
             if (!released) {
                 released = true;
                 held.holders -= 1;
+                if (held.holders === 0) noteIdlePicture(cacheKey, held);
             }
         },
     };

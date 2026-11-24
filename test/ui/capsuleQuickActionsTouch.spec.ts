@@ -111,3 +111,52 @@ test('pausing floats the row up on its own and it folds away 4 seconds later', a
     await page.clock.fastForward(4_500);
     await expect(quickActions(page)).toHaveCount(0);
 });
+
+/** 用 CDP 发一次真正的单指拖动（按下、几步移动、抬起），胶囊的 touch 监听收得到。 */
+const dragOnCapsule = async (page: Page, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const point = (x: number, y: number) => [{ x, y, id: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(from.x, from.y) });
+    for (let step = 1; step <= 5; step += 1) {
+        const x = from.x + ((to.x - from.x) * step) / 5;
+        const y = from.y + ((to.y - from.y) * step) / 5;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(x, y) });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+};
+
+test('swiping up on the collapsed capsule expands it, and swiping down folds it again', async ({ page }) => {
+    await openPlayerWithSong(page);
+    await setPlayerState(page, 'PLAYING');
+    const capsule = page.locator('[data-ponder="player-bar"]');
+    await expect(quickActions(page)).toHaveCount(0);
+
+    const box = (await capsule.boundingBox())!;
+    const x = box.x + box.width / 2;
+    await dragOnCapsule(page, { x, y: box.y + box.height / 2 }, { x, y: box.y + box.height / 2 - 60 });
+    await expect(quickActions(page)).toBeVisible();
+    // 上滑不是点：不切歌、不开命令面板。
+    await expect(page.getByTestId('command-palette-panel')).toHaveCount(0);
+
+    const expanded = (await capsule.boundingBox())!;
+    await dragOnCapsule(page, { x, y: expanded.y + 20 }, { x, y: expanded.y + 80 });
+    await expect(quickActions(page)).toHaveCount(0);
+});
+
+test('on the player page a left swipe on the capsule moves to the next song once', async ({ page }) => {
+    await openPlayerWithSong(page);
+    // 测试里没有真的音源，切过去的歌放不出来会退回；这里只看胶囊认了一次「下一首」，整屏的滑动没有再切一次。
+    const swipes: string[] = [];
+    page.on('console', message => {
+        if (/swipe/i.test(message.text())) swipes.push(message.text());
+    });
+    const capsule = page.locator('[data-ponder="player-bar"]');
+    const box = (await capsule.boundingBox())!;
+    // 从胶囊右侧起手往左划，离进度条的圆点远一点（圆点附近留给拖动定位）。
+    const y = box.y + box.height / 2;
+    await dragOnCapsule(page, { x: box.x + box.width * 0.75, y }, { x: box.x + box.width * 0.75 - 160, y });
+    await expect.poll(() => swipes.filter(line => line.includes('capsule swipe: next')).length).toBe(1);
+    await page.waitForTimeout(300);
+    expect(swipes).toEqual(['[player] capsule swipe: next']);
+});

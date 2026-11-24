@@ -1,5 +1,6 @@
-import React, { memo, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { kitTransition, useKitReducedMotion } from './motion';
 import { usePicturesInView } from './usePicturesInView';
 
@@ -9,7 +10,9 @@ import { usePicturesInView } from './usePicturesInView';
 // new choice. The grid gives the 16 by 10 frame and the caller draws what is in it; for each
 // picture the caller is told whether a person can see it at this moment, so a picture that moves
 // can run only then. With more rows than its height holds, the grid scrolls inside itself and the
-// last row in view fades.
+// last row in view fades. A row that scrolls sideways fades at each end that has more pictures past
+// it and shows an arrow there; a press on an arrow scrolls that way by about a row. One arrow nudges:
+// the one the person is scrolling towards, or, at either end of the row, the one pointing back in.
 //
 // It keeps 16px free at both sides: room for the ring and for its scrollbar. Where that room is
 // there already, `className="-mx-4"` lines the pictures up with what is above them.
@@ -24,6 +27,11 @@ const RING_ROOM = 4;
 /** How much of the grid's lower end fades while more rows follow. */
 const FADE = 40;
 const FADE_MASK = `linear-gradient(#000 calc(100% - ${FADE}px), transparent)`;
+/** A sideways row's fade, at the ends that have more pictures past them. */
+const horizontalFadeMask = (start: boolean, end: boolean) =>
+    `linear-gradient(to right, ${start ? `transparent, #000 ${FADE}px` : '#000'}, ${end ? `#000 calc(100% - ${FADE}px), transparent` : '#000'})`;
+/** Where the arrow of a sideways row sits: on the middle of the pictures (6.5rem wide, 16 by 10), past the 4px padding. */
+const ARROW_TOP = 'calc(4px + 6.5rem * 5 / 16)';
 
 export type PictureState = {
     /** On screen at this moment: in the part of the grid that shows, in a grid that is itself in view. */
@@ -47,8 +55,10 @@ type PictureGridProps<T extends string> = {
     onChange: (value: T) => void;
     /** What the grid chooses, for a screen reader. */
     label: string;
-    /** The tallest the grid gets, in px. */
+    /** The tallest the grid gets, in px. Left out in horizontal mode. */
     maxHeight?: number;
+    /** One row that scrolls sideways, for a short set on a phone. Left out, it wraps into columns. */
+    horizontal?: boolean;
     /** 'focus': the arrow keys, Home and End move the focus and choose nothing. Left out, they choose. */
     arrowKeys?: 'choose' | 'focus';
     className?: string;
@@ -95,12 +105,15 @@ const Tile = memo(<T extends string>({ value, label, picture, tabStop, markId, r
     </button>
 )) as <T extends string>(props: TileProps<T>) => React.ReactElement;
 
-export const PictureGrid = <T extends string>({ value, options, picture, columns, onChange, label, maxHeight, arrowKeys = 'choose', className = '' }: PictureGridProps<T>): React.ReactElement => {
+export const PictureGrid = <T extends string>({ value, options, picture, columns, onChange, label, maxHeight, horizontal = false, arrowKeys = 'choose', className = '' }: PictureGridProps<T>): React.ReactElement => {
     const markId = useId();
     const reduced = useKitReducedMotion();
     const rootRef = useRef<HTMLDivElement>(null);
     const [pointed, setPointed] = useState<string | null>(null);
     const [more, setMore] = useState(false);
+    // A sideways row only: more pictures to the left, and which of the two arrows nudges.
+    const [back, setBack] = useState(false);
+    const [nudge, setNudge] = useState<'back' | 'on'>('on');
     // Where the keys only move the focus: the picture that has it, while the focus is in the grid.
     const [focused, setFocused] = useState<string | null>(null);
     // The options as one text: what the effects below depend on, whatever array holds them.
@@ -113,28 +126,53 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
     const seen = usePicturesInView(rootRef, values);
 
     // Where `settle` left the grid's scroll; null once a person has scrolled it since.
-    const settledTop = useRef<number | null>(null);
+    const settledScroll = useRef<number | null>(null);
+    // A sideways row: where it was scrolled to last, and the way it went then. Refs, so a scroll sets
+    // state only when an arrow comes, goes or takes over the nudge.
+    const lastScroll = useRef(0);
+    const lastWay = useRef<'back' | 'on'>('on');
 
     // Brings the chosen picture into the part of the grid that shows, clear of the fade, and says
     // whether more rows follow under that part.
-    const settle = (reveal: boolean) => {
+    const settle = useCallback((reveal: boolean) => {
         const root = rootRef.current;
         const tile = root?.querySelector<HTMLElement>('[aria-checked="true"]');
         if (!root) {
             return;
         }
         if (reveal && tile) {
-            if (tile.offsetTop - RING_ROOM < root.scrollTop) {
+            if (horizontal) {
+                if (tile.offsetLeft - FADE < root.scrollLeft) {
+                    root.scrollLeft = tile.offsetLeft - FADE;
+                } else if (tile.offsetLeft + tile.offsetWidth > root.scrollLeft + root.clientWidth - FADE) {
+                    root.scrollLeft = tile.offsetLeft + tile.offsetWidth - root.clientWidth + FADE;
+                }
+            } else if (tile.offsetTop - RING_ROOM < root.scrollTop) {
                 root.scrollTop = tile.offsetTop - RING_ROOM;
             } else if (tile.offsetTop + tile.offsetHeight > root.scrollTop + root.clientHeight - FADE) {
                 root.scrollTop = tile.offsetTop + tile.offsetHeight - root.clientHeight + FADE;
             }
         }
         if (reveal) {
-            settledTop.current = root.scrollTop;
+            settledScroll.current = horizontal ? root.scrollLeft : root.scrollTop;
         }
-        setMore(root.scrollHeight - root.scrollTop - root.clientHeight > 2);
-    };
+        // Sideways, the gutters kept at both ends sit outside clientWidth but count in how far the row
+        // scrolls, so the end is measured against the whole width of the grid.
+        if (!horizontal) {
+            setMore(root.scrollHeight - root.scrollTop - root.clientHeight > 2);
+            return;
+        }
+        const left = root.scrollLeft;
+        if (left !== lastScroll.current) {
+            lastWay.current = left > lastScroll.current ? 'on' : 'back';
+            lastScroll.current = left;
+        }
+        const on = root.scrollWidth - left - root.offsetWidth > 2;
+        const backward = left > 2;
+        setMore(on);
+        setBack(backward);
+        setNudge(!backward ? 'on' : !on ? 'back' : lastWay.current);
+    }, [horizontal]);
 
     // On a new choice and a new set of options. A new size of the grid (a popover that is placed
     // after its grid was drawn gives it a smaller height) brings the chosen picture back into view
@@ -145,10 +183,10 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
         if (!root || typeof ResizeObserver === 'undefined') {
             return undefined;
         }
-        const observer = new ResizeObserver(() => settle(settledTop.current !== null));
+        const observer = new ResizeObserver(() => settle(settledScroll.current !== null));
         observer.observe(root);
         return () => observer.disconnect();
-    }, [value, values, columns]);
+    }, [value, values, columns, settle]);
 
     const valueAt = (target: EventTarget) => (target as Element).closest<HTMLElement>('[data-value]')?.dataset.value as T | undefined;
 
@@ -162,6 +200,7 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
             return;
         }
         const last = options.length - 1;
+        if (horizontal && (key === 'ArrowDown' || key === 'ArrowUp')) return;
         const step = key === 'ArrowRight' ? 1 : key === 'ArrowLeft' ? -1 : key === 'ArrowDown' ? columns : key === 'ArrowUp' ? -columns : 0;
         if ((!step && key !== 'Home' && key !== 'End') || event.altKey || event.ctrlKey || event.metaKey) {
             return;
@@ -183,7 +222,16 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
         if (arrowKeys === 'choose' && next !== chosenAt) onChange(options[next].value);
     };
 
-    return (
+    // Scrolls a sideways row by most of what shows, so the picture cut off at that edge comes in whole.
+    const scrollWay = (way: 'back' | 'on') => {
+        const root = rootRef.current;
+        if (!root) return;
+        const by = Math.max(root.clientWidth - FADE * 2, root.clientWidth / 2);
+        root.scrollBy({ left: way === 'on' ? by : -by, behavior: reduced ? 'auto' : 'smooth' });
+    };
+    const arrowClass = (shown: boolean) => `st-t-fast absolute z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-[var(--st-raise)] text-[color:var(--st-t1)] shadow-[0_0_0_1px_var(--st-line),0_2px_8px_rgba(0,0,0,0.18)] transition-opacity active:scale-95 ${shown ? 'opacity-100' : 'pointer-events-none opacity-0'}`;
+
+    const grid = (
         // layoutScroll: the ring is measured inside a grid that may be scrolled.
         <motion.div
             ref={rootRef}
@@ -202,17 +250,21 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
             onPointerOver={event => setPointed(valueAt(event.target) ?? null)}
             onPointerLeave={() => setPointed(null)}
             onScroll={(event) => {
-                if (settledTop.current !== null && Math.abs(event.currentTarget.scrollTop - settledTop.current) > 1) {
-                    settledTop.current = null;
+                const scroll = horizontal ? event.currentTarget.scrollLeft : event.currentTarget.scrollTop;
+                if (settledScroll.current !== null && Math.abs(scroll - settledScroll.current) > 1) {
+                    settledScroll.current = null;
                 }
                 settle(false);
             }}
             style={{
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                maxHeight,
-                ...(more ? { maskImage: FADE_MASK, WebkitMaskImage: FADE_MASK } : {}),
+                ...(horizontal
+                    ? { gridAutoFlow: 'column', gridAutoColumns: '6.5rem' }
+                    : { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, maxHeight }),
+                ...(horizontal
+                    ? (more || back ? { maskImage: horizontalFadeMask(back, more), WebkitMaskImage: horizontalFadeMask(back, more) } : {})
+                    : (more ? { maskImage: FADE_MASK, WebkitMaskImage: FADE_MASK } : {})),
             }}
-            className={`st-scroll relative grid min-h-0 content-start gap-3 overflow-y-auto overscroll-contain p-1 [scrollbar-gutter:stable_both-edges] ${className}`}
+            className={`st-scroll relative grid min-h-0 content-start gap-3 overscroll-contain p-1 [scrollbar-gutter:stable_both-edges] ${horizontal ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} ${className}`}
         >
             {options.map((option, index) => (
                 <Tile
@@ -229,6 +281,22 @@ export const PictureGrid = <T extends string>({ value, options, picture, columns
                 />
             ))}
         </motion.div>
+    );
+
+    if (!horizontal) {
+        return grid;
+    }
+    return (
+        <div className="relative min-w-0">
+            {grid}
+            {/* For the pointer only: the arrow keys already move along the row. */}
+            <button type="button" tabIndex={-1} aria-hidden onClick={() => scrollWay('back')} style={{ top: ARROW_TOP }} className={`left-1 ${arrowClass(back)}`}>
+                <ChevronLeft size={16} strokeWidth={2.4} className={back && nudge === 'back' && !reduced ? 'st-nudge-back' : undefined} />
+            </button>
+            <button type="button" tabIndex={-1} aria-hidden onClick={() => scrollWay('on')} style={{ top: ARROW_TOP }} className={`right-1 ${arrowClass(more)}`}>
+                <ChevronRight size={16} strokeWidth={2.4} className={more && nudge === 'on' && !reduced ? 'st-nudge' : undefined} />
+            </button>
+        </div>
     );
 };
 

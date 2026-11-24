@@ -56,6 +56,7 @@ const quillLogin: LibraryLoginSessionSnapshot = {
     selectedMethodId: 'wechat',
     inBrowser: false,
     codeImage: 'qr.png',
+    codeUrl: '',
     canReopenLoginPage: true,
     failure: null,
     selfCheck: null,

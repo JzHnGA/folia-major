@@ -76,7 +76,7 @@ interface Grid3DProps {
     setNavidromeFocusedAlbumIndex?: (index: number) => void;
     onSearchCommitted: (query: string, sourceTab: any, replace?: boolean) => void;
     theme: Theme;
-    onOpenSettings?: (initialTab?: 'help' | 'options') => void;
+    onOpenSettings?: (subview?: 'general') => void;
     /** `source`: what the wall shows; the play queue when left out. */
     onOpenLattice?: (source?: LatticeSource) => void;
     navidromeEnabled?: boolean;
@@ -309,7 +309,7 @@ export const Grid3D: React.FC<Grid3DProps> = (props) => {
                             Folia
                         </h1>
                         <button
-                            onClick={() => onOpenSettings?.('help')}
+                            onClick={() => onOpenSettings?.(showUpdateIndicator ? 'general' : undefined)}
                             className={`relative flex items-center gap-1.5 p-2 rounded-full hover:bg-white/10 transition-all ml-4 ${showUpdateIndicator
                                     ? 'opacity-90 hover:opacity-100'
                                     : 'opacity-40 hover:opacity-100'
@@ -569,7 +569,7 @@ export const Grid3D: React.FC<Grid3DProps> = (props) => {
                             overview={homeResources.navidromeOverview}
                             directoryKey={directoryKey}
                             declaredHomeActions={declaredActions}
-                            onOpenSettings={() => onOpenSettings?.('help')}
+                            onOpenSettings={() => onOpenSettings?.()}
                             onOpenGridView={onOpenGridView}
                         />
                     </div>

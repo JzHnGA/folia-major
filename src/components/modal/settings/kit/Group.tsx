@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsAnchor } from '../navigation/SettingsAnchorContext';
 import type { SettingsGroupDef } from './options';
+import { useSettingsDevice } from './device';
 
 // src/components/modal/settings/kit/Group.tsx
 // A group of rows: a small heading over one card. The group registers as a settings anchor, which
@@ -28,12 +29,14 @@ type GroupProps = {
 
 export const Group: React.FC<GroupProps> = ({ def, bare, action, preview, foot, children }) => {
     const { t } = useTranslation();
+    const { isMobile } = useSettingsDevice();
+    if (isMobile && def.mobileHidden) return null;
     const title = t(def.titleKey);
 
     return (
         <SettingsAnchor anchorId={def.id} label={title} className={GROUP_SPACING_CLASS}>
             {!bare && (
-                <div className="mb-2 flex min-h-6 items-center justify-between gap-3 px-1">
+                <div className="mb-3 flex min-h-6 items-center justify-between gap-3 px-1">
                     <h3 className="text-[13px] font-semibold leading-5 text-[color:var(--st-t2)]">{title}</h3>
                     {action}
                 </div>

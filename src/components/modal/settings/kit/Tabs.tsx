@@ -78,7 +78,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onSelect, action, co
                 role={contents ? undefined : 'tablist'}
                 aria-label={label}
                 onKeyDown={handleKeyDown}
-                className={`relative flex min-w-0 flex-1 gap-[18px] overflow-x-auto [scrollbar-width:none] md:gap-[22px] ${className}`}
+                className={`relative flex min-w-0 flex-1 gap-3 overflow-x-auto [scrollbar-width:none] md:gap-[22px] ${className}`}
             >
                 {tabs.map((tab) => {
                     const current = tab.id === activeId;

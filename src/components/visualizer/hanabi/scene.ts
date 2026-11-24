@@ -64,9 +64,19 @@ export interface HanabiSceneShot {
     textHidden?: boolean;
 }
 
+/** 左右安全区（逻辑像素，iPhone 横屏的灵动岛 / 刘海）；与 src/hooks/useSafeAreaSidesPx 的 SafeAreaSides 同形。 */
+export interface HanabiSafeSides {
+    left: number;
+    right: number;
+}
+
+const NO_SAFE_SIDES: HanabiSafeSides = { left: 0, right: 0 };
+
 export interface HanabiSceneOptions {
     width: number;
     height: number;
+    /** 左右安全区（逻辑像素）：文字区按它让开灵动岛 / 刘海。不给 = 0（桌面 / 竖屏）。 */
+    safeSides?: HanabiSafeSides;
     resolution: number;
     seed: string;
     theme: Theme;
@@ -178,6 +188,14 @@ interface BuiltShot {
 export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions): HanabiScene => {
     const { width, height, tuning, theme, textures } = options;
     const unit = Math.min(width, height);
+    // 文字区（catalog 的 REGIONS，按画面宽的比例）映射进让开左右安全区之后的横向带里：横屏时灵动岛占掉约 59px，
+    // 按整屏宽排的字会钻到它下面。全按像素算：安全区为 0 时 0 + cx * (width - 0 - 0) 与原来的 cx * width
+    // 逐位相同，桌面 / 竖屏的画面一个字节都不变。
+    const sides = options.safeSides ?? NO_SAFE_SIDES;
+    const bandLeft = sides.left;
+    const bandWidth = width - sides.left - sides.right;
+    /** 文字区中心的画面横坐标（像素）。 */
+    const regionX = (region: HanabiProfile['region']) => bandLeft + region.cx * bandWidth;
     const motion = MOTION[theme.animationIntensity] ?? 1;
     const fontScale = options.fontScale ?? 1;
     const graphicsOn = !tuning.textOnly;
@@ -281,7 +299,7 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
 
     /** 画面坐标 (sx, sy) 在 time 时刻对应的镜头容器坐标（不计镜头内运镜）。 */
     const screenToShot = (built: { region: HanabiProfile['region']; timing: ShotTiming }, sx: number, sy: number, time: number) => ({
-        x: sx - built.region.cx * width,
+        x: sx - regionX(built.region),
         y: sy - (built.region.cy * height + built.timing.worldY + timeline.rise(time)),
     });
 
@@ -292,7 +310,7 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
         const palette = paletteOf(profile);
         const region = profile.region;
         const container = new pixi.Container();
-        container.position.set(region.cx * width, region.cy * height + timing.worldY);
+        container.position.set(regionX(region), region.cy * height + timing.worldY);
         const fireworksHolder = new pixi.Container();
         const ornBack = new pixi.Container();
         const ornFront = new pixi.Container();
@@ -309,7 +327,7 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
                 resolution: options.resolution,
                 theme,
                 line: shot.line,
-                regionWidth: region.w * width,
+                regionWidth: region.w * bandWidth,
                 regionHeight: region.h * height,
                 spec: { ...profile.text, heroSize: profile.text.heroSize * fontScale },
                 palette,
@@ -341,11 +359,11 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
         world.addChild(holder);
 
         const { bursts, launches, mains } = graphicsOn
-            ? planShotEvents({ shot, index, timing, palette, text, region, seed: options.seed, screenToShot, width, height, unit, tuning })
+            ? planShotEvents({ shot, index, timing, palette, text, region, seed: options.seed, screenToShot, width, height, bandWidth, regionX, unit, tuning })
             : { bursts: [], launches: [], mains: [] };
         const burstEnd = Math.max(...bursts.map(event => event.at + event.spec.duration), -Infinity);
         const launchEnd = Math.max(...launches.map(event => event.at + event.duration + 0.7), -Infinity);
-        const regionBounds = { x: -region.w * width / 2, y: -region.h * height / 2, width: region.w * width, height: region.h * height };
+        const regionBounds = { x: -region.w * bandWidth / 2, y: -region.h * height / 2, width: region.w * bandWidth, height: region.h * height };
         const collage: CollagePlan = collageOn
             ? planShotCollage({
                 seed: `${options.seed}:${shot.id}`,
@@ -355,8 +373,9 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
                 block: profile.text.block,
                 shotNumber: index,
                 bounds: text?.bounds ?? regionBounds,
-                screen: { x: -region.cx * width, y: -region.cy * height, width, height },
-                screenAt: time => ({ ...screenToShot({ region, timing }, 0, 0, time), width, height }),
+                // 拼贴的「画面」也只给让开安全区的那一段（镜头容器坐标里是 [-cx, 1 - cx] × bandWidth），字样、片名卡不钻进灵动岛。
+                screen: { x: -region.cx * bandWidth, y: -region.cy * height, width: bandWidth, height },
+                screenAt: time => ({ ...screenToShot({ region, timing }, bandLeft, 0, time), width: bandWidth, height }),
                 unit,
                 palette,
                 enterAt: timing.enterAt,
@@ -415,7 +434,7 @@ export const createHanabiScene = (pixi: PixiModule, options: HanabiSceneOptions)
         item.fireworksHolder.addChild(fireworks.view);
         if (glow) item.fireworksHolder.filters = [glow];
         const region = item.shot.profile.region;
-        const bounds = item.text?.bounds ?? { x: -region.w * width / 2, y: -region.h * height / 2, width: region.w * width, height: region.h * height };
+        const bounds = item.text?.bounds ?? { x: -region.w * bandWidth / 2, y: -region.h * height / 2, width: region.w * bandWidth, height: region.h * height };
         const text = item.text;
         const anchorsAt = text ? (time: number) => text.anchors(time) : () => [] as GlyphAnchor[];
         const ornaments = tuning.ornamentAmount > 0
@@ -647,6 +666,10 @@ interface PlanInput {
     screenToShot: (built: { region: HanabiProfile['region']; timing: ShotTiming }, sx: number, sy: number, time: number) => { x: number; y: number };
     width: number;
     height: number;
+    /** 让开左右安全区之后的横向带宽（像素）；没有安全区时等于 width。 */
+    bandWidth: number;
+    /** 文字区中心的画面横坐标（像素，已映射进安全带）。 */
+    regionX: (region: HanabiProfile['region']) => number;
     unit: number;
     tuning: HanabiTuning;
 }
@@ -656,7 +679,7 @@ interface PlanInput {
  * 碎成火花的退场；间奏镜头是一串スターマイン / 千輪。位置都在镜头容器坐标里。
  */
 const planShotEvents = (input: PlanInput): { bursts: BurstEvent[]; launches: LaunchEvent[]; mains: BurstEvent[] } => {
-    const { shot, index, timing, palette, text, region, width, height, unit, tuning } = input;
+    const { shot, index, timing, palette, text, region, width, height, bandWidth, unit, tuning } = input;
     const { profile } = shot;
     const random = createRng(`${input.seed}:${shot.id}:${index}:events`);
     const bursts: BurstEvent[] = [];
@@ -709,7 +732,7 @@ const planShotEvents = (input: PlanInput): { bursts: BurstEvent[]; launches: Lau
         return { bursts, launches, mains: [...bursts] };
     }
 
-    const bounds = text?.bounds ?? { x: -region.w * width / 2, y: -region.h * height / 2, width: region.w * width, height: region.h * height };
+    const bounds = text?.bounds ?? { x: -region.w * bandWidth / 2, y: -region.h * height / 2, width: region.w * bandWidth, height: region.h * height };
     const centerX = bounds.x + bounds.width / 2;
     const centerY = bounds.y + bounds.height / 2;
 
@@ -726,7 +749,7 @@ const planShotEvents = (input: PlanInput): { bursts: BurstEvent[]; launches: Lau
         if (main.kind === 'mine') {
             // スターマイン 从画面底边往上喷。
             const sx = profile.burstAt === 'sides' ? [0.25, 0.75] : [0.3 + random() * 0.4];
-            sx.forEach((x, k) => points.push({ x: x * width - region.cx * width, y: height * 0.94 - region.cy * height, at: at + k * 0.15 }));
+            sx.forEach((x, k) => points.push({ x: x * width - input.regionX(region), y: height * 0.94 - region.cy * height, at: at + k * 0.15 }));
         } else if (profile.burstAt === 'behind') {
             points.push({ x: centerX + (random() - 0.5) * bounds.width * 0.15, y: centerY - radius * 0.15, at });
         } else if (profile.burstAt === 'above') {
@@ -742,7 +765,8 @@ const planShotEvents = (input: PlanInput): { bursts: BurstEvent[]; launches: Lau
             points.push({ x: p.x, y: p.y, at });
         }
         points.forEach((point, k) => {
-            const x = Math.max(-region.cx * width + width * 0.06, Math.min(width * (1 - region.cx) - width * 0.06, point.x));
+            // 主烟花不出安全带：镜头容器坐标里安全带是 [-cx, 1 - cx] × bandWidth（没有安全区时就是原来的整屏宽）。
+            const x = Math.max(-region.cx * bandWidth + width * 0.06, Math.min(bandWidth * (1 - region.cx) - width * 0.06, point.x));
             const event: BurstEvent = { x, y: point.y, at: point.at, spec: main, seed: `${key}${k}`, scale: 1, ...shape(main) };
             bursts.push(event);
             mains.push(event);

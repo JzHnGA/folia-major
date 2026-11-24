@@ -351,6 +351,11 @@ const Visualizer: React.FC<VisualizerProps> = (props) => {
             <motion.div
                 ref={lyricAreaRef}
                 className="relative z-10 w-full h-[70vh] flex items-center justify-center p-8 pointer-events-none will-change-transform"
+                // 横屏时灵动岛 / 刘海在左右两侧：贴边对齐的一句让开安全区（网页与桌面的 inset 为 0，仍是 p-8）。
+                style={{
+                    paddingLeft: 'max(2rem, env(safe-area-inset-left))',
+                    paddingRight: 'max(2rem, env(safe-area-inset-right))',
+                }}
                 animate={lyricContainerFloat?.animate}
                 transition={lyricContainerFloat?.transition}
             >

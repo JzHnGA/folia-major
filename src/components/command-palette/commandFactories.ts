@@ -45,8 +45,7 @@ export const createSettingsCommand = (
     title: string,
     description: string,
     keywords: string[],
-    initialTab: 'help' | 'options',
-    initialSubview: Parameters<CommandPaletteContext['settings']['openSettings']>[1] = null,
+    initialSubview: Parameters<CommandPaletteContext['settings']['openSettings']>[0] = null,
     options: Pick<CommandPaletteCommand, 'platform' | 'isAvailable' | 'executeShortcut'> = {},
 ): CommandPaletteCommand => ({
     id,
@@ -55,9 +54,9 @@ export const createSettingsCommand = (
     description,
     keywords,
     ...options,
-    ...(initialTab === 'options' && initialSubview ? { settingsTarget: { subview: initialSubview } } : {}),
+    ...(initialSubview ? { settingsTarget: { subview: initialSubview } } : {}),
     execute: (_input, context) => {
-        context.settings.openSettings(initialTab, initialSubview);
+        context.settings.openSettings(initialSubview);
         return true;
     },
 });
@@ -84,7 +83,7 @@ export const createSettingsAnchorCommand = (
     ...options,
     settingsTarget: { subview: settingsAnchorSubview(anchorId), anchorId },
     execute: (_input, context) => {
-        context.settings.openSettings('options', settingsAnchorSubview(anchorId), null, anchorId);
+        context.settings.openSettings(settingsAnchorSubview(anchorId), null, anchorId);
         return true;
     },
 });

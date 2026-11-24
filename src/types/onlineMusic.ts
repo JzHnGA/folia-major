@@ -750,6 +750,13 @@ export interface OnlineAuthProvider {
      */
     showsKeptAccountAtStart?: boolean;
     /**
+     * True where the kept account may still be shown if the platform cannot be asked at app start
+     * (a failure or a timeout, not a refusal), even though `showsKeptAccountAtStart` is false. The
+     * remote iOS shell asks for this: it does not paint the kept account before the answer, but it
+     * must not show a signed-in listener as signed out when the remote API is unreachable.
+     */
+    showsKeptAccountOnStartFailure?: boolean;
+    /**
      * What a build from before the account snapshot kept of the signed-in account, asked for where
      * no snapshot is found; null where there is nothing. Only for an adapter that had such caches.
      */
@@ -776,6 +783,9 @@ export interface OnlineAuthProvider {
     // 就回 null，由共用的规则去分（services/onlineMusic/login/loginFailureCase.ts）。在失败之后才被问到，自己不抛错。
     describeLoginFailure?(step: LoginStep, error: unknown): LoginFailureDetail | null;
     createQr?(key: string): Promise<string>;
+    // 这一把 key 对应的登录页面地址：手机端点一下直接把它交给系统（平台自己的 App 注册了这个链接就
+    // 跳进去确认，不用掏另一台设备扫码）。没有这种地址的 provider 不实现，登录窗口就不给这个按钮。
+    getLoginCodeUrl?(key: string): string | null;
     // 不靠扫码、而是在浏览器里确认的登录：provider 实现 createQr 或这一个其中之一；轮询、取消、
     // 过期仍走同一套 key 流程。它在系统浏览器里打开登录的页面，地址由 provider 自己决定，调用方
     // 不传 URL。没有图片可看，UI 开始登录时就打开这个页面（Spotify）。
@@ -1186,6 +1196,15 @@ export interface OnlineMusicProvider {
     mutations?: OnlineMutationProvider;
     /** 平台后端的原始接口（OnlineRawRequestProvider）；没有它的平台不能直通。 */
     raw?: OnlineRawRequestProvider;
+    /**
+     * 远端 API 地址可以由用的人在应用内覆盖的平台（自部署后端、没有内嵌后端的壳）：
+     * resolveConfigured 回此刻能解析出的地址（没有为 null），setOverride 存/清这份覆盖。
+     * 没有这个成员的平台不谈 API 地址。
+     */
+    apiBaseOverride?: {
+        resolveConfigured(): string | null;
+        setOverride(base: string | null): void;
+    };
 }
 
 // Public canonical contract consumed through the omni facade. Provider-prefixed

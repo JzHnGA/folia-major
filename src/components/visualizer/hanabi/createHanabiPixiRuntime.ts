@@ -31,7 +31,7 @@ import { rescaleBeatEnvelope, resolveHanabiBeatPulse } from './hanabiBeatFx';
 import { resolveHanabiChorusWeight, resolveHanabiScreenBloomStrength } from './hanabiScreenBloom';
 import { createHanabiTextures } from './mg/textures';
 import { setHanabiGlyphTextureLimit } from './text/glyphs';
-import type { HanabiBeatSource } from './scene';
+import type { HanabiBeatSource, HanabiSafeSides } from './scene';
 import { buildHanabiOverlay } from './overlay';
 import type { HanabiTextures, HanabiTuning, PixiModule } from './types';
 
@@ -66,6 +66,8 @@ export interface HanabiRuntimeOptions {
     renderScale: LyricRenderScale;
     /** MSAA：建上下文时定，原来写死关着。 */
     antialias: boolean;
+    /** 左右安全区（逻辑像素，useSafeAreaSidesPx）：文字区让开 iPhone 横屏的灵动岛 / 刘海；没有就是 0。 */
+    safeSides: HanabiSafeSides;
     signal?: AbortSignal;
 }
 
@@ -269,6 +271,7 @@ export class HanabiPixiRuntime {
         return buildHanabiSceneEntry(this.pixi, {
             width: this.width,
             height: this.height,
+            safeSides: this.options.safeSides,
             resolution: this.renderResolution,
             program: song.program,
             theme: this.themeFor(song.theme),
@@ -534,6 +537,19 @@ export class HanabiPixiRuntime {
         // 还没装好（第一帧前）时 install 里的 resizeToHost 会按新倍数来。
         if (this.width === 0) return;
         if (this.resizeToHost(false) && this.options.paused) this.renderOnce();
+    }
+
+    /**
+     * 就地换左右安全区（转屏、灵动岛那侧换边）：文字区烘焙在场景里，同窗口缩放一样防抖重建。
+     * 画框与片尾卡不跟着让（画框是装饰；片尾卡居中，离两侧够远）。
+     */
+    setSafeSides(sides: HanabiSafeSides) {
+        const current = this.options.safeSides;
+        if (this.destroyed || (sides.left === current.left && sides.right === current.right)) return;
+        this.options.safeSides = { left: sides.left, right: sides.right };
+        // 还没装好（第一帧前）时 install 里的 resizeToHost 会按新值建第一个场景。
+        if (this.width === 0) return;
+        this.scheduleRebuild();
     }
 
     setShowText(showText: boolean) {

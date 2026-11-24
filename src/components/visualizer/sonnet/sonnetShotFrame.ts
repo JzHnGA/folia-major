@@ -1,5 +1,6 @@
 import type { MotionValue } from 'framer-motion';
 import type { AudioBands, SonnetTuning, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import {
     clamp01,
     easeSonnetInOut,
@@ -35,6 +36,8 @@ export interface SonnetShotFrameContext {
     mod: (key: string) => number;
     /** 智能动感模式 for this frame; null/absent unless it is on and the track's beats are installed. */
     beatFx?: SonnetBeatFxFrame | null;
+    /** 左右安全区（px）。缺省或都是 0 时不做任何收束，镜头与原来逐位相同。 */
+    safeSides?: SafeAreaSides;
 }
 
 /** Reads a mod modulation key, falling back to 1 so the frame is unchanged when absent. */
@@ -72,13 +75,95 @@ const resolveShotTracking = (view: ShotView): ShotTracking => {
     return tracking;
 };
 
+/** 安全区内侧再留的一点空：字贴着灵动岛的边也一样难读。 */
+const SONNET_SAFE_SIDE_MARGIN = 8;
+
+type SegmentExtent = { minX: number; maxX: number; y: number; halfGlyph: number };
+
+// 段落在 shot 本地坐标里的横向范围（取字形的静止位置），建好之后就不变，算一次留着。
+const segmentExtentCache = new WeakMap<ShotView['segments'][number], SegmentExtent>();
+
+const resolveSegmentExtent = (segment: ShotView['segments'][number]): SegmentExtent => {
+    const cached = segmentExtentCache.get(segment);
+    if (cached) return cached;
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let sumY = 0;
+    let halfGlyph = 0;
+    for (const glyph of segment.trackingGlyphs) {
+        // 字形可能带着旋转，取外接框的较长边的一半，宁可多让一点。
+        const bounds = glyph.display.getLocalBounds();
+        const half = Math.max(bounds.width, bounds.height) / 2;
+        halfGlyph = Math.max(halfGlyph, half);
+        minX = Math.min(minX, glyph.baseX - half);
+        maxX = Math.max(maxX, glyph.baseX + half);
+        sumY += glyph.baseY;
+    }
+    const extent = segment.trackingGlyphs.length > 0
+        ? { minX, maxX, y: sumY / segment.trackingGlyphs.length, halfGlyph }
+        : { minX: 0, maxX: 0, y: 0, halfGlyph: 0 };
+    segmentExtentCache.set(segment, extent);
+    return extent;
+};
+
+/**
+ * 有安全区时把 shot 横向挪回来，让正在唱的那个词（镜头跟着的焦点段落）落在 [left, width - right] 里。
+ * 只挪位置、不改缩放和旋转，所以镜头的推拉与倾斜照旧；其余的词仍可能被画面裁掉，那是原来的构图。
+ * 每个跟踪段落各算一个需要的位移，再按焦点权重混合：权重是连续的，换词时位移也是连续的，不会跳。
+ */
+const resolveSonnetSafeSideShift = (
+    view: ShotView,
+    tracking: ShotTracking,
+    focusTime: number,
+    width: number,
+    safeSides: SafeAreaSides,
+) => {
+    const { trackSegments, focusRanges } = tracking;
+    if (trackSegments.length === 0) return 0;
+    const bandLeft = Math.max(0, safeSides.left) + SONNET_SAFE_SIDE_MARGIN;
+    const bandRight = width - Math.max(0, safeSides.right) - SONNET_SAFE_SIDE_MARGIN;
+    if (bandRight <= bandLeft) return 0;
+    const container = view.container;
+    const scale = container.scale.x;
+    const cos = Math.cos(container.rotation);
+    const sin = Math.sin(container.rotation);
+    const toScreenX = (x: number, y: number) => (
+        container.x + scale * (cos * (x - container.pivot.x) - sin * (y - container.pivot.y))
+    );
+    const weights = resolveSonnetFocusWeights(focusRanges, focusTime);
+    let shift = 0;
+    let totalWeight = 0;
+    for (let i = 0; i < trackSegments.length; i++) {
+        const weight = weights[i] ?? 0;
+        if (weight <= 0.001) continue;
+        const segment = trackSegments[i];
+        const extent = resolveSegmentExtent(segment);
+        let left = Math.min(toScreenX(extent.minX, extent.y), toScreenX(extent.maxX, extent.y));
+        let right = Math.max(toScreenX(extent.minX, extent.y), toScreenX(extent.maxX, extent.y));
+        if (right - left > bandRight - bandLeft) {
+            // 整段放不下（长句、五线谱）：只保住此刻唱到的那个字。
+            const focus = resolveSonnetSegmentCameraFocus(segment.trackingGlyphs, focusTime, 1);
+            const focusX = toScreenX(focus.x, focus.y);
+            const half = extent.halfGlyph * scale;
+            left = focusX - half;
+            right = focusX + half;
+        }
+        let segmentShift = 0;
+        if (left < bandLeft) segmentShift = bandLeft - left;
+        else if (right > bandRight) segmentShift = bandRight - right;
+        shift += segmentShift * weight;
+        totalWeight += weight;
+    }
+    return totalWeight > 0 ? shift / totalWeight : 0;
+};
+
 export const updateSonnetShot = (
     view: ShotView,
     time: number,
     width: number,
     height: number,
     shakeIntensity: number,
-    { tuning, smartBeatEnabled, theme, audioBands, audioPower: audioPowerValue, mod, beatFx }: SonnetShotFrameContext,
+    { tuning, smartBeatEnabled, theme, audioBands, audioPower: audioPowerValue, mod, beatFx, safeSides }: SonnetShotFrameContext,
 ) => {
     const progress = resolveShotProgress(view.shot, time);
     const motion = tuning.typographyMotion * resolveSonnetAnimationScale(theme) * mod('motionScale');
@@ -178,6 +263,18 @@ export const updateSonnetShot = (
         // On, but no beats for this track (yet): the original frame, including what an earlier
         // beat FX frame - the previous track's - left on these layers.
         restoreSonnetBeatFxLayers(view);
+    }
+
+    // 放在镜头与节拍推拉都算完之后：收束看的是这一帧真正落到屏幕上的位置。
+    if (safeSides && (safeSides.left > 0 || safeSides.right > 0)) {
+        const focusTime = Math.max(view.shot.startTime, Math.min(time, view.shot.endTime));
+        view.container.x += resolveSonnetSafeSideShift(
+            view,
+            resolveShotTracking(view),
+            focusTime,
+            width,
+            safeSides,
+        );
     }
 
     if (view.mgParticleLayer) {

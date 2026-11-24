@@ -1,6 +1,8 @@
 import type React from 'react';
 import type { SettingsOptionDef } from '../kit';
 import type { SettingsSectionId } from '../navigation/settingsNavModel';
+import * as account from './AccountSecurityPage';
+import * as ai from './AiPage';
 import * as appearance from './AppearancePage';
 import * as desktop from './DesktopPage';
 import * as developer from './DeveloperPage';
@@ -31,7 +33,9 @@ const PAGE_MODULES: Record<SettingsSectionId, PageModule> = {
     general,
     interaction,
     integration,
+    ai,
     storage,
+    account,
     desktop,
     graphics,
     mods,

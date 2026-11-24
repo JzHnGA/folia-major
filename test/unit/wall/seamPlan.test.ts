@@ -108,6 +108,23 @@ describe('seam geometry', () => {
         expect(getSeamGeometry({ anchorX: -2000, cameraX: 0, openWidth: 0, view: LAPTOP }).collapsed).toBe(false);
     });
 
+    it('keeps the narrow home rail at its layout width at the viewport edge', () => {
+        // Screen x 50: the regular rule would squeeze a 120 px opening to twice the 36 px room.
+        const anchor = (50 - PHONE.width / 2) / PHONE.scale;
+        const atEdge = getSeamGeometry({ anchorX: anchor, cameraX: 0, openWidth: 120, view: PHONE, keepWidth: true });
+        expect(atEdge.screenX).toBeCloseTo(50, 6);
+        expect(atEdge.width).toBe(120);
+        expect(atEdge.collapsed).toBe(false);
+
+        // The same opening without the narrow-rail rule still narrows, as a wide info bar should.
+        expect(getSeamGeometry({ anchorX: anchor, cameraX: 0, openWidth: 300, view: PHONE }).width).toBeCloseTo(72, 6);
+
+        // Once the centre leaves the viewport the rail closes instead of overhanging forever.
+        const off = getSeamGeometry({ anchorX: (PHONE.width / 2 + 150) / PHONE.scale, cameraX: 0, openWidth: 120, view: PHONE, keepWidth: true });
+        expect(off.width).toBe(0);
+        expect(off.collapsed).toBe(true);
+    });
+
     it('spans the camera positions that keep the whole opening on screen', () => {
         const span = getSeamCameraSpan({ anchorX: 100, openWidth: 64, view: PHONE });
         const need = 64 / 2 + 14;
@@ -118,6 +135,22 @@ describe('seam geometry', () => {
         }
         const tooWide = getSeamCameraSpan({ anchorX: 100, openWidth: 500, view: PHONE });
         expect(tooWide.min).toBe(tooWide.max);
+    });
+
+    it('yields the camera past a system safe area on one side', () => {
+        // The preferred boundary would sit off the left edge; with a 59 px safe area the yield stops
+        // at 59 + 14 margin + half the opening instead of the plain 14 px margin.
+        const plan = blockSeamPlan({ cameraX: 2000, openWidth: 64, view: PHONE, metrics: METRICS, preferX: 0, edgeBefore: 59 });
+        const geometry = getSeamGeometry({ anchorX: 0, cameraX: plan.cameraX, openWidth: 64, view: PHONE, edgeBefore: 59 });
+        expect(geometry.screenX).toBeCloseTo(59 + 14 + 32, 6);
+        expect(geometry.width).toBeCloseTo(64, 6);
+        expect(geometry.collapsed).toBe(false);
+
+        // A spine whose centre is inside the safe area no longer keeps its width there.
+        const anchor = (50 - PHONE.width / 2) / PHONE.scale;
+        const inside = getSeamGeometry({ anchorX: anchor, cameraX: 0, openWidth: 64, view: PHONE, keepWidth: true, edgeBefore: 59 });
+        expect(inside.width).toBe(0);
+        expect(inside.collapsed).toBe(true);
     });
 
     it('moves the two halves apart by half the opening plus half a scaled gap', () => {

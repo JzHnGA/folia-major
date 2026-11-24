@@ -1,4 +1,4 @@
-import { type DioramaLineRaster, rasterDioramaLine } from './dioramaTextRaster';
+import { type DioramaLineRaster, rasterDioramaLine, releaseDioramaTexture } from './dioramaTextRaster';
 import { NEIGHBOR_RASTER_BUDGET } from './dioramaSceneConstants';
 import { type VisibleLineEntry } from './dioramaSceneTypes';
 
@@ -37,7 +37,7 @@ export class DioramaLineRasterCache {
         // otherwise keep serving the previous song's words at the right place forever. Flush on the epoch
         // for the same reason the font change flushes: every entry is now derived from stale input.
         if (this.font !== fontSpec || this.epoch !== linesEpoch) {
-            cache.forEach((raster) => raster.texture.dispose());
+            cache.forEach((raster) => releaseDioramaTexture(raster.texture));
             cache.clear();
             this.font = fontSpec;
             this.epoch = linesEpoch;
@@ -49,7 +49,7 @@ export class DioramaLineRasterCache {
         let changed = false;
         cache.forEach((raster, index) => {
             if (!wanted.has(index)) {
-                raster.texture.dispose();
+                releaseDioramaTexture(raster.texture);
                 cache.delete(index);
                 changed = true;
             }
@@ -92,7 +92,7 @@ export class DioramaLineRasterCache {
     }
 
     disposeAll() {
-        this.rasters.forEach((raster) => raster.texture.dispose());
+        this.rasters.forEach((raster) => releaseDioramaTexture(raster.texture));
         this.rasters.clear();
     }
 }

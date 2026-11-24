@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { type ConfigEnv, type UserConfig, type ViteDevServer } from 'vite';
+import { type ConfigEnv, type Plugin, type UserConfig, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { commandPinyinPlugin } from './dev/pinyin/commandPinyinPlugin.mjs';
 import { traditionalLocalePlugin } from './dev/i18n/traditionalLocalePlugin.mjs';
@@ -128,6 +128,71 @@ function devLyricProxyPlugin() {
           sendLyricProxyJson(res, 500, { error: 'Proxy request failed', details: String(error) });
         }
       });
+    },
+  };
+}
+
+/**
+ * iOS 壳的构建裁剪：grid 入口换成不可用的空清单，PonderHost 换成空组件。
+ * registry 用 eager glob 发现各 suite 目录下的 entry.ts，这里在解析阶段拦下 grid 的入口，
+ * 连它静态 import 的 Grid3D / GridView / GridMap 一起不进包；glob 的键仍是
+ * `./suites/grid/entry.ts`，registry 拿到的是一份 available:false 的清单。
+ * 默认 suite 由 .env.ios 的 VITE_LIBRARY_DEFAULT_SUITE=bravais 指过去。
+ * App 里 PonderHost 的 import 也在这里换成空组件，Ponder registry / 教程层不进 iOS 包；
+ * 手机教程由 components/mobile-tutorial 提供。
+ * 另外 8 个在线平台（酷狗 / QQ / 波点 / YouTube Music / Spotify / 汽水 / Apple Music / 飞牛）
+ * 的 provider 模块换成只有 id 的占位：iOS 只注册网易云，其余平台只在源码里保留给桌面 / Web 构建。
+ */
+const IOS_PROVIDER_STUBS: readonly { suffix: string; id: string; exportName: string; }[] = [
+  { suffix: 'kugou/kugouProvider', id: 'kugou', exportName: 'kugouProvider' },
+  { suffix: 'qq/qqProvider', id: 'qq', exportName: 'qqProvider' },
+  { suffix: 'bodian/bodianProvider', id: 'bodian', exportName: 'bodianProvider' },
+  { suffix: 'ytm/ytmProvider', id: 'ytm', exportName: 'ytmProvider' },
+  { suffix: 'spotify/spotifyProvider', id: 'spotify', exportName: 'spotifyProvider' },
+  { suffix: 'qishui/qishuiProvider', id: 'qishui', exportName: 'qishuiProvider' },
+  { suffix: 'appleMusic/appleMusicProvider', id: 'appleMusic', exportName: 'appleMusicProvider' },
+  { suffix: 'fnmusic/fnmusicProvider', id: 'fnmusic', exportName: 'fnmusicProvider' },
+];
+
+/** providerRegistry 用相对路径 import（`./kugou/kugouProvider`），也可能被解析成绝对路径。 */
+const providerStubIndex = (source: string): number => {
+  const normalized = source.replace(/\\/g, '/').replace(/\.ts$/, '');
+  return IOS_PROVIDER_STUBS.findIndex(entry => normalized.endsWith(entry.suffix));
+};
+
+function iosBravaisOnlyPlugin(mode: string): Plugin {
+  const GRID_STUB_ID = '\0folia-ios-bravais-only:grid-suite-entry';
+  const PONDER_STUB_ID = '\0folia-ios-bravais-only:ponder-host';
+  const providerStubId = (index: number) => `\0folia-ios-bravais-only:provider-${index}`;
+  return {
+    name: 'folia-ios-bravais-only',
+    enforce: 'pre',
+    resolveId(source) {
+      if (mode !== 'ios') return null;
+      if (/suites[\\/]grid[\\/]entry\.ts$/.test(source)) return GRID_STUB_ID;
+      if (/components[\\/]ponder[\\/]PonderHost(?:\.tsx)?$/.test(source)) return PONDER_STUB_ID;
+      const providerIndex = providerStubIndex(source);
+      if (providerIndex >= 0) return providerStubId(providerIndex);
+      return null;
+    },
+    load(id) {
+      if (id === GRID_STUB_ID) {
+        return `export default ${JSON.stringify({
+          id: 'grid',
+          labelKey: 'libraryTui.rendererGrid',
+          available: false,
+          surfaces: {},
+        })};\n`;
+      }
+      if (id === PONDER_STUB_ID) {
+        return 'export default function PonderHost() { return null; }\n';
+      }
+      const providerIndex = IOS_PROVIDER_STUBS.findIndex((_, index) => providerStubId(index) === id);
+      if (providerIndex >= 0) {
+        const stub = IOS_PROVIDER_STUBS[providerIndex];
+        return `export const ${stub.exportName} = { id: ${JSON.stringify(stub.id)} };\n`;
+      }
+      return null;
     },
   };
 }
@@ -277,8 +342,10 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       traditionalLocalePlugin(),
       icuFoliaDataPlugin(),
       nebbiaStrokesPlugin(),
+      iosBravaisOnlyPlugin(_config.mode),
       react(),
-      VitePWA({
+      // iOS（Capacitor）构建不带 Service Worker：capacitor:// scheme 上注册不了，也没有离线意义。
+      ...(_config.mode === 'ios' ? [] : [VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         devOptions: {
@@ -320,7 +387,7 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
             }
           ]
         }
-      })
+      })])
     ],
     define: {
       '__COMMIT_HASH__': JSON.stringify(commitHash + commitSuffix),

@@ -60,10 +60,22 @@ const ACTIVE_PROVIDER_STORAGE_KEY = 'active_online_provider_id';
 
 const delay = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
-const seedAccount = (providerId: string, status: 'authenticated' | 'anonymous'): void => {
+const seedAccount = (providerId: string, status: 'authenticated' | 'anonymous' | 'checking'): void => {
     const store = useOnlineProviderAccountStore.getState();
     if (status === 'anonymous') {
         store.clearAccount(providerId);
+        return;
+    }
+    if (status === 'checking') {
+        store.updateAccount(providerId, {
+            status: 'unknown',
+            user: null,
+            collections: [],
+            likedSongIds: [],
+            hydration: 'loading',
+            freshness: 'refreshing',
+            error: undefined,
+        });
         return;
     }
     store.updateAccount(providerId, {

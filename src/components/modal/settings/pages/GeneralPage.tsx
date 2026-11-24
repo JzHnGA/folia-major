@@ -20,13 +20,13 @@ import { useSettingsPage } from './settingsPageContext';
 const LANGUAGE: SettingsGroupDef = { id: 'languageSettings', titleKey: 'options.languageSettings' };
 const LAUNCH: SettingsGroupDef = { id: 'labWindowAndTools', titleKey: 'options.settingsHeadingLaunch' };
 const UPDATE: SettingsGroupDef = { id: 'updateCheck', titleKey: 'options.updateCheck', electronOnly: true };
-const PONDER: SettingsGroupDef = { id: 'ponderHints', titleKey: 'options.ponderHints' };
+const PONDER: SettingsGroupDef = { id: 'ponderHints', titleKey: 'options.ponderHints', mobileHidden: true };
 
 const O = {
     language: option(LANGUAGE, 'appLanguage', 'options.appLanguage'),
     autoPlay: option(LAUNCH, 'autoPlayOnLaunch', 'options.autoPlayOnLaunch'),
     openPlayer: option(LAUNCH, 'openPlayerOnLaunch', 'options.openPlayerOnLaunch', { electronOnly: true }),
-    titlebarButtons: option(LAUNCH, 'alwaysShowMainWindowTitlebar', 'options.alwaysShowMainWindowTitlebar'),
+    titlebarButtons: option(LAUNCH, 'alwaysShowMainWindowTitlebar', 'options.alwaysShowMainWindowTitlebar', { mobileHidden: true }),
     updateCheck: option(UPDATE, 'enableUpdateCheck', 'options.enableUpdateCheck'),
     autoUpdate: option(UPDATE, 'enableAutoUpdate', 'options.enableAutoUpdate'),
     updateChannel: option(UPDATE, 'updateChannel', 'options.updateChannel'),
@@ -75,11 +75,13 @@ const GeneralPage: React.FC = () => {
                         value={languagePreference}
                         options={[
                             { value: 'system', label: t('options.appLanguageSystem') },
-                            { value: 'zh-CN', label: t('options.appLanguageZhCN') },
-                            { value: 'zh-TW', label: t('options.appLanguageZhTW') },
-                            { value: 'en', label: t('options.appLanguageEnUS') },
-                            { value: 'in', label: t('options.appLanguageInID') },
-                            { value: 'vi', label: t('options.appLanguageViVN') },
+                            // Each language is named in itself (English stays "English" in a Chinese
+                            // interface), so a user can find their own language whatever is active.
+                            { value: 'zh-CN', label: i18n.t('options.appLanguageZhCN', { lng: 'zh-CN' }) },
+                            { value: 'zh-TW', label: i18n.t('options.appLanguageZhTW', { lng: 'zh-TW' }) },
+                            { value: 'en', label: i18n.t('options.appLanguageEnUS', { lng: 'en' }) },
+                            { value: 'in', label: i18n.t('options.appLanguageInID', { lng: 'in' }) },
+                            { value: 'vi', label: i18n.t('options.appLanguageViVN', { lng: 'vi' }) },
                         ]}
                         onChange={preference => void setLanguagePreference(preference)}
                     />

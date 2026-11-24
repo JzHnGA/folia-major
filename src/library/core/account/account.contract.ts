@@ -115,6 +115,8 @@ export type LibraryLoginSessionSnapshot = {
     inBrowser: boolean;
     /** 二维码图片地址；还没拿到、或者是在浏览器里确认的登录时为空串。 */
     codeImage: string;
+    /** 这一把 key 对应的登录页面地址（手机端交给系统打开，跳进平台自己的 App 确认）；没有这种地址时为空串。 */
+    codeUrl: string;
     /** 这一次登录的页面能不能由窗口再打开一次（provider 自己打开、关掉即结束的不能）。 */
     canReopenLoginPage: boolean;
     /**
@@ -385,8 +387,8 @@ export interface LibraryAccountController {
 export type LibraryAccountAuthPort = {
     /** 没有 auth 的 provider 回空数组。 */
     resolveLoginMethods(providerId: OnlineProviderId): Promise<LoginMethod[]>;
-    /** 扫码的回二维码图片；在浏览器里确认的回空串。 */
-    startLogin(providerId: OnlineProviderId, methodId?: string): Promise<{ key: string; imageUrl: string }>;
+    /** 扫码的回二维码图片；在浏览器里确认的回空串。codeUrl 是登录页面的地址，provider 没给就没有。 */
+    startLogin(providerId: OnlineProviderId, methodId?: string): Promise<{ key: string; imageUrl: string; codeUrl?: string }>;
     checkLogin(providerId: OnlineProviderId, key: string): Promise<LoginState>;
     /** 只释放这一把 key，幂等；调用方 fire-and-forget。 */
     cancelLogin(providerId: OnlineProviderId, key: string): Promise<void>;

@@ -19,7 +19,7 @@ import type { BravaisWallShape } from './bravaisWallShape';
 // 块边界、相机只做最小让位；不在屏内就在当前视口里另取最近的块边界（B5 的 blockSeamPlan）。
 // 缝内过渡（设计稿 §7「缝内的过渡」）：内容翻转用 bravaisSeamMotion 的半圈（与墙上磁贴同一种绕 Y 轴的翻牌），降低动效
 // （B11 的同一套判断）时换成 0.18s 淡出 → 换 → 淡入；从折叠回来时开口补间、内容随之淡入（降低动效时开口不补间，内容
-// 淡入）。过渡中内容层挂 data-bravais-seam-flip。首页换页签也整条翻（2026-10-09 起，与原型一致）。
+// 淡入）。过渡中内容层挂 data-bravais-seam-flip。首页换页签就地换内容，不整条翻、不压暗，信息条不会闪一下。
 // 信息条横向：锚点可以是块行边界的世界 y（横的缝，内容绕 X 轴翻）。缝换方向（横的信息条 ↔ 竖的面板 / 海报，或改了设置）
 // 不翻：开口先在原来的方向上合上（内容随之淡出、不可点），合上的那一刻换锚点与内容，再在新方向上张开（axis switch）。
 // 换方向途中来的目标宽度不另起补间，张开时取最新的；沿用的锚点若是按别的宽度排的（面板换成海报），张开前按新宽度重排。
@@ -215,7 +215,7 @@ export const useBravaisSeam = ({
         axis: SeamAxis = 'x',
         tiltDeg = 0,
     ): BravaisOpeningPlan => {
-        const { view } = frameRef.current;
+        const { view, safeLeft, safeRight } = frameRef.current;
         if (!view) return { anchor: prefer ?? anchorOf(frameRef.current), center };
         if (axis === 'y' && !poster) {
             const plan = blockSeamPlanY({
@@ -243,6 +243,9 @@ export const useBravaisSeam = ({
             preferX,
             // 要倾斜的缝离视口左右边多留一段：转过去之后上端 / 下端不横着出屏。
             edge: seamPlanEdge({ view, openWidth: width, tiltDeg, edge: SEAM_EDGE_MARGIN }),
+            // 横屏时灵动岛 / 刘海占掉的那一侧也要让开：书脊不能开在它下面。
+            edgeBefore: safeLeft,
+            edgeAfter: safeRight,
         });
         return { anchor: columnAnchor(plan.x), center: { x: plan.cameraX, y: center.y } };
     }, [frameRef, getShape]);
@@ -435,7 +438,7 @@ export const useBravaisSeam = ({
         tweenCamera(plan.center);
     }, [frameRef, getShape, isAnchorOnScreen, isPoster, layer, layerKey, planOpening, setAnchor, targetAxis, targetWidth, tiltFor, tweenCamera]);
 
-    // 缝里的内容：换层（首页换页签也是换层，2026-10-09 起整条翻）或换形态时翻转（转到 90° 换内容与排版宽度），同一层的
+    // 缝里的内容：换层（首页换页签也是换层，但就地换内容、不动整条）或换形态时翻转（转到 90° 换内容与排版宽度），同一层的
     // 数据更新就地刷新（渲染时取最新的层）。
     const renderedLayer = rendered.layer && layer && resolveSeamContentIdentity(rendered.layer) === resolveSeamContentIdentity(layer) ? layer : rendered.layer;
     const renderedKey = `${rendered.variant}|${rendered.layer ? resolveSeamContentIdentity(rendered.layer) : ''}`;
@@ -461,6 +464,11 @@ export const useBravaisSeam = ({
         const focused = element && active instanceof HTMLElement && element.contains(active) ? active : null;
         // 焦点在标题（切换开口的那个）上且是键盘焦点（:focus-visible）：换完内容把焦点交给新内容里的标题。
         const toggleByKeyboard = Boolean(focused?.hasAttribute('data-bravais-seam-toggle') && focused.matches(':focus-visible'));
+        // 首页换页签是同一个 form 的换层：页签行、工具格都还在原处，只是选中的页签和中段换了。就地换内容，整条不翻、
+        // 不压暗（之前压暗一档再亮回来，看上去整条信息条闪一下）。
+        const homeTabSwitch = rendered.layer?.surface === 'home'
+            && latestTargetRef.current.layer?.surface === 'home'
+            && rendered.variant === latestTargetRef.current.targetVariant;
         const swap = (animateIn: boolean) => {
             const next = latestTargetRef.current;
             pendingInRef.current = animateIn ? { fromNone, reduced: reducedTransitions, focused, toggleByKeyboard } : null;
@@ -472,8 +480,8 @@ export const useBravaisSeam = ({
         }
         // 折叠与展开之间不翻：开口从 0 补间、内容随开口淡入（frame 的 contentOpacity）。降低动效时开口不补间，
         // 内容在折叠回来时淡入。
-        if (!element || flipMode !== 'flip') {
-            swap(Boolean(element) && fromNone && reducedTransitions);
+        if (!element || flipMode !== 'flip' || homeTabSwitch) {
+            swap(Boolean(element) && fromNone && reducedTransitions && !homeTabSwitch);
             return undefined;
         }
         inAnimationRef.current?.cancel();
@@ -559,12 +567,20 @@ export const useBravaisSeam = ({
 
     /** 此刻缝本该张开却被挤到屏外收起了（边缘标签在场）。 */
     const isCollapsed = useCallback(() => {
-        const { anchorX: x, anchorY: y, view, center, openWidth, poster } = frameRef.current;
+        const { anchorX: x, anchorY: y, view, center, openWidth, poster, safeLeft, safeRight } = frameRef.current;
         if (!view || targetWidth <= 0) return false;
         const width = Math.max(openWidth, targetWidth);
         if (y !== null) return getSeamGeometryY({ anchorY: y, cameraY: center.y, openWidth: width, view }).collapsed;
         if (x === null) return false;
-        return getSeamGeometry({ anchorX: x, cameraX: center.x, openWidth: width, view, edge: seamEdgeFor(poster) }).collapsed;
+        return getSeamGeometry({
+            anchorX: x,
+            cameraX: center.x,
+            openWidth: width,
+            view,
+            edge: seamEdgeFor(poster),
+            edgeBefore: safeLeft,
+            edgeAfter: safeRight,
+        }).collapsed;
     }, [frameRef, targetWidth]);
 
     const contentWidth = resolveVariantWidth(rendered.variant, viewportWidth, rendered.axis);

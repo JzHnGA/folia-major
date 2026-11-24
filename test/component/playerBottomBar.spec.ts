@@ -9,6 +9,24 @@ import { expect, test } from './fixtures';
 const ROOT = '[data-probe-positioning]';
 const CAPSULE = '.rounded-full.cursor-pointer, .rounded-full.cursor-grab';
 
+test('the bar is centered on the bottom, hidden or not', async ({ page, mount }) => {
+    await mount('playerBottomBar');
+    const shell = page.locator('.player-bar-shell');
+    await expect(shell).toBeVisible();
+    const viewport = page.viewportSize()!;
+    const centerOffset = async () => {
+        const box = (await shell.boundingBox())!;
+        return Math.abs(box.x + box.width / 2 - viewport.width / 2);
+    };
+
+    expect(await centerOffset()).toBeLessThanOrEqual(1);
+
+    // 自动收起时只该往下滑，不该把水平居中（translate 的 -50%）丢掉。
+    await page.evaluate(() => document.querySelector('.player-bar-shell')?.setAttribute('data-auto-hidden', ''));
+    await page.waitForTimeout(450);
+    expect(await centerOffset()).toBeLessThanOrEqual(1);
+});
+
 const offsetOf = (page: Page) => page.locator(ROOT).getAttribute('data-probe-offset');
 
 async function enterPositioning(page: Page): Promise<void> {

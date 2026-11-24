@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { selectWallLocate, useBottomDockStore } from '../../../src/stores/useBottomDockStore';
+import { isDockCompactWithCapsule, selectWallLocate, useBottomDockStore } from '../../../src/stores/useBottomDockStore';
 
 // test/unit/stores/bottomDockStore.test.ts
 // progress-bar v3 底部那一排的离散状态：挂件按登记者记、墙定位动作最后登记的生效、更新不改顺序。
@@ -44,5 +44,12 @@ describe('useBottomDockStore', () => {
         const before = useBottomDockStore.getState();
         before.setWallLocate('lattice', null);
         expect(useBottomDockStore.getState()).toBe(before);
+    });
+
+    it('keeps companions docked while the capsule is only auto-hidden', () => {
+        expect(isDockCompactWithCapsule({ layout: 'compact', capsule: 'rest', capsuleAutoHidden: false })).toBe(true);
+        expect(isDockCompactWithCapsule({ layout: 'compact', capsule: 'none', capsuleAutoHidden: true })).toBe(true);
+        expect(isDockCompactWithCapsule({ layout: 'compact', capsule: 'none', capsuleAutoHidden: false })).toBe(false);
+        expect(isDockCompactWithCapsule({ layout: 'desktop', capsule: 'none', capsuleAutoHidden: true })).toBe(false);
     });
 });

@@ -58,7 +58,7 @@ const ModsPage: React.FC = () => {
 
             {/* The manager draws cards of its own, so this group is a heading over them, not a kit card. */}
             <SettingsAnchor anchorId={MANAGER.id} label={managerTitle} className="mt-7">
-                <h3 className="mb-2 flex min-h-6 items-center px-1 text-[13px] font-semibold leading-5 text-[color:var(--st-t2)]">{managerTitle}</h3>
+                <h3 className="mb-3 flex min-h-6 items-center px-1 text-[13px] font-semibold leading-5 text-[color:var(--st-t2)]">{managerTitle}</h3>
                 <ModManager classes={MANAGER_CLASSES} isDaylight={isDaylight} theme={theme ?? null} />
             </SettingsAnchor>
         </>

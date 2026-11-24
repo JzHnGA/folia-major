@@ -65,6 +65,8 @@ export type ProviderLoginSessionSnapshot = Readonly<{
     inBrowser: boolean;
     /** 二维码图片地址；还没拿到、或者在浏览器里确认时为空串。 */
     codeImage: string;
+    /** 这一把 key 对应的登录页面地址（手机端交给系统打开用）；provider 没给时为空串。 */
+    codeUrl: string;
     /** 这一次登录的页面能不能再打开一次（provider 自己打开的不能）。 */
     canReopenLoginPage: boolean;
     /** 诊断报告 `failure:` 那一行的形态；没扫就过期、auth 能力缺失都不算，为 null。 */
@@ -161,6 +163,7 @@ const INITIAL_SNAPSHOT: ProviderLoginSessionSnapshot = Object.freeze({
     phase: 'idle',
     inBrowser: false,
     codeImage: '',
+    codeUrl: '',
     canReopenLoginPage: true,
     failureKind: null,
     failure: null,
@@ -174,6 +177,7 @@ const sameSnapshot = (a: ProviderLoginSessionSnapshot, b: ProviderLoginSessionSn
     && a.phase === b.phase
     && a.inBrowser === b.inBrowser
     && a.codeImage === b.codeImage
+    && a.codeUrl === b.codeUrl
     && a.canReopenLoginPage === b.canReopenLoginPage
     && a.failureKind === b.failureKind
     && a.failure === b.failure
@@ -471,7 +475,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
     // ─── 第 2 步：开始 ─────────────────────────────────────────────────
 
     /** 发出开始请求并登记为在途；同步抛错由调用方按 start-error 处理，此时没有在途请求，不必登记。 */
-    const requestStart = (round: RoundState): Promise<{ key: string; imageUrl: string }> => {
+    const requestStart = (round: RoundState): Promise<{ key: string; imageUrl: string; codeUrl?: string }> => {
         const request = Promise.resolve(auth.startLogin(round.providerId, round.methodId));
         const settledRequest = request.then(() => undefined, () => undefined);
         pendingCreate = settledRequest;
@@ -491,7 +495,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
             return;
         }
 
-        let started: { key: string; imageUrl: string };
+        let started: { key: string; imageUrl: string; codeUrl?: string };
         try {
             if (pendingCreate) {
                 await pendingCreate;
@@ -515,7 +519,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
         activeSession = { providerId: round.providerId, key: started.key };
         round.awaiting = true;
         const opensItself = askSafely(() => auth.opensLoginPageItself(round.providerId, started.key));
-        update({ codeImage: started.imageUrl, phase: 'waiting', canReopenLoginPage: !opensItself });
+        update({ codeImage: started.imageUrl, codeUrl: started.codeUrl ?? '', phase: 'waiting', canReopenLoginPage: !opensItself });
         lastLoggedPhase = 'waiting';
         note('ready');
         // 没有东西要先看：登录一开始就把浏览器打开（provider 自己已经打开的除外）。
@@ -544,6 +548,7 @@ export const createProviderLoginSession = (deps: ProviderLoginSessionDeps): Prov
             phase: 'loading',
             inBrowser,
             codeImage: '',
+            codeUrl: '',
             canReopenLoginPage: true,
             failureKind: null,
             failure: null,

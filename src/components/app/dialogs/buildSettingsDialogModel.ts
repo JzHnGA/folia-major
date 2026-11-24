@@ -144,7 +144,6 @@ export const buildSettingsDialogModel = ({
         replayGainMode,
         onReplayGainModeChange,
         onToggleTransparentPlayerBackground,
-        initialTab: state.initialTab,
         initialSubview: state.initialSubview ?? null,
         initialVisualizerSection: state.initialVisualizerSection ?? null,
         initialAnchor: state.initialAnchor ?? null,

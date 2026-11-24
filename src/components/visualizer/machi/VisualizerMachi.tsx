@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Line, Theme } from '../../../types';
+import { useSafeAreaSidesPx, type SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { loadLucideIcons } from '../../../services/lucideIconResolver';
 import { useAppViewStore } from '../../../stores/useAppViewStore';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
@@ -38,6 +39,8 @@ const loadMachiIcons = (theme: Theme) => loadLucideIcons([...(theme.lyricsIcons 
 interface VisualizerMachiProps extends VisualizerSharedProps {
     machiTuning: MachiTuning;
 }
+
+const NO_SAFE_SIDES: SafeAreaSides = { left: 0, right: 0 };
 
 const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
     const {
@@ -77,6 +80,9 @@ const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
     const renderQuality = useGlobalLyricRenderQuality();
     const renderPinned = useLyricRenderQualityPin() !== null;
     const [contextEpoch, setContextEpoch] = useState(0);
+    // 左右安全区（iPhone 横屏的灵动岛）：构图让开它。小图在页面里一个小框中，碰不到灵动岛，不让。
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = isPreviewMode ? NO_SAFE_SIDES : deviceSafeSides;
     // 取景控制条：只在播放页上（预览不接拖拽，也没有地方存改动；画面在主页后面当背景时也不出）。
     const onPlayerPage = useAppViewStore(state => state.view === 'player');
     const cameraBarAvailable = onPlayerPage && !isPreviewMode && Boolean(onVisualizerTuningChange);
@@ -93,8 +99,8 @@ const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
     }, [machiTuning, barDraft, renderPinned]);
 
     // 运行时创建期间这些输入可能已经变了；create 完成后按最新值补一次。
-    const latestRef = useRef({ theme, paused, showText, staticMode, machiTuning, shownTuning, renderQuality, onVisualizerTuningChange });
-    latestRef.current = { theme, paused, showText, staticMode, machiTuning, shownTuning, renderQuality, onVisualizerTuningChange };
+    const latestRef = useRef({ theme, paused, showText, staticMode, machiTuning, shownTuning, renderQuality, onVisualizerTuningChange, safeSides });
+    latestRef.current = { theme, paused, showText, staticMode, machiTuning, shownTuning, renderQuality, onVisualizerTuningChange, safeSides };
 
     const previewFromBar = useCallback((patch: Partial<MachiTuning>) => {
         barDraftRef.current = { ...barDraftRef.current, ...patch };
@@ -163,6 +169,7 @@ const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
                 onSceneShown: setShownScene,
                 fallbackIcons: MACHI_FALLBACK_ICONS,
                 onContextLost: () => setContextEpoch(epoch => epoch + 1),
+                safeSides: latest.safeSides,
                 signal,
             });
             const current = latestRef.current;
@@ -172,6 +179,7 @@ const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
             runtime.setShowText(current.showText);
             runtime.setStaticMode(current.staticMode);
             runtime.setPaused(current.paused);
+            runtime.setSafeSides(current.safeSides.left, current.safeSides.right);
             return runtime;
         },
         swap: async (runtime, song) => {
@@ -209,6 +217,10 @@ const VisualizerMachi: React.FC<VisualizerMachiProps> = (props) => {
     useEffect(() => {
         runtimeRef.current?.setPaused(paused);
     }, [paused, runtimeRef]);
+
+    useEffect(() => {
+        runtimeRef.current?.setSafeSides(safeSides.left, safeSides.right);
+    }, [safeSides, runtimeRef]);
 
     // 离开播放页、播放页的町景画面拆掉（换了别的歌词样式）时收起取景控制条。
     useEffect(() => {

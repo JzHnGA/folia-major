@@ -29,7 +29,7 @@ const DevLibraryRendererSwitch: React.FC<{ sessionKey: string; placement?: keyof
     const { t } = useTranslation();
     const activeSuite = useActiveLibrarySuiteId();
     const reduceMotion = useMotionSettingsStore(state => resolveReducedMotion(state, 'uiMicroMotion'));
-    // 紧凑档（窗口窄于 960，progress-bar v3）底部只留进度条胶囊，这条挪到左上角（标题栏和墙的返回按钮下面）。
+    // 紧凑档（窗口窄于 960，progress-bar v3）底部只留进度条胶囊，这条挪到左上角（标题栏下面）。
     const isCompact = useIsBottomLayoutCompact();
 
     return (

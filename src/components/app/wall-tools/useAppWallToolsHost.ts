@@ -66,7 +66,7 @@ export const createWallToolsHostStore = (latest: { current: WallToolsHostDeps })
             generateTheme: () => latest.current.invokeCommandById(WALL_TOOLS_THEME_COMMAND),
             previewVolume: volume => latest.current.previewVolume(volume),
             openPlayer: () => latest.current.navigateToPlayer(),
-            openSettings: () => openSettings('options'),
+            openSettings: () => openSettings(),
             // 留在墙上：点歌只换歌，不跳播放页（与 Lattice 点海报同一个调用）。
             playQueueSong: song => {
                 void latest.current.playSong(song, latest.current.playQueue, false, { shouldNavigateToPlayer: false });

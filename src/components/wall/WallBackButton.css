@@ -1,14 +1,14 @@
-/* src/components/wall/WallBackButton.css — 墙面左上角的返回按钮（WallBackButton），Lattice 与 bravais 共用。
-   .lattice-back 的规则原在 components/app/lattice/Lattice.css，整段搬来（实测反馈 1）；is-concealed 是 bravais 的
-   隐藏式用法：平时不显示，鼠标进入左上角热区或键盘聚焦时出现（与播放页 VisualizerShell 左上角那颗的行为一致）。 */
+/* src/components/wall/WallBackButton.css — 墙面左上角的返回按钮（WallBackButton），Lattice 与其它海报墙共用。
+   .lattice-back 的规则原在 components/app/lattice/Lattice.css，整段搬来（实测反馈 1）；is-concealed 是隐藏式用法：
+   平时不显示，鼠标进入左上角热区或键盘聚焦时出现（与播放页 VisualizerShell 左上角那颗的行为一致）。bravais 现在不画它。 */
 
 /* Same shape and weight as the grid and player back buttons, and the one place the wall's
    square-everything rule is deliberately overridden. */
 .lattice-back {
     position: absolute;
     /* --window-buttons-drop：窗口按钮靠左时 AppShell 设的下移量，让开标题栏；借用这个类的刷新钮、分区胶囊一起下移。 */
-    top: calc(20px + var(--window-buttons-drop, 0px));
-    left: 24px;
+    top: calc(20px + env(safe-area-inset-top) + var(--window-buttons-drop, 0px));
+    left: max(24px, calc(env(safe-area-inset-left) + 16px));
     z-index: 5;
     display: grid;
     width: 40px;
@@ -57,5 +57,5 @@
 :root[data-reduce-motion~='lattice'] .lattice-back.is-concealed { transition: none; }
 
 @media (max-width: 640px) {
-    .lattice-back { top: calc(14px + var(--window-buttons-drop, 0px)); left: 16px; }
+    .lattice-back { top: calc(14px + env(safe-area-inset-top) + var(--window-buttons-drop, 0px)); left: max(16px, calc(env(safe-area-inset-left) + 8px)); }
 }

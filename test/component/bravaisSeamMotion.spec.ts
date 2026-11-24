@@ -6,10 +6,10 @@ import '../../dev/probes/homeBehavior/probeApi';
 // test/component/bravaisSeamMotion.spec.ts
 // 缝里的过渡（设计稿 §7「缝内的过渡」）：homeBehavior 探针 + setSuite('bravais')。
 // - 换层：整条缝的内容层翻牌（data-bravais-seam-flip 依次是 flip-out → flip-in，放完摘掉），换完内容是新的一层；
-// - 首页换页签：整条缝翻一次（2026-10-09 起与原型一致；之前只翻中段，在线页签的中段常常是空的，看上去是硬切），
+// - 首页换页签：内容层就地换，不翻、不压暗（整条信息条不闪）；
 //   页签列还是原来那些节点（不重建），中段不再单独翻；
 // - 「⋯」菜单：弹出时从缩小、透明开始，收起时放完动画才卸载，Esc 后焦点回到「⋯」；
-// - 降低动态效果（reduce_motion_lattice）：换层与中段都走 fade-out → fade-in，不出现翻转；菜单只淡入、不缩放。
+// - 降低动态效果（reduce_motion_lattice）：换层走 fade-out → fade-in，不出现翻转；首页换页签同样就地换；菜单只淡入、不缩放。
 // 过渡很短，轮询抓不稳：在页面里用 MutationObserver 记下标记的每一次变化，再断言顺序。
 
 const stage = (page: Page) => page.locator('[data-library-stage="bravais"]');
@@ -50,6 +50,24 @@ const recordFlips = (page: Page, selectors: Record<string, string>) => page.eval
 
 const flipLog = (page: Page) => page.evaluate(() => (window as Window & { __flipLog?: Record<string, string[]> }).__flipLog!) as Promise<FlipLog>;
 
+/** 记下缝内容层在一段时间里的 opacity：首页换页签不能压暗它（压暗再亮回来，整条信息条看上去闪一下）。 */
+const recordContentOpacity = (page: Page) => page.evaluate(() => {
+    const frames: number[] = [];
+    const element = document.querySelector<HTMLElement>('.bravais-seam-content');
+    if (!element) return;
+    const start = performance.now();
+    const tick = () => {
+        frames.push(Number(getComputedStyle(element).opacity));
+        if (performance.now() - start < 700) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    (window as Window & { __seamOpacityFrames?: number[] }).__seamOpacityFrames = frames;
+});
+
+const contentOpacityFrames = (page: Page) => page.evaluate(() => (
+    (window as Window & { __seamOpacityFrames?: number[] }).__seamOpacityFrames ?? []
+));
+
 /** 记下菜单出现后头几帧的透明度与 transform（弹出动画的起点）。 */
 const watchMenu = (page: Page) => page.evaluate(() => {
     const frames: { opacity: number; transform: string }[] = [];
@@ -76,22 +94,25 @@ const openOwnedPlaylist = async (page: Page) => {
 };
 
 test.describe('[bravais-only] seam motion', () => {
-    test('switching home tabs flips the whole seam once, keeping the tab nodes; opening a collection flips it too', async ({ mount, page }) => {
+    test('switching home tabs swaps the seam in place without dimming it, keeping the tab nodes; opening a collection flips it', async ({ mount, page }) => {
         await mountBravais(mount, page);
         await recordFlips(page, {
             content: '.bravais-seam-content',
             middle: '[data-bravais-home-body]',
             tab: '[data-bravais-tab="albums"]',
         });
-        // 换页签：整条缝翻一次，里面不再各自翻；页签列是同一批节点（不重建）。
+        // 换页签：整条内容就地换，不翻、不压暗；页签列是同一批节点（不重建）。
         await page.evaluate(() => {
             (document.querySelector('[data-bravais-tab="playlist"]') as HTMLElement & { __kept?: boolean }).__kept = true;
         });
+        await expect.poll(() => page.locator('.bravais-seam-content').evaluate(node => Number(getComputedStyle(node).opacity))).toBe(1);
+        await recordContentOpacity(page);
         await seam(page).locator('[data-bravais-tab="albums"]').click();
         await expect(stage(page)).toHaveAttribute('data-bravais-layer', 'home:albums');
         await seamStill(page);
         let log = await flipLog(page);
-        expect(log.content).toEqual(['still', 'flip-out', 'flip-in', 'still']);
+        expect(log.content).toEqual(['still']);
+        expect(Math.min(...await contentOpacityFrames(page))).toBe(1);
         expect(log.middle).toEqual(['still']);
         expect(log.tab).toEqual(['still']);
         expect(await page.evaluate(() => (document.querySelector('[data-bravais-tab="playlist"]') as HTMLElement & { __kept?: boolean }).__kept)).toBe(true);
@@ -139,7 +160,7 @@ test.describe('[bravais-only] seam motion', () => {
         await expect(stage(page)).toHaveAttribute('data-bravais-layer', 'home:albums');
         await seamStill(page);
         let log = await flipLog(page);
-        expect(log.content).toEqual(['still', 'fade-out', 'fade-in', 'still']);
+        expect(log.content).toEqual(['still']);
         expect(log.middle).toEqual(['still']);
         await settled(page);
         await seam(page).locator('[data-bravais-tab="playlist"]').click();

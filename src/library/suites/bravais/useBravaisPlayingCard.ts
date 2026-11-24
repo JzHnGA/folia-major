@@ -1,5 +1,8 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { WallSlot } from '../../../components/wall/wallSlots';
+import { isNightstandSupported } from '../../../components/nightstand/nightstandPlatform';
+import { selectDisplayPlayerState, usePlaybackStore } from '../../../stores/usePlaybackStore';
+import { PlayerState } from '../../../types';
 import { resolveSlotItem, type BravaisDisplay } from './bravaisDisplay';
 import { findDisplayItemSlot } from './bravaisItemSlots';
 import {
@@ -96,6 +99,52 @@ export const useBravaisPlayingCard = ({
         focusSlot(decision.slot);
         expand(decision.slot);
     }, [display, expand, focusSlot, focusedRef, frameRef, isSettling, seq]);
+
+    // Nightstand（iOS 壳 / ?nightstand=1）：音乐一播放就自动展开正在播放的那张聚焦卡（含自动切歌换到新的一首），
+    // 不用先离开再回来。用户在同一首歌期间手动收起或点开别的卡，这首歌就不再强行展开；换歌后重新允许。
+    const playerState = usePlaybackStore(selectDisplayPlayerState);
+    /** 本次自动展开的是哪一首（用来分辨「用户收起了我们展开的卡」）。 */
+    const autoExpandedEntryRef = useRef<string | null>(null);
+    /** 被用户收起过、不再自动展开的那一首。 */
+    const suppressedEntryRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!isNightstandSupported()) return;
+        const entryKey = display?.layer.nowPlayingKey ?? null;
+        if (!entryKey) {
+            autoExpandedEntryRef.current = null;
+            suppressedEntryRef.current = null;
+            return;
+        }
+        // 换歌：上一首的收起记录作废。
+        if (suppressedEntryRef.current && suppressedEntryRef.current !== entryKey) {
+            suppressedEntryRef.current = null;
+        }
+        if (!display) return;
+        const slot = bravaisSlotFromKey(expandedSlotKey, display.shape);
+        const expandedKey = slot ? resolveSlotItem(display, slot)?.key ?? null : null;
+        if (expandedKey === entryKey) return;
+        // 展开的不再是这首：若这张卡是我们自动展开的，说明用户手动收起/移开了，这首歌期间尊重他。
+        if (autoExpandedEntryRef.current === entryKey) {
+            autoExpandedEntryRef.current = null;
+            suppressedEntryRef.current = entryKey;
+        }
+    }, [display, expandedSlotKey]);
+
+    useEffect(() => {
+        if (!isNightstandSupported()) return;
+        if (!display || isSettling || playerState !== PlayerState.PLAYING) return;
+        const entryKey = display.layer.nowPlayingKey;
+        if (!entryKey || suppressedEntryRef.current === entryKey) return;
+        const expandedSlot = bravaisSlotFromKey(expandedSlotKey, display.shape);
+        if (expandedSlot && resolveSlotItem(display, expandedSlot)?.key === entryKey) return;
+        const slot = findDisplayItemSlot(display, entryKey, seamPointOf(frameRef.current));
+        if (!slot) return;
+        armBravaisPlayingCard(display.layer.key, entryKey);
+        autoExpandedEntryRef.current = entryKey;
+        focusSlot(slot);
+        expand(slot);
+    }, [display, expand, expandedSlotKey, focusSlot, frameRef, isSettling, playerState]);
 
     // 失效：只看同一次显示里聚焦卡的变化（换层那次提交里 stage 收起聚焦卡，序号也变了，跳过）。
     const observedRef = useRef<{ seq: number | null; expanded: string | null }>({ seq, expanded: expandedSlotKey });

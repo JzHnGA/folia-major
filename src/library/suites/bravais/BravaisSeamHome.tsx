@@ -59,8 +59,8 @@ import './bravaisHome.css';
 // 当前页过滤（设计稿 §7.6）：过滤输入位（BravaisSeamFilterField）只在正在输入或有过滤词时出现，排在导航区与账户入口
 // 之间（自然高度，导航区照旧是唯一可伸缩的一段，页签的缩减按剩下的高度重新量）；平时不占窄缝的纵向空间，入口是墙上
 // 直接打字与「⋯」里的「过滤当前页」。书脊（64px）放不下输入框：过滤中只有一个强调色的过滤图标，点它或打字先展开成窄缝。
-// 动效（设计稿 §7「缝内的过渡」）：换页签时整条缝像磁贴一样翻成新页签（useBravaisSeam，2026-10-09 起与原型一致；之前
-// 页签列不动、只翻中段，在线页签的中段常常是空的，看上去是硬切）；换二级切换时各行滑到新位置、新的文字翻进来；缩减
+// 动效（设计稿 §7「缝内的过渡」）：换页签时信息条就地换内容（useBravaisSeam；不翻也不压暗，避免整条闪一下）；
+// 换二级切换时各行滑到新位置、新的文字翻进来；缩减
 // 级别变了页头淡入新的样子；扫描进度、管理隐藏的开关淡入 / 淡出；状态文字换了翻进新的一行。降低动效时都只淡入淡出。
 // 直达入口（特殊集合：我喜欢的音乐、私人 FM、全部歌曲…）：二级切换是「换这面墙看什么」（tab，选中态），入口是「打开那张
 // 集合」（普通按钮），所以分开成两组、中间一道线。点它交给 stage 的 openShortcut（与点墙上那张卡同一条打开路径）。放不下时
@@ -306,8 +306,10 @@ const BravaisSeamHome: React.FC<{
     const short = level === 'short';
     // 直达入口放得下就在中段，否则挪进「⋯」菜单（先于二级切换让位）。
     const shortcutsInColumn = hasJumps && fit.shortcuts;
+    const tabCount = tabs.length;
     const labelsKey = tabs.map(tab => tab.label).join('\u0000');
-    const shortLabels = useMemo(() => abbreviateSeamTabLabels(labelsKey.split('\u0000')), [labelsKey]);
+    // 页签全被关掉时 labelsKey 是空串，split 会得到 ['']（一个字母对零个页签），下面按下标取 tabs[i] 就崩了：零个页签就是零个短形。
+    const shortLabels = useMemo(() => (tabCount === 0 ? [] : abbreviateSeamTabLabels(labelsKey.split('\u0000'))), [labelsKey, tabCount]);
     // 元数据行：平时是来源（在线平台名 / 本地 / Navidrome），本地导入 / 重扫时换成扫描进度。
     // fb2：来源名与账户位（在线平台名）、当前页签（本地 / Navidrome）重复，窄缝里纵向空间最紧，平时不画，只在扫描时
     // 显示进度；页签缩成一个字时全名在页签的 title / aria-label 里。

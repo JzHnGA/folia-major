@@ -1,4 +1,5 @@
 import React from 'react';
+import type { LibraryAccountActionId } from '../../core/account/account.contract';
 import type { LibraryActionId, LibraryArtistActionId, LibraryHomeActionId, LibrarySuiteManifest } from '../../core/suite/suite.contract';
 import type { LibraryNavigationContext } from '../../core/suite/suite.contract';
 
@@ -9,9 +10,9 @@ import type { LibraryNavigationContext } from '../../core/suite/suite.contract';
 //
 // B6（骨架）只实现首页（「歌单」页签）与集合页的浏览，按「声明以 entry 为准」只声明做到了的 surface 与动作：
 // 歌手页与账户没声明，照常回退 grid；首页的目录 / 导入等动作、集合页的过滤与变更动作在 B7–B10 补齐。
-// B8 起歌手页也由 bravais 渲染（10 个动作）；B8 当时账户仍回退 grid，B10 起账户也由 bravais 渲染（见下一行）。
+// B8 起歌手页也由 bravais 渲染（10 个动作）；B8 当时账户仍回退 grid，现在账户也由 bravais 渲染（见 ACCOUNT_ACTIONS）。
 // B9 起首页五个页签都铺墙，声明 grid 的全部 15 个首页动作（见 HOME_ACTIONS）；后来探索页卡片上的两个只有 bravais 声明（共 17 个）。
-// B10 起账户也由 bravais 渲染（登录与确认在缝里，见 ACCOUNT_ACTIONS），不再回退 grid 的登录弹窗。
+// B10 起账户也由 bravais 渲染：登录在共用的登录窗口里，缝里的账户入口打开它；account surface 只画切换确认框。
 // 本文件只能静态 import react（test/unit/library/suiteEntries.test.ts）：组件与 stage 一律 React.lazy，
 // 没选 bravais 的人不加载它的任何 chunk。
 
@@ -51,6 +52,7 @@ const BravaisStage = React.lazy(() => import('./BravaisStage'));
 const BravaisHome = React.lazy(() => import('./BravaisHome'));
 const BravaisCollection = React.lazy(() => import('./BravaisCollection'));
 const BravaisArtist = React.lazy(() => import('./BravaisArtist'));
+const BravaisAccount = React.lazy(() => import('./BravaisAccountSurface'));
 
 // 集合页（B7 齐了 grid 的 23 个，入口见设计稿 §10.2）：聚焦卡主按钮（播放 / 入队）、文字链接（专辑 / 歌手）与「⋯」
 // （移出 / 不喜欢、手动匹配、加入歌单）；缝里的播放全部 / 入队、过滤输入位（缝自己的，墙上直接打字）、收藏星标、元数据行的续传、
@@ -97,8 +99,7 @@ const COLLECTION_ACTIONS: readonly LibraryActionId[] = [
 // - 管理隐藏：缝里常驻的「管理隐藏」按钮进入的视图（只看隐藏）；歌单类磁贴右上角的眼睛按钮切换隐藏。
 // - 本地窄缝「⋯」的导入文件夹 / 刷新 / 导入歌单文件；Navidrome 窄缝的刷新。
 // 在线账户：首页在线页签窄缝里只有一个账户入口，点了打开共用的登录窗口（src/components/login）；换平台、登录、
-// 登出、选方式、失败详情与本地服务重启都在窗口里。bravais 不声明 account surface：切换确认
-// 整体回退到 grid 的确认框（registry 的回退规则）。
+// 登出、选方式、失败详情与本地服务重启都在窗口里。account surface（BravaisAccountSurface）只画待确认切换的确认框。
 // - 探索页签的歌曲磁贴与聚焦卡：右上角悬浮的「加入速记簿」「收藏到歌单」（explore-collect / explore-save-to-playlist）。
 const HOME_ACTIONS: readonly LibraryHomeActionId[] = [
     'directory-filter',
@@ -136,6 +137,19 @@ const ARTIST_ACTIONS: readonly LibraryArtistActionId[] = [
     'open-album',
     'open-artist',
     'open-all-songs',
+];
+
+// 账户 surface：登录在共用的登录窗口里（src/components/login，App 挂一个，所有 suite 共用），缝里的账户入口打开它。
+// 这里只画待确认切换的确认框；眼下切换不再确认，框不会出现。声明它之后 bravais 就是一套完整的 suite：
+// iOS 构建只留它时，它可以直接当默认 suite（默认 suite 必须实现全部 surface）。
+const ACCOUNT_ACTIONS: readonly LibraryAccountActionId[] = [
+    'account-login',
+    'account-login-method',
+    'account-switch-confirm',
+    'account-select',
+    'account-logout',
+    'account-login-diagnostics',
+    'account-backend-restart',
 ];
 
 // 外观动作（suite-chrome，只出现在命令面板里）：缝的三级开口、在这里裂开缝、定位正在播放。
@@ -221,6 +235,7 @@ const bravais: LibrarySuiteManifest = {
         home: { component: BravaisHome, actions: HOME_ACTIONS },
         collection: { component: BravaisCollection, actions: COLLECTION_ACTIONS },
         artist: { component: BravaisArtist, actions: ARTIST_ACTIONS },
+        account: { component: BravaisAccount, actions: ACCOUNT_ACTIONS },
     },
     chromeActions: CHROME_ACTIONS,
     // B11（设计稿 §10.8）：换层的翻牌由 stage 观察导航深度驱动（应用内返回、浏览器后退、N1 折回、面包屑跳层都是一次

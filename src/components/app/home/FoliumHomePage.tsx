@@ -92,7 +92,12 @@ export function FoliumHomePage({ entry, extraTabs, account, surfaceProps }: Foli
 
     return <section ref={sectionRef} data-folium-home-page={entry.id} data-folia-keyboard-window="true"
         aria-label={label} className="absolute inset-0 z-[60] flex min-h-0 flex-col overflow-hidden pt-8 pointer-events-auto"
-        style={{ backgroundColor: theme.backgroundColor, color: theme.primaryColor }}
+        style={{
+            backgroundColor: theme.backgroundColor,
+            color: theme.primaryColor,
+            // 边到边：页面底色铺到状态栏后面，页头自己让出安全区。
+            paddingTop: 'calc(env(safe-area-inset-top) + 2rem)',
+        }}
         onKeyDown={event => {
             // Keep the host's explicit global palette entry reachable, including from a ShadowRoot input.
             if (isCommandPaletteShortcut(event.nativeEvent)) return;

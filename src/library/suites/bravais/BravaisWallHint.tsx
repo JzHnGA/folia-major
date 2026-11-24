@@ -17,6 +17,15 @@ const BravaisWallHint: React.FC<{
             <div key={`${hint.title}\u0000${hint.body ?? ''}`} className="bravais-wall-hint-text">
                 <p className="bravais-wall-hint-title">{hint.title}</p>
                 {hint.body && <p className="bravais-wall-hint-body">{hint.body}</p>}
+                {hint.action && (
+                    <button
+                        type="button"
+                        className="bravais-wall-hint-action"
+                        onClick={event => hint.action?.onClick(event.currentTarget)}
+                    >
+                        {hint.action.label}
+                    </button>
+                )}
             </div>
         )}
     </div>

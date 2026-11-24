@@ -82,7 +82,8 @@ export interface LibraryHomeData {
     stageIsActive?: boolean;
     onOpenStagePlayer?: () => void;
     theme: Theme;
-    onOpenSettings?: (initialTab?: 'help' | 'options') => void;
+    /** `general` is where the update row lives, so a caller that flags an update asks for it. */
+    onOpenSettings?: (subview?: 'general') => void;
     /** `source`: what the wall shows (the app's LatticeSource in stores/useAppViewStore); the play queue when left out. */
     onOpenLattice?: (source?: 'queue' | 'explore') => void;
     navidromeEnabled?: boolean;

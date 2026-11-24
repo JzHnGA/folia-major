@@ -17,7 +17,7 @@ const sceneHasRoomSound = () => getScene(useSceneSettingsStore.getState().sceneI
 const outputIs = (output: SoundTracingOutput) => useSoundTracingStore.getState().output === output;
 
 export const sceneCommands: CommandPaletteCommand[] = [
-    createSettingsCommand('settings-scene', 'Scene settings', 'Open the scene window', ['scene', 'cinema', '场景', '影厅', '场景设置'], 'options', 'scene'),
+    createSettingsCommand('settings-scene', 'Scene settings', 'Open the scene window', ['scene', 'cinema', '场景', '影厅', '场景设置'], 'scene'),
     ...listScenes()
         .filter(scene => sceneIdKind(scene.manifest.id) === 'builtin')
         .map(scene => createToggleCommand(

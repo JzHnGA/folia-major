@@ -28,10 +28,14 @@ export const resolveFumeGlowBases = (animationIntensity: Theme['animationIntensi
             : 0.62) * glowIntensity,
 });
 
-/** Whether a block's world rect lands within `overscan` px of the viewport under this camera. */
-export const isFumeBlockOnScreen = (block: FumeBlock, camera: CameraTarget, viewport: ViewportSize, overscan = 180) => {
+/**
+ * Whether a block's world rect lands within `overscan` px of the viewport under this camera.
+ * `centerX` is where the camera's look point is projected (the safe-span centre); it defaults to the
+ * viewport centre so callers without side insets see the old test.
+ */
+export const isFumeBlockOnScreen = (block: FumeBlock, camera: CameraTarget, viewport: ViewportSize, overscan = 180, centerX = viewport.width * 0.5) => {
     const screenScale = camera.scale;
-    const screenLeft = viewport.width * 0.5 + (block.x - camera.x) * screenScale;
+    const screenLeft = centerX + (block.x - camera.x) * screenScale;
     const screenTop = viewport.height * 0.5 + (block.y - camera.y) * screenScale;
     const screenRight = screenLeft + block.width * screenScale;
     const screenBottom = screenTop + block.height * screenScale;

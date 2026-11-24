@@ -32,7 +32,7 @@ const O = {
     animation: option(TRANSITION, 'transitionAnimation', 'options.transitionAnimation'),
     animationRing: option(TRANSITION, 'transitionAnimationRing', 'options.transitionAnimationRing'),
     animationCard: option(TRANSITION, 'transitionAnimationCard', 'options.transitionAnimationCard'),
-    outputDevice: option(SOUND, 'audioOutputDevice', 'options.audioOutputDevice'),
+    outputDevice: option(SOUND, 'audioOutputDevice', 'options.audioOutputDevice', { mobileHidden: true }),
     replayGain: option(SOUND, 'replayGainSettings', 'options.replayGainMode'),
     fade: option(SOUND, 'playbackFade', 'options.playbackFade'),
     transcode: option(SOUND, 'transcodeFallback', 'options.transcodeFallback', { electronOnly: true }),

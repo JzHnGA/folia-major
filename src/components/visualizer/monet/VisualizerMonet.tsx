@@ -245,7 +245,12 @@ const VisualizerMonet: React.FC<VisualizerMonetProps> = (props) => {
                 </motion.div>
             )}
 
-            <div ref={shellRef} className="relative z-10 flex h-full w-full items-center justify-center overflow-hidden">
+            {/* 横屏时灵动岛 / 刘海在左右两侧：整行让开安全区，歌词和封面都不压进去（网页与桌面的 inset 为 0）。 */}
+            <div
+                ref={shellRef}
+                className="relative z-10 flex h-full w-full items-center justify-center overflow-hidden"
+                style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+            >
                 {/* Not clipped: the cover's shadow reaches past the row's edge, and the shell above clips at the screen. */}
                 <div
                     className={`flex h-full w-full items-center ${mirrored ? 'flex-row-reverse' : 'flex-row'}`}
@@ -612,8 +617,12 @@ const VisualizerMonet: React.FC<VisualizerMonetProps> = (props) => {
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 1.2, ease: [0.25, 1, 0.5, 1], delay: 0.8 }}
-                    className={`absolute bottom-0 ${mirrored ? 'right-0' : 'left-0'} z-20 h-10 overflow-hidden px-5 sm:px-8 lg:px-14`}
-                    style={{ width: 'min(450px, 55vw)' }}
+                    className="absolute bottom-0 z-20 h-10 overflow-hidden px-5 sm:px-8 lg:px-14"
+                    // 贴着的那条屏幕边让开横屏的灵动岛 / 刘海。
+                    style={{
+                        width: 'min(450px, 55vw)',
+                        [mirrored ? 'right' : 'left']: 'env(safe-area-inset-' + (mirrored ? 'right' : 'left') + ')',
+                    }}
                 >
                     <div className="h-full w-full">
                         <AudioOverlay

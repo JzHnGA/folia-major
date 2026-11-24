@@ -1,12 +1,11 @@
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion, useIsPresent, useTransform, type MotionStyle } from 'framer-motion';
+import { AnimatePresence, motion, useIsPresent } from 'framer-motion';
 import { CircleHelp, Command, Layers3, Settings2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLatticeSettingsStore } from '../../stores/useLatticeSettingsStore';
 import { openCommandPalette } from '../../stores/useAppViewStore';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { usePlayerBottomBarBottomPx } from '../../hooks/usePlayerBottomBarBottomPx';
-import { holdCompanionHover, releaseCompanionHover, useBottomDockStore, useIsDockCompactWithCapsule } from '../../stores/useBottomDockStore';
+import { useSupportsFinePointer } from '../../hooks/useSupportsFinePointer';
+import { isNativeAppShell } from '../../utils/appSurface';
 import { SlideActionButton } from '../shared/SlideActionButton';
 import { WallToolsQuickRow, WallToolsRow, type WallToolsEntry, type WallToolsQuickAction } from './WallToolsRows';
 import { useWallToolsCommonActions } from './useWallToolsCommonActions';
@@ -17,7 +16,7 @@ import './WallToolsButton.css';
 // src/components/wall/WallToolsButton.tsx
 // 海报墙右下角的工具按钮（Lattice 与 bravais 共用）：点按打开锚定的玻璃面板，向左滑打开命令面板。
 // 面板从上到下：一排纯图标快捷格 → 音量 → 墙自己的条目 → 海报叠色 → 开灯 / 关灯与帮助。
-// 两面墙结构一致，只有和场景有关的部分由使用方传入：按钮上方的定位按钮（above）、快捷排里的 destination
+// 两面墙结构一致，只有和场景有关的部分由使用方传入：快捷排里的 destination
 // （bravais 前往 Lattice、Lattice 回到首页）、自己的条目（bravais 的「墙面外观」与透光、Lattice 的「墙面」与切歌自动聚焦）
 // 和帮助内容。洗牌、主题、队列、播放器、设置五格与音量滑条是公共部分，由 useWallToolsCommonActions 从宿主（wallToolsHost）组装；
 // 快捷格的固定顺序是 shuffle-queue / generate-theme / queue / destination / open-player / open-settings，缺的跳过。
@@ -49,11 +48,6 @@ export type WallToolsButtonProps = {
     /** 帮助列表的内容（若干 `<li>`）。 */
     help: ReactNode;
     /**
-     * 按钮正上方、面板之下的一样东西（Lattice 的定位按钮，与集合页的同一个）：与按钮排成一列，面板与浮岛整体上移让开。
-     * Lattice 与 bravais 都给（有歌在放时）。
-     */
-    above?: ReactNode;
-    /**
      * 在 dock 里时要不要认领（缺省要）：墙此刻不显示（首页层被盖住、当前层不归这面墙）时不认领，dock 里就没有它这一份。
      * 不在 dock 里（就地渲染）时不看它。
      */
@@ -73,10 +67,11 @@ const resolveSlot = (slot: WallToolsQuickSlot | undefined): WallToolsQuickAction
 );
 
 /** 按钮与面板本身（dock 里与就地渲染都画这一份）。 */
-export function WallToolsSurface({ idPrefix, label, isDaylight, destination, entries, help, above }: WallToolsButtonProps) {
+export function WallToolsSurface({ idPrefix, label, isDaylight, destination, entries, help }: WallToolsButtonProps) {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
+    const hideKeyboardHelp = isNativeAppShell();
     // 面板正在随这次打开浮现：浮岛与它同时挂上时晚一拍出现（下面的面板先到，浮岛跟上）；面板入场动画结束后复位，
     // 之后在开着的面板上点「队列」格展开浮岛不再等。
     const [islandTrailsPanel, setIslandTrailsPanel] = useState(false);
@@ -92,24 +87,7 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
     const handleToggleLatticeLights = useLatticeSettingsStore(state => state.handleToggleLatticeLights);
     const tintEnabled = useLatticeSettingsStore(state => state.latticePosterTintEnabled);
     const handleToggleLatticePosterTint = useLatticeSettingsStore(state => state.handleToggleLatticePosterTint);
-    const isWideLayout = useMediaQuery('(min-width: 640px)');
-    const bottomPx = usePlayerBottomBarBottomPx(isWideLayout ? 24 : 16);
-    // 紧凑档（窗口窄于 960，progress-bar v3）：按钮挂到进度条胶囊的右端（bottomDock.css 平移根节点，面板与浮岛跟着走），
-    // 上方那颗定位按钮不画，定位改由胶囊左端的封面按（Lattice / bravais 把定位动作登记进 useBottomDockStore）。
-    const isDocked = useIsDockCompactWithCapsule();
-    useEffect(() => {
-        useBottomDockStore.getState().setCompanion(`wall-tools:${idPrefix}`, true);
-        return () => {
-            useBottomDockStore.getState().setCompanion(`wall-tools:${idPrefix}`, false);
-            releaseCompanionHover(true);
-        };
-    }, [idPrefix]);
-    useEffect(() => {
-        useBottomDockStore.getState().setCompanionOpen('wall-tools', isOpen);
-        return () => useBottomDockStore.getState().setCompanionOpen('wall-tools', false);
-    }, [isOpen]);
-    // stack 的 max-height 要减掉按钮此刻的底距（随底栏抬升量变），经 CSS 变量交给样式。
-    const bottomVar = useTransform(bottomPx, value => `${value}px`);
+    const canSlide = useSupportsFinePointer();
     const host = useWallToolsHost();
 
     const close = () => {
@@ -174,11 +152,7 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
     return (
         <motion.div
             ref={rootRef}
-            style={{ bottom: bottomPx, '--wall-tools-bottom': bottomVar } as unknown as MotionStyle}
-            className={`lattice-tools group dock-companion dock-companion--wall-tools ${isDocked ? 'is-docked' : ''} ${above && !isDocked ? 'has-above' : ''} ${isDaylight ? 'is-daylight' : ''}`}
-            // 挂在胶囊上时鼠标停在这里胶囊也算悬停；只认鼠标和笔，手指点完补发的 mouseenter 不算。
-            onPointerEnter={(event) => { if (isDocked && event.pointerType !== 'touch') holdCompanionHover(); }}
-            onPointerLeave={(event) => { if (event.pointerType !== 'touch') releaseCompanionHover(); }}
+            className={`lattice-tools group ${isDaylight ? 'is-daylight' : ''}`}
         >
             {/* 面板与队列浮岛叠在按钮上方的一列里（column-reverse：面板在下、浮岛在上）：定位在 stack 上，面板自己不再 absolute。 */}
             <div className={showQueueIsland ? 'lattice-tools-stack has-queue-island' : 'lattice-tools-stack'}>
@@ -188,7 +162,7 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                             id={panelId}
                             role="menu"
                             aria-label={label}
-                            initial={{ opacity: 0, scale: 0.9, originX: 1, originY: 1 }}
+                            initial={{ opacity: 0, scale: 0.9, originX: 1, originY: 0 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.9 }}
                             transition={{ duration: 0.2, ease: 'easeOut' }}
@@ -211,7 +185,8 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                                     <span className={lightsOn ? 'is-active' : ''}>{t('home.latticeLightsOn')}</span>
                                     <span className={lightsOn ? '' : 'is-active'}>{t('home.latticeLightsOff')}</span>
                                 </button>
-                                <button
+                                {/* 帮助里全是键盘快捷键：iOS 壳没有键盘操作，不给「?」也不给列表。 */}
+                                {!hideKeyboardHelp && <button
                                     type="button"
                                     role="menuitem"
                                     className="lattice-tools-action lattice-tools-help-trigger"
@@ -222,9 +197,9 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                                     onClick={() => setShowHelp(visible => !visible)}
                                 >
                                     <CircleHelp aria-hidden="true" />
-                                </button>
+                                </button>}
                                 <AnimatePresence initial={false}>
-                                    {showHelp && (
+                                    {showHelp && !hideKeyboardHelp && (
                                         <motion.div
                                             id={helpId}
                                             role="note"
@@ -247,9 +222,8 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                 </AnimatePresence>
             </div>
 
-            {!isDocked && above}
             <SlideActionButton
-                docked={isDocked}
+                docked={false}
                 icon={isOpen ? X : Settings2}
                 title={label}
                 onActivate={() => {
@@ -265,6 +239,7 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                 isDaylight={isDaylight}
                 accentColor="var(--text-accent)"
                 accentForeground="var(--text-on-accent, #ffffff)"
+                canSlide={canSlide}
             />
         </motion.div>
     );

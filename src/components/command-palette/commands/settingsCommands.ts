@@ -16,8 +16,10 @@ import { gridViewCardsSurface } from '../surfaces/gridViewCardsSurface';
 import { reduceMotionSurface } from '../surfaces/reduceMotionSurface';
 import { librarySuitePickerSurface } from '../surfaces/librarySuitePickerSurface';
 import { libraryWallLookCommands } from './libraryWallLookCommands';
-import { openCurrentPagePonder } from '../../../services/ponder/pagePonderTarget';
+import { openCurrentPagePonder, openPonderNavigation } from '../../../services/ponder/pagePonderTarget';
+import { isNightstandSupported } from '../../nightstand/nightstandPlatform';
 import { copyText } from '../../../utils/system/clipboard';
+import { isDeviceAiHost } from '../../../services/deviceAi/deviceAiSettings';
 
 // src/components/command-palette/commands/settingsCommands.ts
 // Commands in the `settings` group: settings subviews, app toggles, theme, sync, and desktop-only switches.
@@ -50,28 +52,42 @@ function gpuPreferenceCommand(preference: GpuPreference, title: string, descript
 }
 
 export const settingsCommands: CommandPaletteCommand[] = [
-    createSettingsCommand('settings-help', 'Open Help', 'Open help and shortcuts', ['help', '帮助'], 'help', null, { executeShortcut: 'h' }),
     {
         id: 'ponder-current-page',
         group: 'settings',
         title: 'Ponder this page',
         description: 'Open the interactive guide for the current page',
         keywords: ['ponder', 'guide', 'tutorial', '思索', '页面教程'],
+        // iOS 壳不挂 Ponder，这条命令没有可打开的教程。
+        isAvailable: () => !isNightstandSupported(),
         execute: () => {
             openCurrentPagePonder();
+            return true;
+        },
+    },
+    {
+        id: 'ponder-navigation',
+        group: 'settings',
+        title: 'Open Help',
+        description: 'Browse every interactive tutorial',
+        keywords: ['help', '帮助', 'ponder', 'tutorial', '全部教程'],
+        executeShortcut: 'h',
+        execute: () => {
+            openPonderNavigation();
             return true;
         },
     },
     sleepTimerCommand,
     nowPlayingCardPositionCommand,
     providerSetupCommand,
-    createSettingsCommand('settings-options', 'Open Options', 'Open the options center', ['settings', 'options', '设置', '选项'], 'options', null, { executeShortcut: 'o' }),
-    createSettingsCommand('settings-appearance', 'Appearance settings', 'Open visual and appearance settings', ['appearance', 'visual settings', '外观', '视觉'], 'options', 'appearance'),
+    createSettingsCommand('settings-options', 'Open Options', 'Open the options center', ['settings', 'options', '设置', '选项'], null, { executeShortcut: 'o' }),
+    createSettingsCommand('settings-appearance', 'Appearance settings', 'Open visual and appearance settings', ['appearance', 'visual settings', '外观', '视觉'], 'appearance'),
     createSettingsAnchorCommand('settings-ai-provider', 'AI provider settings', 'Choose an AI provider and model', ['model connection', 'api key', '模型设置', '供应商', '密钥', 'deepseek', 'kimi', 'glm', 'qwen', '通义', '智谱'], 'electronSettings', { platform: ['electron'] }),
+    createSettingsAnchorCommand('settings-device-ai-provider', 'AI provider settings', 'Choose an AI provider, key and model for song themes', ['model connection', 'api key', '模型设置', '供应商', '密钥', 'deepseek', 'kimi', 'glm', 'qwen', '通义', '智谱'], 'deviceAiSettings', { isAvailable: isDeviceAiHost }),
     createSettingsAnchorCommand('settings-theme-presets', 'Theme presets', 'Jump to the built-in and saved theme presets', ['preset theme', 'color preset', '预设主题'], 'themePresets'),
     createSettingsAnchorCommand('settings-lyrics-renderer', 'Lyrics renderer', 'Jump to how lyrics are drawn on the player', ['lyric renderer', 'lyric engine', '歌词渲染'], 'lyricsRenderer'),
     createSettingsAnchorCommand('settings-grid-card-style', 'Grid card style', 'Jump to how the home grid draws its cards', ['card style', 'polaroid', 'grid style', '卡片样式'], 'grid3dCardStyle', GRID_ONLY),
-    createSettingsCommand('settings-general', 'General settings', 'Open general app preferences', ['general', 'language settings', 'locale', '通用', '语言'], 'options', 'general'),
+    createSettingsCommand('settings-general', 'General settings', 'Open general app preferences', ['general', 'language settings', 'locale', '通用', '语言'], 'general'),
     createSettingsAnchorCommand('settings-home-tabs', 'Home tab visibility', 'Choose which tabs the home screen shows', ['hide tabs', 'home tabs', '首页标签'], 'homeTabsVisibility'),
     createToggleCommand(
         'home-card-position-toggle',
@@ -85,7 +101,8 @@ export const settingsCommands: CommandPaletteCommand[] = [
     createSettingsAnchorCommand('settings-playback-entry-view', 'Play opens', 'Jump to which view pressing play opens', ['entry view', 'open on play', 'default view', '播放进入视图', '默认视图'], 'playbackEntryView'),
     {
         id: 'playback-entry-view-player',
-        isAvailable: context => (context ? context.settings.playbackEntryView !== 'player' : true),
+        // 原生壳里可视化只随横屏进入，不是「播放后进入的视图」的选项。
+        isAvailable: context => !isNightstandSupported() && (context ? context.settings.playbackEntryView !== 'player' : true),
         group: 'settings',
         title: 'Play opens: Visualizer',
         description: 'Pressing play opens the player and its visualizer',
@@ -149,11 +166,11 @@ export const settingsCommands: CommandPaletteCommand[] = [
     // bravais 的透光档位与每块窗数：只在生效 suite 是 bravais 时可用（与设置分区同一个谓词）。
     ...libraryWallLookCommands,
     createSettingsAnchorCommand('settings-pinned-commands', 'Pinned command slots', 'Choose the three commands pinned in the palette', ['pinned commands', 'quick slots', '固定命令'], 'pinnedCommands'),
-    createSettingsCommand('settings-interaction', 'Interaction settings', 'Open keyboard, shortcut and grid interaction settings', ['interaction', 'keyboard', 'hotkey', '交互', '快捷键设置'], 'options', 'interaction'),
+    createSettingsCommand('settings-interaction', 'Interaction settings', 'Open keyboard, shortcut and grid interaction settings', ['interaction', 'keyboard', 'hotkey', '交互', '快捷键设置'], 'interaction'),
     createSettingsAnchorCommand('settings-global-shortcuts', 'Global shortcuts', 'Jump to the system-wide shortcuts for playback and mod commands', ['global hotkey', 'system shortcut', 'media keys', '全局快捷键', '系统快捷键'], 'globalShortcuts', { platform: ['electron'] }),
     createSettingsAnchorCommand('settings-custom-shortcut', 'Custom shortcuts', 'Jump to the custom keyboard shortcut bindings', ['keybinding', 'rebind', 'hotkey', '自定义快捷键'], 'customShortcut'),
     createSettingsAnchorCommand('settings-grid-action-button', 'Grid action button', 'Jump to what the grid action button slides to', ['grid button', 'action button', '海报墙按钮'], 'gridActionButton', GRID_ONLY),
-    createSettingsCommand('settings-playback', 'Playback settings', 'Open playback behavior settings', ['playback', '播放', '播放设置'], 'options', 'playback'),
+    createSettingsCommand('settings-playback', 'Playback settings', 'Open playback behavior settings', ['playback', '播放', '播放设置'], 'playback'),
     createSettingsAnchorCommand('settings-queue-behavior', 'Queue behavior', 'Jump to how the play queue is built and kept', ['queue settings', 'queue behaviour', '队列行为'], 'queueSettings'),
     createSettingsAnchorCommand('settings-netease-scrobble', 'NetEase listening report', 'Jump to whether finished plays are reported to NetEase Cloud Music', ['scrobble', 'netease scrobble', 'listening report', 'play count', '听歌打卡', '打卡', '听歌排行'], 'scrobbleSettings'),
     createToggleCommand(
@@ -168,7 +185,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
         { isAvailable: context => context?.settings.canReportPlayback() ?? true },
     ),
     createSettingsAnchorCommand('settings-audio-output', 'Audio output', 'Jump to the audio output device and format settings', ['output device', 'audio device', 'sound card', '输出设备'], 'audioOutputSettings'),
-    createSettingsAnchorCommand('settings-transition', 'Smart transition', 'Jump to the FOLIA transition settings', ['automix', 'crossfade', 'transition', '智能过渡', '转场'], 'transitionSettings'),
+    createSettingsAnchorCommand('settings-transition', 'Smart transition', 'Jump to the ECRIA transition settings', ['automix', 'crossfade', 'transition', '智能过渡', '转场'], 'transitionSettings'),
     createSettingsAnchorCommand('settings-local-lyrics-priority', 'Local song lyrics priority', 'Choose whether local songs prefer local or online lyrics', ['local lyrics priority', 'online lyrics first', 'local song lyrics', '本地歌曲歌词优先级', '在线优先', '本地歌词', 'bendigeciyouxianji', 'bdgcyxj'], 'lyrics'),
     createToggleCommand(
         'auto-ai-lyric-segmentation-toggle',
@@ -187,14 +204,14 @@ export const settingsCommands: CommandPaletteCommand[] = [
         context => context.settings.toggleKeepProviderWordTiming(),
     ),
     createSettingsAnchorCommand('settings-local-lyric-format-order', 'Local lyric file format priority', 'Choose which format wins when a track has several lyric files', ['lyric format priority', 'lyric file order', 'lrc ttml priority', '本地歌词文件格式优先级', '歌词格式', '格式优先级', 'geciwenjiangeshi', 'gcgsyxj'], 'localLyricFormatOrder'),
-    createSettingsCommand('settings-integration', 'Integration settings', 'Open Stage, Now Playing, and Navidrome settings', ['integration', 'stage', 'now playing', 'navidrome settings', '集成', '连接'], 'options', 'integration'),
+    createSettingsCommand('settings-integration', 'Integration settings', 'Open Stage, Now Playing, and Navidrome settings', ['integration', 'stage', 'now playing', 'navidrome settings', '集成', '连接'], 'integration'),
     createSettingsAnchorCommand('settings-navidrome', 'Navidrome server', 'Jump to the Navidrome server connection', ['navidrome', 'subsonic', 'music server', '音乐服务器'], 'navidrome'),
     createSettingsAnchorCommand('settings-stage-mode', 'Stage mode', 'Jump to the Stage external player settings', ['stage', 'external player', '舞台模式'], 'stageMode'),
     {
         id: 'automix-toggle',
         group: 'settings',
         title: 'Smart transition',
-        description: 'Turn FOLIA smart transitions on or off',
+        description: 'Turn ECRIA smart transitions on or off',
         keywords: ['automix', 'blend', 'auto mix', 'transition', '智能过渡', '自动混音', '过渡', '开启过渡', 'znguodu'],
         execute: (_input, context) => {
             context.settings.toggleAutomix();
@@ -205,7 +222,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
         id: 'transition-mode-crossfade',
         isAvailable: context => (context ? context.settings.transitionMode !== 'crossfade' : true),
         group: 'settings',
-        title: 'Transition mode: Folia Crossfade',
+        title: 'Transition mode: Ecria Crossfade',
         description: 'Use the simple one-out one-in crossfade',
         keywords: ['crossfade', 'folia crossfade', 'transition mode crossfade', '交叉淡化', '过渡模式交叉淡化', 'gdmscf'],
         execute: (_input, context) => {
@@ -218,7 +235,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
         id: 'transition-mode-automix',
         isAvailable: context => (context ? context.settings.transitionMode !== 'automix' : true),
         group: 'settings',
-        title: 'Transition mode: Folia Automix',
+        title: 'Transition mode: Ecria Automix',
         description: 'Analyse both tracks and mix them automatically',
         keywords: ['automix', 'folia automix', 'transition mode automix', '自动混音', '过渡模式自动混音', 'gdmsauto'],
         execute: (_input, context) => {
@@ -322,7 +339,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
             return true;
         },
     },
-    createSettingsCommand('settings-storage', 'Storage settings', 'Open cache and storage settings', ['storage', 'cache', '存储', '缓存'], 'options', 'storage'),
+    createSettingsCommand('settings-storage', 'Storage settings', 'Open cache and storage settings', ['storage', 'cache', '存储', '缓存'], 'storage'),
     createSettingsAnchorCommand('settings-media-cache', 'Media cache', 'Jump to the downloaded audio cache', ['audio cache', 'downloads', 'offline songs', '音频缓存'], 'mediaCache'),
     createSettingsAnchorCommand('settings-r2-sync', 'Sync server settings', 'Open sync server settings', ['sync server', 'd1 sync', 'cloud sync', 'sync settings', '同步', '云同步', 'd1同步'], 'r2Sync'),
     {
@@ -349,7 +366,6 @@ export const settingsCommands: CommandPaletteCommand[] = [
         'Local folder watch settings',
         'Open the auto scan settings for imported local folders',
         ['local folder watch', 'auto scan', 'watch folder', '本地文件夹监视', '自动扫描'],
-        'options',
         'storage',
         { isAvailable: context => context?.settings.canAutoScanLocalLibrary() ?? true },
     ),
@@ -362,7 +378,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
         context => context.settings.toggleLocalLibraryAutoScan(),
         { isAvailable: context => context?.settings.canAutoScanLocalLibrary() ?? true },
     ),
-    createSettingsCommand('settings-desktop', 'Desktop settings', 'Open desktop app settings', ['desktop', 'electron', '桌面', '桌面端'], 'options', 'desktop', { platform: ['electron'] }),
+    createSettingsCommand('settings-desktop', 'Desktop settings', 'Open desktop app settings', ['desktop', 'electron', '桌面', '桌面端'], 'desktop', { platform: ['electron'] }),
     createSettingsAnchorCommand('settings-update-channel', 'Update channel', 'Choose the desktop app release channel', ['release channel', 'realeco', 'limo', 'cielo', '更新通道', '发布通道'], 'updateCheck', { platform: ['electron'] }),
     {
         id: 'desktop-toggle-voice-input-pause',
@@ -393,12 +409,12 @@ export const settingsCommands: CommandPaletteCommand[] = [
         'desktop-toggle-background-throttling',
         'settings',
         'Background throttling',
-        'Toggle throttling rendering and holding the lyric animation while Folia is minimised or hidden',
+        'Toggle throttling rendering and holding the lyric animation while Ecria is minimised or hidden',
         ['throttle when hidden', 'pause lyrics when minimized', 'stop animation in background', 'power saving', '后台节流', '后台暂停歌词', '最小化停止动画', '省电'],
         context => context.settings.toggleBackgroundThrottling(),
         { platform: ['electron'] },
     ),
-    createSettingsCommand('settings-wallpaper-mode', 'Wallpaper mode settings', 'Open wallpaper mode settings', ['wallpaper mode', 'desktop wallpaper', 'lyrics wallpaper', '壁纸模式', '桌面壁纸', '歌词壁纸'], 'options', 'desktop', { platform: ['linux', 'win', 'mac'] }),
+    createSettingsCommand('settings-wallpaper-mode', 'Wallpaper mode settings', 'Open wallpaper mode settings', ['wallpaper mode', 'desktop wallpaper', 'lyrics wallpaper', '壁纸模式', '桌面壁纸', '歌词壁纸'], 'desktop', { platform: ['linux', 'win', 'mac'] }),
     {
         id: 'desktop-toggle-wallpaper-mode',
         platform: ['linux', 'win', 'mac'],
@@ -473,13 +489,13 @@ export const settingsCommands: CommandPaletteCommand[] = [
             return true;
         },
     },
-    createSettingsCommand('settings-graphics', 'Graphics settings', 'Open static mode, frame rate cap, Linux glow fix and reduced motion', ['graphics', 'performance', 'frame rate', 'fps', 'rendering', '图形', '图形设置', '性能', '帧率', '渲染'], 'options', 'graphics'),
+    createSettingsCommand('settings-graphics', 'Graphics settings', 'Open static mode, frame rate cap, Linux glow fix and reduced motion', ['graphics', 'performance', 'frame rate', 'fps', 'rendering', '图形', '图形设置', '性能', '帧率', '渲染'], 'graphics'),
     createSettingsAnchorCommand('settings-lyric-render-quality', 'Lyric canvas resolution and anti-aliasing', 'Jump to the resolution and anti-aliasing every canvas / WebGL lyric style follows by default', ['render quality', 'resolution', 'supersampling', 'anti-aliasing', 'msaa', 'dpr', 'pixel ratio', '分辨率', '超采样', '抗锯齿', '渲染倍率', '画质'], 'lyricRenderScale'),
     createSettingsAnchorCommand('settings-gpu-preference', 'Render GPU settings', 'Jump to the choice of graphics card the app renders on', ['render gpu', 'graphics card', 'discrete gpu', 'integrated gpu', 'dual gpu', '渲染显卡', '显卡', '独显', '核显', '双显卡'], 'gpuPreference', { platform: ['win'] }),
     gpuPreferenceCommand('auto', 'Render GPU: Auto', 'Let Windows choose the graphics card; applies after a restart', ['render gpu auto', 'default gpu', '渲染显卡自动', '显卡自动']),
     gpuPreferenceCommand('high-performance', 'Render GPU: High performance', 'Render on the discrete GPU; applies after a restart', ['render gpu high performance', 'discrete gpu', 'dedicated gpu', 'dgpu', 'nvidia', '渲染显卡高性能', '独显', '独立显卡']),
     gpuPreferenceCommand('low-power', 'Render GPU: Power saving', 'Render on the integrated GPU; applies after a restart', ['render gpu power saving', 'integrated gpu', 'igpu', 'battery', '渲染显卡省电', '核显', '集成显卡']),
-    createSettingsCommand('settings-mods', 'Mod settings', 'Open the mod system switch and the installed mods', ['mod manager', 'mod system', 'plugins', '模组设置', '模组系统', '插件'], 'options', 'mods', { platform: ['electron'] }),
+    createSettingsCommand('settings-mods', 'Mod settings', 'Open the mod system switch and the installed mods', ['mod manager', 'mod system', 'plugins', '模组设置', '模组系统', '插件'], 'mods', { platform: ['electron'] }),
     // The lab category is gone; its largest group, the player page switches, keeps the command.
     createSettingsAnchorCommand('settings-lab', 'Player page interface', 'Jump to the switches that hide or pin parts of the player page', ['player interface', 'hide player controls', 'lab', 'experimental', '播放页界面', '实验', '实验室'], 'labPlayerUi'),
     createSettingsAnchorCommand(
@@ -565,10 +581,10 @@ export const settingsCommands: CommandPaletteCommand[] = [
         ],
         'bottomUiSettings',
     ),
-    createSettingsCommand('settings-visualizer', 'Visualizer settings', 'Open lyrics animation workbench', ['visualizer workbench', '可视化', '歌词动画', 'donghua'], 'options', 'visualizer'),
-    createSettingsCommand('settings-theme-park', 'Color', 'Open theme editor', ['theme park', 'theme', '配色', '主题', '主题公园', '主题乐园'], 'options', 'themePark', { executeShortcut: 't' }),
-    createSettingsCommand('settings-global-lyric-offset', 'Global timing offset', 'Calibrate lyric timing against Bluetooth or device audio latency', ['lyric delay', 'audio latency', 'bluetooth delay', 'sync lyrics', '全局时间偏移', '歌词延迟', '音画同步', '蓝牙延迟'], 'options', 'globalLyricOffset'),
-    createSettingsCommand('settings-lyric-filter', 'Lyric filter', 'Open lyric filter settings', ['lyrics filter', '歌词过滤', '过滤'], 'options', 'lyricFilter'),
+    createSettingsCommand('settings-visualizer', 'Visualizer settings', 'Open lyrics animation workbench', ['visualizer workbench', '可视化', '歌词动画', 'donghua'], 'visualizer'),
+    createSettingsCommand('settings-theme-park', 'Color', 'Open theme editor', ['theme park', 'theme', '配色', '主题', '主题公园', '主题乐园'], 'themePark', { executeShortcut: 't' }),
+    createSettingsCommand('settings-global-lyric-offset', 'Global timing offset', 'Calibrate lyric timing against Bluetooth or device audio latency', ['lyric delay', 'audio latency', 'bluetooth delay', 'sync lyrics', '全局时间偏移', '歌词延迟', '音画同步', '蓝牙延迟'], 'globalLyricOffset'),
+    createSettingsCommand('settings-lyric-filter', 'Lyric filter', 'Open lyric filter settings', ['lyrics filter', '歌词过滤', '过滤'], 'lyricFilter'),
     {
         id: 'lyric-staff-policy-cycle',
         group: 'settings',

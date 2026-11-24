@@ -19,6 +19,7 @@ import { currentTime } from '../../../../stores/motionSignals';
 import { errorFields } from '../../../../utils/errorText';
 import { hifiTransport, isHifiRoute } from '../../../../services/hifi/hifiPlayback';
 import { seekHifiRoute } from '../../../hifi/hifiRouteTransport';
+import { usePlayerSwipeBack } from './usePlayerSwipeBack';
 import { isExternalPaused, isExternalRoute, seekExternalPlayback } from '../../../../services/onlineMusic/externalPlayback';
 
 // src/components/app/playback/bridges/usePlaybackInteractionBridge.ts
@@ -408,6 +409,9 @@ export function usePlaybackInteractionBridge({
         syncStageLyricsClock,
         togglePlay,
     ]);
+
+    // 触屏的返回手势，与上面的 Esc 同一个动作。
+    usePlayerSwipeBack(navigateBackFromPlayer);
 
     // Wrapped so the callbacks this hook hands back keep one identity for the app's lifetime. They
     // are all invoked from events or effects, and their churn was what kept every build*Model memo

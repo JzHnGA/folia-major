@@ -145,6 +145,7 @@ const sameLoginSnapshot = (a: LibraryLoginSessionSnapshot, b: LibraryLoginSessio
     && a.selectedMethodId === b.selectedMethodId
     && a.inBrowser === b.inBrowser
     && a.codeImage === b.codeImage
+    && a.codeUrl === b.codeUrl
     && a.canReopenLoginPage === b.canReopenLoginPage
     && a.failure === b.failure
     && a.selfCheck === b.selfCheck
@@ -202,6 +203,7 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         let phase: LibraryLoginPhase = login.stage === 'session' ? 'loading' : login.stage;
         // 检查的时候会话已经走完（停在 confirmed），阶段是 controller 自己的。
         let codeImage = '';
+        let codeUrl = '';
         let canReopenLoginPage = true;
         let failure: LibraryLoginSessionSnapshot['failure'] = null;
         let selfCheck: LibraryLoginSessionSnapshot['selfCheck'] = null;
@@ -210,6 +212,7 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
             if (raw.sessionId === login.sessionId) {
                 phase = raw.phase === 'idle' ? 'loading' : raw.phase;
                 codeImage = raw.codeImage;
+                codeUrl = raw.codeUrl;
                 canReopenLoginPage = raw.canReopenLoginPage;
                 failure = raw.failure;
                 selfCheck = raw.selfCheck;
@@ -224,6 +227,7 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
             selectedMethodId: login.selectedMethodId,
             inBrowser: login.inBrowser,
             codeImage,
+            codeUrl,
             canReopenLoginPage,
             failure,
             selfCheck,

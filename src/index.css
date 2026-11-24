@@ -1,14 +1,96 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 
 /* Tailwind 自动扫描整个仓库找类名，而且在 dev 服务器的主线程上同步扫。dev/prototypes 里是独立的原型页面，
    不用 Tailwind，却可能放着几 MB 的单行数据文件（fog-write/strokes.js 一行 4.4 MB），类名提取器碰上
-   这种文件要扫好几分钟，期间 dev 服务器一个请求都不回，页面和 Electron 窗口就一直停在开屏。 */
+   这种文件要扫好几分钟，期间 dev 服务器一个请求都不回，页面和 Electron 窗口就一直停在开屏。
+   这里改为显式列出扫描源（source(none) 关掉自动发现），覆盖原来自动扫描会碰到的所有代码目录。 */
+@source "../{index,stage-client,mod-export,dev-probe,qq-diag}.html";
+@source "../src/**/*.{js,ts,jsx,tsx,html}";
+@source "../api/**/*.{js,ts,jsx,tsx}";
+@source "../api-ts/**/*.ts";
+@source "../mods/**/*.{js,ts,jsx,tsx}";
+@source "../test/**/*.{js,ts,jsx,tsx}";
+@source "../dev/**/*.{js,ts,jsx,tsx,mjs}";
+@source "../electron/**/*.{js,ts,jsx,tsx,cjs}";
+@source "../shared/**/*.{js,ts,jsx,tsx}";
+@source "../packages/**/*.{js,ts,jsx,tsx}";
+@source "../sync-server/**/*.{js,ts,jsx,tsx}";
+@source "../worker/**/*.{js,ts,jsx,tsx}";
 @source not "../dev/prototypes";
 
 /* Folium mod stylesheets (registries.styles) live in this layer. Declaring it
    after Tailwind's layers makes mod rules win over host utilities without
    !important, independent of when a mod's <style> is injected. */
 @layer folium-mods;
+
+/* iOS 原生壳（index.tsx 在 Capacitor 里给根元素挂 ios-shell）：背景铺到状态栏 / 灵动岛后面（边到边），
+   可点/可读的顶部控件各自让出 safe-area-inset-top（墙面返回、播放页返回、Folium 页头、搜索层）。
+   左右与底部保留内边距，横屏刘海和 Home 指示条不压内容。 */
+.ios-shell #root {
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* 竖着的信息条从视口最顶上裂开：内容顶部让开灵动岛 / 状态栏，否则列表面板的返回键、过滤行和完整信息条
+   的面包屑会压在灵动岛下面。横条不占满高度，不需要。底部由 useBravaisPlayerSafeArea 写进 inline padding。 */
+.ios-shell .bravais-seam[data-bravais-seam-axis='x'] .bravais-seam-body {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* 墙面铺满屏幕（fixed 壳吃不到 #root 的内边距），但横屏时贴边的信息条标签要让开灵动岛 / 刘海：
+   舞台里的缝与书脊由 bravaisFrame 按同一个安全区算（useSafeAreaSidesPx），这里只管折到边上的标签。 */
+.ios-shell .bravais-seam-tab[data-side='left'] {
+  left: env(safe-area-inset-left);
+}
+
+.ios-shell .bravais-seam-tab[data-side='right'] {
+  right: env(safe-area-inset-right);
+}
+
+/* 边到边后，状态栏压在任何背景上：给最顶上一条很淡的暗渐变，浅色主题下白色状态栏文字也读得清。
+   只盖住状态栏那一条，不接指针。 */
+.ios-shell #root::before {
+  position: fixed;
+  z-index: 2147483000;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: env(safe-area-inset-top);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 22%), transparent);
+  content: '';
+  pointer-events: none;
+}
+
+/* 全屏浮层是 fixed 定位，吃不到 #root 的内边距；需要避让的浮层（设置、引导等）挂
+   overlay-safe。max() 保证桌面与网页的 padding 不变，只在 iOS 壳里让开刘海与 Home 指示条。 */
+.ios-shell .overlay-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
+/* 播放页右下角的面板按钮：固定层吃不到 #root 的安全区，横屏时右侧会顶进刘海 / 圆角。
+   挪外层（right），不改内边距：外层宽 80、按钮 48，padding 吃掉宽度会把按钮挤小。
+   挂上胶囊（is-docked）时位置由 bottomDock.css 的平移决定，不能另加右偏移。 */
+.ios-shell .dock-companion--panel:not(.is-docked) {
+  right: max(1.5rem, calc(env(safe-area-inset-right) + 0.75rem));
+}
+
+/* iOS 输入：WebView 对小于 16px 的输入框会在聚焦时放大页面；设置搜索、登录表单、文本弹窗都统一到 16px。
+   range / checkbox / radio 不动。 */
+.ios-shell input:not([type='range']):not([type='checkbox']):not([type='radio']),
+.ios-shell textarea,
+.ios-shell select {
+  font-size: 16px !important;
+}
+
+/* 触屏点按不要 iOS 的灰色高亮；按钮自己的按下态还在。 */
+.ios-shell button,
+.ios-shell a {
+  -webkit-tap-highlight-color: transparent;
+}
 
 /* 全局字体栈（#659）：Tailwind 默认的 --font-sans / --font-serif 里没有任何 CJK 家族，中文只能靠系统回退。
    Arch 系默认回退到文泉驿正黑，它的竖排度量是坏的（大量字形 advanceHeight = 0），Bravais 墙面等

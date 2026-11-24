@@ -40,6 +40,21 @@ describe('computeBravaisFrame', () => {
         expect(gone.tab).toEqual({ visible: true, side: 'left' });
     });
 
+    it('narrows and collapses the opening inside a system safe area on the left', () => {
+        // A 300 px opening centred 100 px from the edge: the regular rule leaves 86 px each side,
+        // the landscape island takes 59 more and only the far side's room is left.
+        const near = computeBravaisFrame({ center: { x: 1000, y: 0 }, view, anchorX: 0, openWidth: 300, contentWidth: 300, hidden: false, safeLeft: 59 });
+        expect(near.seam.x).toBe(100);
+        expect(near.seam.width).toBe(2 * (100 - 59 - 14));
+
+        // A spine centred inside the safe area is squeezed shut; the edge tab (which CSS keeps clear
+        // of the safe area) takes over instead of hanging under the island.
+        const inside = computeBravaisFrame({ center: { x: 1100, y: 0 }, view, anchorX: 0, openWidth: 64, contentWidth: 64, hidden: false, safeLeft: 59 });
+        expect(inside.seam.x).toBe(50);
+        expect(inside.seam.visible).toBe(false);
+        expect(inside.tab).toEqual({ visible: true, side: 'left' });
+    });
+
     it('lays out against the rendered variant width, not the opening (flip without reflow)', () => {
         const frame = computeBravaisFrame({ center: { x: 0, y: 0 }, view, anchorX: 0, openWidth: 150, contentWidth: 300, hidden: false });
         expect(frame.contentOpacity).toBeCloseTo((0.5 - 0.35) / 0.65);

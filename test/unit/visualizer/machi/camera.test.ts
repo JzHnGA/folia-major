@@ -64,3 +64,37 @@ describe('MachiCamera drift speed', () => {
         expect(Math.abs(camera.offset().azimuth - before)).toBeLessThan(0.2);
     });
 });
+
+describe('MachiCamera safe insets', () => {
+    const DEG = Math.PI / 180;
+    const create = (width: number, height: number) => {
+        const camera = new MachiCamera();
+        camera.setAspect(width, height);
+        const points = [-6, 6].flatMap(x => [-6, 6].flatMap(z => [new THREE.Vector3(x, 0, z), new THREE.Vector3(x, 6, z)]));
+        camera.setFraming({ points, view: { azimuth: 30 * DEG, elevation: 30 * DEG, zoom: 1 } }, null);
+        return camera;
+    };
+
+    it('keeps the symmetric frustum with no insets', () => {
+        const camera = create(852, 393);
+        camera.setSafeInsets(0, 0);
+        const { left, right, top, bottom } = camera.camera;
+        expect(left).toBe(-right);
+        // The full-width aspect, unchanged: top − bottom is 2·halfHeight.
+        expect((right - left) / (top - bottom)).toBeCloseTo(852 / 393, 9);
+    });
+
+    it('frames the composition into the safe span and centres it there, still full-bleed', () => {
+        const plain = create(852, 393).camera;
+        const camera = create(852, 393);
+        camera.setSafeInsets(59, 30);
+        const { left, right, top, bottom } = camera.camera;
+        // No stretch: the frustum still covers the whole viewport at its aspect.
+        expect((right - left) / (top - bottom)).toBeCloseTo(852 / 393, 9);
+        // The camera centre (the composition's centre) lands mid-way between the insets.
+        const centrePx = (-left / (right - left)) * 852;
+        expect(centrePx).toBeCloseTo(59 + (852 - 59 - 30) / 2, 6);
+        // Fitting into a narrower span can only zoom out (landscape is height-bound, so it may not change).
+        expect(top - bottom).toBeGreaterThanOrEqual(plain.top - plain.bottom - 1e-9);
+    });
+});

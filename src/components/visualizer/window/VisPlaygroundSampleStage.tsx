@@ -32,12 +32,19 @@ type SampleBoxProps = {
 
 /**
  * The sample's box: the shape of the app's window, as large as its room allows, centred there. The
- * room is a size container, so its size comes from its parent, never from the box in it.
+ * room is a size container, so its size comes from its parent (or, below lg, from its width), never
+ * from the box in it.
  */
 export const SampleBox: React.FC<SampleBoxProps> = ({ room, className, style, ref, children }) => {
     const { width, height } = useWindowSize();
+    // Where the studio window stacks its column under the stage (below lg) the room has no height of
+    // its own: it takes the window's shape across its whole width, never taller than what is left of
+    // the screen under the header, the window's padding and the safe area.
     return (
-        <div className={`grid place-items-center [container-type:size] ${room}`}>
+        <div
+            className={`grid place-items-center [container-type:size] ${room} max-lg:h-auto! max-lg:w-full max-lg:flex-none! max-lg:[aspect-ratio:var(--sample-room-ratio)] max-lg:max-h-[calc(100dvh-136px-env(safe-area-inset-top)-env(safe-area-inset-bottom))]`}
+            style={{ '--sample-room-ratio': `${width} / ${height}` } as React.CSSProperties}
+        >
             <div ref={ref} className={className} style={{ ...style, aspectRatio: `${width} / ${height}`, width: `min(100cqw, 100cqh * ${width / height})` }}>
                 {children}
             </div>

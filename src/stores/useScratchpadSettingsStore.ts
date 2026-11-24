@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { getStoredBoolean, getStoredString, setStoredBoolean, setStoredString } from './storagePrimitives';
 
 // src/stores/useScratchpadSettingsStore.ts
-// 速记簿的设置：左缘的悬浮把手显不显示、放在左缘的什么高度。设置页「主页与歌单」的「速记簿」一组、
+// 速记簿的设置：悬浮把手显不显示、放在哪（桌面在左缘的什么高度；手机上贴哪条边、沿边的什么位置）。设置页「主页与歌单」的「速记簿」一组、
 // 命令面板和 ScratchpadHost 三处读写。把手藏起来以后 Ctrl / ⌘ + J 与命令面板照常能开合抽屉。
 // 另有把手常驻时的样子（handleStyle）：视觉设置，随外观配置导入导出（appearanceCodec 的短码 sphs）。
 //
@@ -13,6 +13,25 @@ import { getStoredBoolean, getStoredString, setStoredBoolean, setStoredString } 
 const SHOW_HANDLE_KEY = 'scratchpad_show_handle';
 const HANDLE_POSITION_KEY = 'scratchpad_handle_position';
 const HANDLE_STYLE_KEY = 'scratchpad_handle_style';
+const HANDLE_SIDE_KEY = 'scratchpad_handle_side';
+const MOVE_HINT_SEEN_KEY = 'scratchpad_handle_move_hint_seen';
+
+/**
+ * 手机上把手贴在哪条边：用户按住把手拖到哪条边就停在哪（ScratchpadTouchTab）。handlePosition 是沿这条边的位置。
+ * 桌面上的把手只在左缘（指针悬停展开的标签），不读这一项。
+ */
+export const SCRATCHPAD_HANDLE_SIDES = ['left', 'right', 'top', 'bottom'] as const;
+export type ScratchpadHandleSide = (typeof SCRATCHPAD_HANDLE_SIDES)[number];
+export const SCRATCHPAD_HANDLE_SIDE_DEFAULT: ScratchpadHandleSide = 'left';
+
+const isScratchpadHandleSide = (value: unknown): value is ScratchpadHandleSide => (
+    typeof value === 'string' && (SCRATCHPAD_HANDLE_SIDES as readonly string[]).includes(value)
+);
+
+const readStoredSide = (): ScratchpadHandleSide => {
+    const stored = getStoredString(HANDLE_SIDE_KEY, SCRATCHPAD_HANDLE_SIDE_DEFAULT);
+    return isScratchpadHandleSide(stored) ? stored : SCRATCHPAD_HANDLE_SIDE_DEFAULT;
+};
 
 /** 把手在左缘的高度：0 是最上面（标题栏与左上角返回钮之下，原来的位置），1 是贴近窗口底部。 */
 export const SCRATCHPAD_HANDLE_POSITION_DEFAULT = 0;
@@ -50,16 +69,24 @@ export type ScratchpadSettingsState = {
     showHandle: boolean;
     handlePosition: number;
     handleStyle: ScratchpadHandleStyle;
+    handleSide: ScratchpadHandleSide;
+    /** 手机上「按住可拖动」的提示看过没有：第一次挪过把手、或点掉提示以后就不再出现。 */
+    moveHintSeen: boolean;
     setShowHandle: (show: boolean) => void;
     toggleShowHandle: () => void;
     setHandlePosition: (position: number) => void;
     setHandleStyle: (style: ScratchpadHandleStyle) => void;
+    /** 把手拖到一条边上松手：边与沿边的位置一起存。 */
+    placeHandle: (side: ScratchpadHandleSide, position: number) => void;
+    markMoveHintSeen: () => void;
 };
 
 export const useScratchpadSettingsStore = create<ScratchpadSettingsState>((set, get) => ({
     showHandle: getStoredBoolean(SHOW_HANDLE_KEY, true),
     handlePosition: readStoredPosition(),
     handleStyle: readStoredStyle(),
+    handleSide: readStoredSide(),
+    moveHintSeen: getStoredBoolean(MOVE_HINT_SEEN_KEY, false),
     setShowHandle: (show) => {
         set({ showHandle: show });
         setStoredBoolean(SHOW_HANDLE_KEY, show);
@@ -74,5 +101,17 @@ export const useScratchpadSettingsStore = create<ScratchpadSettingsState>((set, 
         const next = isScratchpadHandleStyle(style) ? style : SCRATCHPAD_HANDLE_STYLE_DEFAULT;
         set({ handleStyle: next });
         setStoredString(HANDLE_STYLE_KEY, next);
+    },
+    placeHandle: (side, position) => {
+        const nextSide = isScratchpadHandleSide(side) ? side : SCRATCHPAD_HANDLE_SIDE_DEFAULT;
+        const nextPosition = clampPosition(position);
+        set({ handleSide: nextSide, handlePosition: nextPosition });
+        setStoredString(HANDLE_SIDE_KEY, nextSide);
+        setStoredString(HANDLE_POSITION_KEY, String(nextPosition));
+    },
+    markMoveHintSeen: () => {
+        if (get().moveHintSeen) return;
+        set({ moveHintSeen: true });
+        setStoredBoolean(MOVE_HINT_SEEN_KEY, true);
     },
 }));

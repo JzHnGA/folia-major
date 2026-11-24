@@ -1,4 +1,5 @@
 import type { MotionValue } from 'framer-motion';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import type { AudioBands, Line, Theme } from '../../../types';
 import type { FumeBackgroundAudioLevels, FumeBackgroundScene } from './FumeBackground';
 import type { FumeCameraState } from './fumeCameraStep';
@@ -13,6 +14,8 @@ export interface FumeStageScene {
     lines: Line[];
     theme: Theme;
     viewport: ViewportSize;
+    /** Side safe areas (px): the write-head is centred in the span between them. Zero off-device. */
+    safeSides: SafeAreaSides;
     backgroundScene: FumeBackgroundScene;
     overviewCamera: CameraViewTarget | null;
     overviewStartTime: number;

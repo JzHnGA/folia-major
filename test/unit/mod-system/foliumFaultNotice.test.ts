@@ -283,7 +283,6 @@ describe('the notice a failing mod raises', () => {
         expect(useModsStore.getState().selectedModId).toBe('fault-open');
         expect(useSettingsModalStore.getState().settingsModalState).toMatchObject({
             isOpen: true,
-            initialTab: 'options',
             initialSubview: 'mods',
             initialAnchor: { id: 'modList', rowId: 'mod:fault-open' },
         });

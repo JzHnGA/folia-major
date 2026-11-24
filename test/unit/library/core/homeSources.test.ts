@@ -136,7 +136,7 @@ describe('home tabs', () => {
         expect(keysOf(withPage, { ...visibility, explore: false })).toEqual(['playlist', 'radio', 'albums']);
     });
 
-    it('gives each unavailable tab its reason, naming the provider', () => {
+    it('gives each unavailable tab its reason and leaves out a local tab this machine cannot use', () => {
         const tabs = translateHomeTabs(resolveHomeTabs({
             visibility: { playlist: true, radio: true, explore: false, albums: true, local: true },
             navidromeEnabled: false,
@@ -147,7 +147,6 @@ describe('home tabs', () => {
             ['playlist', 'status.providerLibraryUnavailable(provider=fallback)'],
             ['radio', 'status.providerRecommendationsUnavailable(provider=fallback)'],
             ['albums', 'status.providerUserAlbumsUnavailable(provider=fallback)'],
-            ['local', 'localMusic.insecureHttpDisabled'],
         ]);
     });
 

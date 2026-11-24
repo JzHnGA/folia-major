@@ -16,11 +16,13 @@ import {
     PAPER_FACE_VARIANTS,
     SLIM_HEIGHT,
     panelPaperFrame,
+    type PanelDock,
     usePaperMotions,
     type PaperFrame,
     type PaperMotion,
 } from './scratchpadPaper';
 import { PRIMARY_MODIFIER_LABEL } from '../../../utils/platform';
+import { isNativeAppShell } from '../../../utils/appSurface';
 
 // src/components/app/scratchpad/ScratchpadSheet.tsx
 // 展开整页（设计稿 F 定稿）：整张纸向右下转 4°（设计稿 6°，用户嫌斜，2026-11-06 改小；降低动态效果时不转，同歌手页），这一页的米白信息条横贯整张纸，
@@ -134,6 +136,8 @@ type ScratchpadSheetProps = {
     /** 展开整页的信息条上「‹ 三行总览」。 */
     onShowOverview?: () => void;
     children: React.ReactNode;
+    /** 面板贴哪条边（缺省左缘）：展开 / 收回时纸从面板里那一格长出来、缩回去。 */
+    dock?: PanelDock;
 };
 
 /** 纸后面的大构图：这一页的几何体放大、几乎看不见（不转）。 */
@@ -156,7 +160,7 @@ const Backdrop: React.FC<{ tab: ScratchpadTab; word: string }> = ({ tab, word })
 };
 
 const ScratchpadSheet: React.FC<ScratchpadSheetProps> = ({
-    tab, notesCount, queueCount, tilt, calm, slimOrder, onOpenPage, onCollapse, collapseLabel, collapseRef, overview, onShowOverview, children,
+    tab, notesCount, queueCount, tilt, calm, slimOrder, onOpenPage, onCollapse, collapseLabel, collapseRef, overview, onShowOverview, children, dock = 'left',
 }) => {
     const { t } = useTranslation();
     // 收回时（整页正在退场）这一页的条换回面板那一面；展开的头一帧也是面板那一面，下一帧再换成整页的（entering）。
@@ -330,7 +334,7 @@ const ScratchpadSheet: React.FC<ScratchpadSheetProps> = ({
                     const bandMotion = motionOf(id, mode, frame, wrap);
                     // 展开时三条各自从面板里那一格长出来（这一页的从顶上那条，另外两条从底部那两格）；收回时缩回去，
                     // 总览里的三行也缩回各自那一格。
-                    const origin = fromPanel(panelPaperFrame(id === tab ? 'band' : slimOrder.indexOf(id), sheetWidth - SHEET_BLEED_X * 2, viewHeight));
+                    const origin = fromPanel(panelPaperFrame(id === tab ? 'band' : slimOrder.indexOf(id), sheetWidth - SHEET_BLEED_X * 2, viewHeight, dock));
                     // 展开的头一帧、收回的一路上是面板里的样子：这一页是面板顶上那条，另外两条是细纸带（见文件头）。
                     const faceMode: FaceMode = handoff ? (id === tab ? 'panel' : 'slim') : mode;
                     const faceMotion: PaperMotion = calm
@@ -430,7 +434,8 @@ const ScratchpadSheet: React.FC<ScratchpadSheetProps> = ({
                     <span className="scratchpad-triangle-crumb">
                         {overview ? t('scratchpad.crumbOverview', { title: t('scratchpad.title') }) : t('scratchpad.crumb', { page: title })}
                     </span>
-                    {overview && (
+                    {/* 这条帮助讲的是鼠标框选、Cmd 加选、双击：iOS 壳不给「?」。 */}
+                    {overview && !isNativeAppShell() && (
                         <button
                             type="button"
                             className="scratchpad-pill is-icon is-small scratchpad-triangle-help"
@@ -445,7 +450,7 @@ const ScratchpadSheet: React.FC<ScratchpadSheetProps> = ({
                     )}
                 </span>
             </motion.div>
-            {overview && helpOpen && (
+            {overview && helpOpen && !isNativeAppShell() && (
                 <motion.p
                     id="scratchpad-overview-help"
                     className="scratchpad-overview-help"

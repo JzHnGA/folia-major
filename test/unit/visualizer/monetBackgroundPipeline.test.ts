@@ -24,6 +24,7 @@ class FakeWorker {
 }
 
 let lastId = 0;
+const revoked: string[] = [];
 const reply = () => worker!.onmessage!({ data: { id: lastId, picture: new Blob(['jpeg']) } } as MessageEvent);
 
 class FakeImage {
@@ -52,8 +53,11 @@ beforeEach(async () => {
     vi.stubGlobal('Image', FakeImage);
     vi.stubGlobal('createImageBitmap', async (image: FakeImage) => ({ source: image.src, close: () => {} }));
     let blobs = 0;
+    revoked.length = 0;
     URL.createObjectURL = () => `blob:${(blobs += 1)}`;
-    URL.revokeObjectURL = () => {};
+    URL.revokeObjectURL = (url: string) => {
+        revoked.push(url);
+    };
     vi.resetModules();
     ({ wantMonetBackgroundUrl } = await import('@/components/visualizer/monet/monetBackgroundPipeline'));
 });
@@ -112,5 +116,44 @@ describe('Monet pictures in the worker', () => {
         expect(posted).toEqual(['cover-a', 'cover-b']);
         reply();
         expect(await next.url).toBe('blob:1');
+    });
+
+    it('keeps the last four released pictures and revokes older ones, oldest first', async () => {
+        const made: { url: Promise<string | null>; release: () => void }[] = [];
+        for (const cover of ['cover-a', 'cover-b', 'cover-c', 'cover-d', 'cover-e', 'cover-f']) {
+            const picture = wantMonetBackgroundUrl({ coverUrl: cover, theme, tuning });
+            await flush();
+            reply();
+            await picture.url;
+            made.push(picture);
+        }
+        made.forEach(picture => picture.release());
+        await flush();
+        expect(revoked).toEqual(['blob:1', 'blob:2']);
+
+        // Still cached: asking again does not paint it a second time.
+        const kept = wantMonetBackgroundUrl({ coverUrl: 'cover-c', theme, tuning });
+        await flush();
+        expect(await kept.url).toBe('blob:3');
+        expect(posted).toEqual(['cover-a', 'cover-b', 'cover-c', 'cover-d', 'cover-e', 'cover-f']);
+    });
+
+    it('a released picture taken again before it ages out is not revoked', async () => {
+        const first = wantMonetBackgroundUrl({ coverUrl: 'cover-a', theme, tuning });
+        await flush();
+        reply();
+        await first.url;
+        first.release();
+        const again = wantMonetBackgroundUrl({ coverUrl: 'cover-a', theme, tuning });
+        for (const cover of ['cover-b', 'cover-c', 'cover-d', 'cover-e', 'cover-f']) {
+            const picture = wantMonetBackgroundUrl({ coverUrl: cover, theme, tuning });
+            await flush();
+            reply();
+            await picture.url;
+            picture.release();
+        }
+        await flush();
+        expect(revoked).toEqual(['blob:2']);
+        expect(await again.url).toBe('blob:1');
     });
 });

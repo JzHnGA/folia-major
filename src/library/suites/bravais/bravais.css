@@ -140,6 +140,11 @@
 
 .bravais-chrome-button.is-icon svg { width: 20px; height: 20px; }
 
+/* .is-icon 的不透明度（1）写在 :disabled 之后，会把禁用的图标键照常点亮：禁用的照样压暗。放不了的歌的播放键
+   不禁用（点了由播放说明原因），只压暗。 */
+.bravais-chrome-button.is-icon:disabled { opacity: 0.3; }
+.bravais-chrome-button.is-icon[data-bravais-unavailable='true'] { opacity: 0.45; }
+
 /* 「已在队列」悬停 / 键盘聚焦时换成「插入队列」：两份文案叠在同一格（按较宽的那份占位，换显示时按钮不变宽），
    藏着的那份 visibility:hidden，不进可访问名。 */
 .bravais-enqueue-labels { display: inline-grid; }
@@ -495,6 +500,74 @@
     box-sizing: border-box;
 }
 
+/* 书脊的标题槽：平时不改变原来的竖排顺序（display: contents，标题仍是书脊的直接 flex 子级，计数与 spacer 照旧）；
+   横屏等高不够时（下面的 max-height 块）才变成可伸缩的一段，接管 spacer 的位置。 */
+.bravais-seam-spine-title { display: contents; }
+
+/* 横屏手机（高约 390）书脊的竖向空间只有 250 左右：图标收小、间距收紧，把高度让给标题与底部控件，
+   控件不再被挤到书脊底边之外、盖到播放胶囊后面。竖屏与桌面高度不受影响。 */
+@media (max-height: 560px) {
+    .bravais-seam-spine { gap: 6px; padding: 8px 6px 0; }
+    .bravais-seam-spine .bravais-seam-icon { width: 28px; height: 28px; border-radius: 9px; }
+    .bravais-seam-spine .bravais-seam-icon svg { width: 15px; height: 15px; }
+    /* 标题槽接管 spacer：书脊里唯一可伸缩的一段。竖排标题只排一列——超过槽高会折到第二列，而书脊只有
+       64px 宽，第二列会被裁掉（横屏时用户看到的就是只剩半列）。字号由 useBravaisSpineTitleFit 按槽高
+       收缩，整条标题留在槽里；槽本身裁掉万一仍放不下的末尾，绝不再往左右溢出。 */
+    .bravais-seam-spine-title {
+        display: flex;
+        width: 100%;
+        min-height: 0;
+        flex: 1 1 0;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .bravais-seam .bravais-seam-spine .bravais-seam-vtitle {
+        max-height: 100%;
+        overflow: hidden;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+    .bravais-seam-spine > .bravais-seam-spacer { display: none; }
+    /* 计数是次要信息：横屏放不下时让位给标题与控件。 */
+    .bravais-seam-spine .bravais-seam-vcount { display: none; }
+
+    /* 首页窄缝在矮横屏里：页签缩成一个字后仍是一列竖排，导航区一矮就只露出第一个（P，R / A 被裁掉）。
+       改成 2×2 的字母格，四个页签在一屏里都看得见，也把高度让给下面的工具格与「⋯」菜单。 */
+    .bravais-seam-home .bravais-seam-tabs.is-short {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(2, auto);
+        justify-content: center;
+        gap: 2px 4px;
+    }
+
+    /* 完整信息条在同样矮的横屏里：各段收紧，标题保底高度（不能被其它块挤成 0），内容区自己可以滚，
+       溢出不再伸到播放条安全区后面。 */
+    .bravais-seam-full {
+        gap: 8px;
+        padding: 10px 16px 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: none;
+    }
+    .bravais-seam-full::-webkit-scrollbar { display: none; }
+    .bravais-seam .bravais-seam-full .bravais-seam-filter-field.is-strip { height: 32px; }
+    .bravais-seam .bravais-seam-full .bravais-seam-filter-line { height: 30px; }
+    /* 标题区域用掉剩下的竖向空间：矮横屏里不再固定 96px（那会把标题挤成一列还被裁掉，下面留一大片空白）。
+       至少留 96px 保底；内容真的放不下时由缝自己滚动（flex-shrink 到 min-height 为止）。 */
+    .bravais-seam .bravais-seam-full .bravais-seam-title-area {
+        flex: 1 1 auto;
+        min-height: 96px;
+        margin: 0;
+        padding-block: 0;
+    }
+    /* 引号在矮横屏让位给标题本身；字号由 useBravaisSpineTitleFit 按标题区高度收缩。 */
+    .bravais-seam .bravais-seam-full .bravais-seam-quote { display: none; }
+    /* 完整信息条比书脊宽（300px），字号收到最小仍放不下时允许竖排折到第二列，不要硬裁掉末尾。 */
+    .bravais-seam-full > .bravais-seam-rule { display: none; }
+}
+
 /* ---------- 边缘标签：出屏收起时点它就地重开，折叠时点它恢复 ---------- */
 
 .bravais-seam-tab {
@@ -613,7 +686,7 @@
 
 
 /* 空墙上的说明（BravaisWallHint）：两半墙之上、缝之下的一段淡色大字，当作墙的背景，不接指针。
-   left / width 每帧由 useBravaisFrame 写（缝两侧较宽的那一边）；上下留出左上角返回与底部播放胶囊、工具按钮的位置。 */
+   left / width 每帧由 useBravaisFrame 写（缝两侧较宽的那一边）；上下留出底部播放胶囊、工具按钮的位置。 */
 .bravais-wall-hint {
     position: absolute;
     top: 0;
@@ -669,3 +742,25 @@
     .bravais-wall-hint { transition: none; }
     .bravais-wall-hint-text { animation: none; }
 }
+
+/* 手机空墙上的登录入口：说明是背景字，按钮要能点、要 44pt。 */
+.bravais-wall-hint-action {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1.2rem;
+    padding: 0 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--text-accent, currentColor) 55%, transparent);
+    border-radius: 999px;
+    color: var(--text-accent, currentColor);
+    font-size: 15px;
+    font-weight: 650;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    backdrop-filter: blur(12px);
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.bravais-wall-hint-action:active { transform: scale(0.97); }

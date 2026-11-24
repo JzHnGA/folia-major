@@ -1,4 +1,5 @@
 import type { LyricRenderScale, Theme } from '../../../types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import { loadLucideIcons, resolveLucideIconNames } from '../../../services/lucideIconResolver';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
@@ -74,6 +75,8 @@ export class NebbiaRuntime {
     private theme: Theme;
     private tuning: NebbiaTuning;
     private fontScale = 1;
+    // 左右安全区（px）：只影响排版，变了就重排整首
+    private safeSides: SafeAreaSides = { left: 0, right: 0 };
     /** 分辨率倍数（#929）：外壳从全局挡位和 tuning.render 合出来，预览时是 1。 */
     private renderScale: LyricRenderScale;
     private showText = true;
@@ -142,6 +145,12 @@ export class NebbiaRuntime {
         this.rebuild();
     }
     setFontScale(scale: number) { if (scale !== this.fontScale) { this.fontScale = scale; this.rebuild(); } }
+    /** 左右安全区（灵动岛 / 刘海）变了：歌词排进安全区里，重排整首。 */
+    setSafeSides(sides: SafeAreaSides) {
+        if (sides.left === this.safeSides.left && sides.right === this.safeSides.right) return;
+        this.safeSides = { left: sides.left, right: sides.right };
+        this.rebuild();
+    }
     setShowText(show: boolean) { if (show !== this.showText) { this.showText = show; this.rebuild(); } }
     /** 透明时雾的颜色跟主题日夜：日间乳白，夜间深色（像夜里起雾的车窗）。 */
     setDaylight(daylight: boolean) { this.gl.mistTint = daylight ? [0.86, 0.89, 0.92] : [0.07, 0.08, 0.1]; this.requestFrame(); }
@@ -271,7 +280,7 @@ export class NebbiaRuntime {
         void loadLucideIcons([...doodles, ...collectEmojiIcons(lines)]).catch(() => undefined).then(() => {
             if (token !== this.buildToken || this.dead || !this.W) return;
             const source = this.showText ? appendNebbiaCredits(buildNebbiaLines(lines, seed, this.tuning.doodle, doodles), this.tuning.credits ? title : null, artist) : [];
-            this.laid = buildNebbiaScene(source, this.glyphs, this.tuning, { W: this.W, H: this.H, fontScale: this.fontScale }, seed);
+            this.laid = buildNebbiaScene(source, this.glyphs, this.tuning, { W: this.W, H: this.H, fontScale: this.fontScale, insetL: this.safeSides.left, insetR: this.safeSides.right }, seed);
             this.hits = new NebbiaHits(hashVisualizerSeed(String(seed)));
             this.words = source.map(l => l.words);
             this.rebuildHits();

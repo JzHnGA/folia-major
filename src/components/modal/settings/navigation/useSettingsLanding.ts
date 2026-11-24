@@ -83,13 +83,18 @@ export const useSettingsLanding = (
     const waitingRef = useRef({ seq: -1, since: 0 });
     const reducedOutline = useKitReducedMotion();
 
-    /** Scrolls to the group `anchorId` and outlines it; what a click on its tab in the page header does. */
+    /**
+     * Opens the group `anchorId` when it is folded, then scrolls to it and outlines it; what a click
+     * on its tab in the page header does.
+     */
     const landOnGroup = useCallback((anchorId: string) => {
-        scrollToAnchor(anchorId);
         const section = containerRef.current?.querySelector<HTMLElement>(`[data-settings-anchor="${anchorId}"]`);
-        if (section) {
-            outlineGroup(section, reducedOutline);
-        }
+        afterOpening(section?.querySelector(':scope > [data-settings-fold]'), () => {
+            scrollToAnchor(anchorId);
+            if (section) {
+                outlineGroup(section, reducedOutline);
+            }
+        });
     }, [containerRef, reducedOutline, scrollToAnchor]);
 
     useEffect(() => {
@@ -121,10 +126,7 @@ export const useSettingsLanding = (
             return;
         }
         servedSeqRef.current = target.seq;
-        afterOpening(
-            container.querySelector(`[data-settings-anchor="${groupId}"] > [data-settings-fold]`),
-            () => landOnGroup(groupId),
-        );
+        landOnGroup(groupId);
     }, [anchors, containerRef, landOnGroup, reducedMotion, reducedOutline, target]);
 
     return landOnGroup;

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { COVER_MAX_SIZE, COVER_SIZE_STEPS, describeCoverUrl, getCoverIdentity, getOriginalCoverUrl, getSizedCoverUrl, resolveCoverSizeStep } from '@/utils/coverUrl';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COVER_MAX_PIXEL_RATIO, COVER_MAX_SIZE, COVER_SIZE_STEPS, coverOriginalsAllowed, coverPixelRatio, describeCoverUrl, getCoverIdentity, getOriginalCoverUrl, getSizedCoverUrl, resolveCoverSizeStep } from '@/utils/coverUrl';
 
 // test/unit/utils/coverUrl.test.ts
 
@@ -266,5 +266,33 @@ describe('coverUrl utilities', () => {
             expect(getOriginalCoverUrl('https://img1.kuwo.cn/star/albumcover/240/1.jpg'))
                 .toBe('https://img1.kuwo.cn/star/albumcover/1200/1.jpg');
         });
+    });
+});
+
+describe('wall cover density', () => {
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('sizes covers for at most a 2x screen', () => {
+        expect(COVER_MAX_PIXEL_RATIO).toBe(2);
+        expect(coverPixelRatio(3)).toBe(2);
+        expect(coverPixelRatio(2)).toBe(2);
+        expect(coverPixelRatio(1.5)).toBe(1.5);
+        expect(coverPixelRatio(1)).toBe(1);
+        expect(coverPixelRatio(Number.NaN)).toBe(1);
+        expect(coverPixelRatio(0)).toBe(1);
+    });
+
+    it('keeps a 3x phone card off the top steps it used to reach', () => {
+        // A 200-point card: 600 device px at 3x (the 1024 step) is 400 at the capped 2x (the 512 step).
+        expect(resolveCoverSizeStep(200 * 3)).toBe(1024);
+        expect(resolveCoverSizeStep(200 * coverPixelRatio(3))).toBe(512);
+    });
+
+    it('allows original covers in a browser but not in the native iOS shell', () => {
+        expect(coverOriginalsAllowed()).toBe(true);
+        vi.stubGlobal('window', {});
+        expect(coverOriginalsAllowed()).toBe(true);
+        vi.stubGlobal('window', { Capacitor: { isNativePlatform: () => true } });
+        expect(coverOriginalsAllowed()).toBe(false);
     });
 });

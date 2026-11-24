@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import type { MotionValue } from 'framer-motion';
 import type { LyricRenderScale } from '../../../types';
-import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
+import { lyricDevicePixelRatio, resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import { colorWithAlpha } from '../colorMix';
 import { drawPendoloClockwork2d } from './pendoloClockworkDraw2d';
 import {
@@ -409,7 +409,7 @@ const PendoloClockworkCanvas: React.FC<PendoloClockworkCanvasProps> = ({
                 return;
             }
             // 分辨率（#929）：原来的像素密度（devicePixelRatio）当底，乘上倍数；渲染器按变了的尺寸就地换缓冲
-            const dpr = resolveLyricPixelRatio(window.devicePixelRatio || 1, p.renderScale);
+            const dpr = resolveLyricPixelRatio(lyricDevicePixelRatio(), p.renderScale);
 
             const renderer = rendererRef.current;
             if (useWebglRef.current && !renderer?.isReady) useWebglRef.current = false;

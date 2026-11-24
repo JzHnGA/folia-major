@@ -37,7 +37,7 @@ export const buildSettingsSearchEntries = (
     groups: SettingsNavGroup[],
     pageOptions: Partial<Record<SettingsSectionId, readonly SettingsOptionDef[]>>,
     t: Translate,
-    availability: { isElectron: boolean },
+    availability: { isElectron: boolean; isMobile?: boolean },
 ): SettingsSearchEntry[] => groups.flatMap(navGroup => navGroup.items.flatMap((section) => {
     // A category is also found by the name of the side-list group it is in.
     const entries: SettingsSearchEntry[] = [{ sectionId: section.id, targetId: null, label: section.label, path: navGroup.label }];

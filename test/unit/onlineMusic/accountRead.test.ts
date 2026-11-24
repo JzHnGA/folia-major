@@ -38,6 +38,7 @@ const user: ProviderUser = { id: 'abc', nickname: 'Listener' };
 let providerId = '';
 let made = 0;
 let showsKeptAccountAtStart = false;
+let showsKeptAccountOnStartFailure = false;
 type Page = { items: ProviderCollection[]; hasMore: boolean; nextOffset: number };
 const list = (id: string, more: Partial<ProviderCollection> = {}): ProviderCollection => ({ providerId, type: 'playlist', id, name: id, ...more });
 const onePage = (...ids: string[]): Page => ({ items: ids.map(id => list(id)), hasMore: false, nextOffset: ids.length });
@@ -64,6 +65,7 @@ const platform = (over: { auth?: Partial<OnlineAuthProvider>; library?: Partial<
         getLoginStatus: vi.fn(async (): Promise<ProviderUser | null> => user),
         logout: vi.fn(async () => {}),
         showsKeptAccountAtStart,
+        showsKeptAccountOnStartFailure,
         ...over.auth,
     };
     const library = {
@@ -101,6 +103,7 @@ beforeEach(() => {
     made += 1;
     providerId = `account-read-test-${made}`;
     showsKeptAccountAtStart = false;
+    showsKeptAccountOnStartFailure = false;
     stored.clear();
     disk.held = null;
     disk.asked = 0;
@@ -292,6 +295,42 @@ describe.each([
         keep({ user, collections, likedSongIds });
         await omni.readAccount(providerId, 'start');
     };
+
+    // 启动时没有先画缓存账号、但声明了「问不到时仍显示」的平台：平台问不到时仍要显示存着的账号，
+    // 不能把已登录的人显示成未登录。
+    it('shows the kept account, marked failed, when the platform cannot be asked and the adapter asks for it', async () => {
+        showsKeptAccountOnStartFailure = true;
+        keep({ user, collections: [list('kept')], likedSongIds: ['kept-like'] });
+        platform({ auth: { getLoginStatus: vi.fn(async () => { throw new Error('offline'); }) } });
+
+        await expect(omni.readAccount(providerId, 'start')).resolves.toBe('unknown');
+        expect(account()).toMatchObject({
+            status: 'authenticated',
+            user,
+            collections: [{ id: 'kept' }],
+            likedSongIds: ['kept-like'],
+            hydration: 'ready',
+            freshness: 'error',
+            error: 'offline',
+        });
+    });
+
+    // 没有声明这一项的平台仍然等平台报出同一个人：问不到时不能把快照里的上一个人画成已登录。
+    it.skipIf(showsKept)('keeps nobody shown when the platform cannot be asked and the adapter does not ask for the kept account', async () => {
+        keep({ user, collections: [list('kept')], likedSongIds: ['kept-like'] });
+        platform({ auth: { getLoginStatus: vi.fn(async () => { throw new Error('offline'); }) } });
+
+        await expect(omni.readAccount(providerId, 'start')).resolves.toBe('unknown');
+        expect(account()).toMatchObject({
+            status: 'error',
+            user: null,
+            collections: [],
+            likedSongIds: [],
+            hydration: 'ready',
+            freshness: 'error',
+            error: 'offline',
+        });
+    });
 
     it('shows nobody and asks nothing where the platform cannot be asked here', async () => {
         const { auth } = platform({ configured: false });

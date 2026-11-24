@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_LUMIERE_TUNING } from '../../../types';
 import type { Line } from '../../../types';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
 import { loadLucideIcons } from '../../../services/lucideIconResolver';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
 import { resolveLyricAntialias } from '../../../utils/lyricRenderQuality';
@@ -61,9 +62,17 @@ const VisualizerLumiere: React.FC<VisualizerSharedProps> = (props) => {
     const renderScale = isPreviewMode ? 1 : renderQuality.scale;
     const antialias = isPreviewMode ? false : resolveLyricAntialias(renderQuality.antialias, false);
 
+    // iPhone 横屏时灵动岛 / 刘海压在左右两侧（约 59px），画框边距不够让，歌词放字范围再让开这一段。
+    // 预览是小图，不贴屏幕边，不让（保持 0，与桌面一致）。
+    const deviceSafeSides = useSafeAreaSidesPx();
+    const safeSides = useMemo(
+        () => (isPreviewMode ? { left: 0, right: 0 } : deviceSafeSides),
+        [isPreviewMode, deviceSafeSides],
+    );
+
     // 运行时创建期间这些输入可能已经变了；create 完成后按最新值补一次。
-    const latestRef = useRef({ tuning: lumiereTuning, paused, showText, staticMode, audioPower, audioBands, renderScale });
-    latestRef.current = { tuning: lumiereTuning, paused, showText, staticMode, audioPower, audioBands, renderScale };
+    const latestRef = useRef({ tuning: lumiereTuning, paused, showText, staticMode, audioPower, audioBands, renderScale, safeSides });
+    latestRef.current = { tuning: lumiereTuning, paused, showText, staticMode, audioPower, audioBands, renderScale, safeSides };
     const metadataRef = useRef<LumiereSongMetadata>({ title: songTitle, artist: songArtist, album: songAlbum });
     metadataRef.current = { title: songTitle, artist: songArtist, album: songAlbum };
 
@@ -123,12 +132,14 @@ const VisualizerLumiere: React.FC<VisualizerSharedProps> = (props) => {
                 metadata: metadataRef.current,
                 renderScale: latest.renderScale,
                 antialias,
+                safeSides: latest.safeSides,
                 signal,
             });
             const current = latestRef.current;
             runtime.setSongMetadata(metadataRef.current);
             runtime.setTuning(current.tuning);
             runtime.setRenderScale(current.renderScale);
+            runtime.setSafeSides(current.safeSides);
             runtime.setShowText(current.showText);
             runtime.setStaticMode(current.staticMode);
             runtime.setAudioSources(current.audioPower, current.audioBands);
@@ -150,6 +161,10 @@ const VisualizerLumiere: React.FC<VisualizerSharedProps> = (props) => {
     useEffect(() => {
         runtimeRef.current?.setRenderScale(renderScale);
     }, [renderScale, runtimeRef]);
+
+    useEffect(() => {
+        runtimeRef.current?.setSafeSides(safeSides);
+    }, [safeSides, runtimeRef]);
 
     useEffect(() => {
         runtimeRef.current?.setShowText(showText);

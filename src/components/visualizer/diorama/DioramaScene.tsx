@@ -6,9 +6,10 @@ import { type AudioBands, type DioramaGeometryVisibility, type Theme } from '../
 import { buildLineGraphemeTimeline, type GraphemeTiming } from '../../../utils/lyrics/graphemeTiming';
 import { resolveThemeFontStack, resolveThemeFontWeight } from '../../../utils/fontStacks';
 import { prepareDioramaKeywordMatchers, resolveDioramaKeywordUnitColors } from './dioramaKeywordColor';
-import { DIORAMA_HERO_DISTANCE, type DioramaMotionParams } from './cameraPath';
+import { DIORAMA_HERO_DISTANCE, NO_SAFE_SIDES, resolveSafeFrameAspect, type DioramaMotionParams } from './cameraPath';
+import { useSafeAreaSidesPx } from '../../../hooks/useSafeAreaSidesPx';
 import { resolveGlobal, type SequencerState, totalGlobalLines } from './dioramaSequencer';
-import { buildDioramaFontSpec } from './dioramaTextRaster';
+import { buildDioramaFontSpec, releaseDioramaTexture } from './dioramaTextRaster';
 import { DioramaParticleField } from './DioramaParticleField';
 import { DIORAMA_MOTE_WINDOW_LINES, resolveDioramaMoteCircumference, resolveDioramaMoteRadial } from './dioramaMoteField';
 import {
@@ -119,9 +120,12 @@ interface DioramaSceneProps {
     /** 关键字着色: the theme's keyword units take their own emphasis colour as their follow-sing TARGET -
      *  hidden until the singing reaches them, never a resting colour. See the colour block in useFrame. */
     keywordColoringEnabled: boolean;
+    /** Previews are small scaled boxes nowhere near the island: fit lines as if there were no safe area. */
+    ignoreSafeArea?: boolean;
 }
 
 const DioramaScene: React.FC<DioramaSceneProps> = ({
+    ignoreSafeArea = false,
     theme,
     sequencer,
     globalIndex,
@@ -345,8 +349,8 @@ const DioramaScene: React.FC<DioramaSceneProps> = ({
         const current = activeUnitsRaster;
         return () => {
             current?.units.forEach((u) => {
-                u.raster.baseTexture.dispose();
-                u.raster.glowTexture.dispose();
+                releaseDioramaTexture(u.raster.baseTexture);
+                releaseDioramaTexture(u.raster.glowTexture);
             });
         };
     }, [activeUnitsRaster]);
@@ -399,6 +403,13 @@ const DioramaScene: React.FC<DioramaSceneProps> = ({
     // faded and the far end of the mote field showed up as a clump. Setting it on the scene directly keeps
     // it correct no matter how this component's JSX is later nested.
     const scene = useThree((state) => state.scene);
+    // Lines are fitted to the part of the frame clear of the landscape safe areas (Dynamic Island / notch).
+    const liveSafeSides = useSafeAreaSidesPx();
+    const safeSides = ignoreSafeArea ? NO_SAFE_SIDES : liveSafeSides;
+    const safeSidesRef = useRef(safeSides);
+    useEffect(() => {
+        safeSidesRef.current = safeSides;
+    }, [safeSides]);
     useEffect(() => {
         const previous = scene.fog;
         scene.fog = new THREE.Fog(colorTargets.bg.getHex(), FOG_NEAR, FOG_FAR);
@@ -473,7 +484,12 @@ const DioramaScene: React.FC<DioramaSceneProps> = ({
         // the global 字号 scale), then leave it alone - no billboarding, no live-distance rescale, so
         // camera motion is real. Widths are known synchronously from the raster layout.
         const { camera } = frameState;
-        const aspect = camera instanceof THREE.PerspectiveCamera ? camera.aspect : 1;
+        const aspect = resolveSafeFrameAspect(
+            camera instanceof THREE.PerspectiveCamera ? camera.aspect : 1,
+            frameState.size.width,
+            safeSidesRef.current.left,
+            safeSidesRef.current.right,
+        );
         const fov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 55;
         updateDioramaNeighborLines({
             visibleLines,

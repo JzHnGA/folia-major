@@ -86,6 +86,13 @@ export class MachiCamera {
     /** 构图点投影的半宽、半高（缩放 1 时）。 */
     private fitHalf = { width: 9, height: 7 };
     private aspect = 16 / 9;
+    /** 视口的像素宽（setAspect 给的），把安全区的像素换成镜头平面上的长度要用。 */
+    private viewportWidth = 16;
+    /**
+     * 左右安全区（px，iPhone 横屏的灵动岛 / 刘海）：构图框进两边安全区之间那一段并居中，画面本身照样铺满。
+     * 都是 0 时与原来的视锥一模一样。
+     */
+    private insets = { left: 0, right: 0 };
     /** 自定义视角（相对默认构图）；null 是默认视角。 */
     private custom: MachiCameraView | null = null;
     private interacting = false;
@@ -192,7 +199,15 @@ export class MachiCamera {
      */
     private applyFrustum() {
         const usable = 1 - MARGIN * 2 - SUBTITLE_RESERVE;
-        const halfHeight = Math.max(this.fitHalf.height, this.fitHalf.width / this.aspect) / usable;
+        // 构图只按安全区之间那一段的宽高比去装（没有安全区时这个比例就是 1，宽高比不变）。
+        const width = Math.max(1, this.viewportWidth);
+        // 两边加起来最多占视口的八成，免得极小的视口上安全区把能用的宽度吃没。
+        const insetTotal = this.insets.left + this.insets.right;
+        const insetScale = insetTotal > width * 0.8 ? (width * 0.8) / insetTotal : 1;
+        const insetLeft = this.insets.left * insetScale;
+        const insetRight = this.insets.right * insetScale;
+        const safeAspect = this.aspect * ((width - insetLeft - insetRight) / width);
+        const halfHeight = Math.max(this.fitHalf.height, this.fitHalf.width / safeAspect) / usable;
         this.halfHeight = halfHeight;
         const overflow = Math.max(0, this.fitHalf.height / usable - halfHeight / this.framing.view.zoom);
         const view = this.view();
@@ -200,8 +215,11 @@ export class MachiCamera {
         this.base.copy(this.fitCenter).addScaledVector(this.fitUp, overflow * (CROP_FROM_BOTTOM - 0.5) * 2);
         this.place(view, this.base.clone().add(pan));
         const shift = halfHeight * SUBTITLE_RESERVE;
-        this.camera.left = -halfHeight * this.aspect;
-        this.camera.right = halfHeight * this.aspect;
+        // 偏心的视锥：中间 ±halfHeight·safeAspect 对着安全区那一段，两边再各接上安全区宽度那么多，
+        // 总宽仍是 2·halfHeight·aspect（不变形、铺满），而镜头中心（构图中心）落在安全区那一段的正中。
+        const unitsPerPx = (2 * halfHeight * this.aspect) / width;
+        this.camera.left = -halfHeight * safeAspect - insetLeft * unitsPerPx;
+        this.camera.right = halfHeight * safeAspect + insetRight * unitsPerPx;
         this.camera.top = halfHeight - shift;
         this.camera.bottom = -halfHeight - shift;
         this.camera.updateProjectionMatrix();
@@ -210,8 +228,24 @@ export class MachiCamera {
 
     setAspect(width: number, height: number) {
         const aspect = width / Math.max(1, height);
-        if (Math.abs(aspect - this.aspect) < 1e-4) return;
-        this.aspect = aspect;
+        const sameAspect = Math.abs(aspect - this.aspect) < 1e-4;
+        const sameWidth = width === this.viewportWidth;
+        this.viewportWidth = width;
+        // 安全区是像素：有安全区时宽高比没变、像素宽变了也要重算；没有安全区时照旧只看宽高比。
+        const hasInsets = this.insets.left > 0 || this.insets.right > 0;
+        if (sameAspect && (!hasInsets || sameWidth)) return;
+        if (!sameAspect) this.aspect = aspect;
+        this.applyFrustum();
+    }
+
+    /** 左右安全区（px）变了：构图改按两边安全区之间那一段去框、去居中。运镜与拖拽不受它约束。 */
+    setSafeInsets(left: number, right: number) {
+        const next = {
+            left: Number.isFinite(left) ? Math.max(0, left) : 0,
+            right: Number.isFinite(right) ? Math.max(0, right) : 0,
+        };
+        if (next.left === this.insets.left && next.right === this.insets.right) return;
+        this.insets = next;
         this.applyFrustum();
     }
 

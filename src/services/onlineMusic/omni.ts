@@ -89,6 +89,7 @@ import type { SongInPlay } from './account/likedChecks';
 import { createAccountMoments } from './account/readMoments';
 import type { AccountMoment } from './account/readMoments';
 import { createAccountReads } from './account/accountRead';
+import { dropProviderSongsForSignOut } from './account/providerSongCleanup';
 import { withoutCredentials } from './rawResponse';
 import { resolveSongCatalogRefSet } from './catalogRefs';
 import { ARTIST_SONGS_CAP, readAlignedPages } from './alignedPages';
@@ -669,6 +670,17 @@ export const omni = {
         return getOnlineMusicProvider(providerId)?.auth?.localService ?? null;
     },
 
+    // 远端 API 地址可以在应用内覆盖、但此刻还解析不出地址的平台（没有内嵌后端的壳要先问一次地址）；
+    // 没有这样的平台回 null。
+    getProviderMissingApiBase(): OmniProviderId | null {
+        return listOnlineMusicProviders().find(provider => provider.apiBaseOverride && !provider.apiBaseOverride.resolveConfigured())?.id ?? null;
+    },
+
+    // 存/清一个平台的应用内 API 地址覆盖；平台没有这个能力就什么都不做。
+    setProviderApiBaseOverride(providerId: OmniProviderId, base: string | null): void {
+        getOnlineMusicProvider(providerId)?.apiBaseOverride?.setOverride(base);
+    },
+
     // 没有这个能力就回空数组，UI 据此走单步流程；netease / kugou 完全不受影响。
     getLoginMethods(providerId: OmniProviderId): LoginMethod[] {
         return requireOnlineMusicProvider(providerId).auth?.getLoginMethods?.() ?? [];
@@ -693,14 +705,19 @@ export const omni = {
         return runLoginStep(auth, 'form', () => auth.submitLoginForm!(values));
     },
 
-    // 扫码的 provider 回二维码图片；在浏览器里确认的登录没有图片，回空串。
-    async startLogin(providerId: OmniProviderId, methodId?: string): Promise<{ key: string; imageUrl: string }> {
+    // 扫码的 provider 回二维码图片；在浏览器里确认的登录没有图片，回空串。codeUrl 是这一把 key
+    // 对应的登录页面地址（手机端交给系统打开用），provider 没给是空串。
+    async startLogin(providerId: OmniProviderId, methodId?: string): Promise<{ key: string; imageUrl: string; codeUrl: string }> {
         const provider = requireOnlineMusicProvider(providerId);
         const auth = provider.auth;
         if (!auth?.startLogin || (!auth.createQr && !auth.openLoginPage)) return unsupported(providerId, 'qr-login');
         return runLoginStep(auth, 'start', async () => {
             const key = await auth.startLogin!(methodId);
-            return { key, imageUrl: auth.createQr ? await auth.createQr(key) : '' };
+            return {
+                key,
+                imageUrl: auth.createQr ? await auth.createQr(key) : '',
+                codeUrl: auth.getLoginCodeUrl?.(key) ?? '',
+            };
         });
     },
 
@@ -798,6 +815,31 @@ export const omni = {
     // is told, and what was kept of the account on disk goes. Never rejects.
     signOutAccount(providerId: OmniProviderId): Promise<void> {
         return accountReads.signOut(providerId);
+    },
+
+    // The settings' 「清除所有登录信息」: every platform that can be signed in is signed out through
+    // the same path as the account screen, so what each keeps of the session goes - also where the
+    // account store has not read anyone yet (offline, or a read that failed). Settings, local files
+    // and the cached songs stay. A platform that fails does not stop the others; never rejects.
+    async signOutAllAccounts(): Promise<void> {
+        // 不只看账号 store 里有没有 user：启动读数还没回来、读失败或平台暂时不可达时那里也是空的，
+        // 而这颗按钮要清的是设备上存着的会话本身。每个声明了 auth 的平台都走退出（没登录的是空操作），
+        // 这样离线时存下的 token / cookie 与账号快照也会一起清掉。
+        const providerIds = listOnlineMusicProviders()
+            .filter(provider => Boolean(provider.auth))
+            .map(provider => provider.id);
+        if (providerIds.length === 0) return;
+        // 与账号页的退出同一个顺序：先把这些平台留在播放器里的歌移走（正在放的是它们就停下），再退登录。
+        // 清理失败不挡退出（账号页那一条路也是单独 catch 的）。
+        await Promise.all(providerIds.map(async providerId => {
+            try {
+                await dropProviderSongsForSignOut(providerId);
+            } catch (error) {
+                console.warn(`[Account] ${providerId}: its songs could not be dropped before sign-out:`, error);
+            }
+        }));
+        await Promise.allSettled(providerIds.map(providerId => accountReads.signOut(providerId)));
+        console.log(`[Account] signed out of every platform: ${providerIds.join(', ')}`);
     },
 
     // Reads the playlists of the account shown again, after a change made to one in Folia and

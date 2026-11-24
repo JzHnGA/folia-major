@@ -9,7 +9,7 @@ import { installBaseState, mockNeteaseApi, openApp } from './helpers/appFixtures
 // - 从实色首页回播放页 visualizer 正常出现；
 // - 打开设置弹窗时 visualizer 仍不挂（2026-10-09 起设置盖着时首页照常显示在半透明遮罩下面，透出的是实色墙）；
 // - grid 首页照旧挂着 visualizer（TUI 与切换的完整回归在 libraryRendererSwitch）；
-// - 左上角隐藏式返回在首页根层只在有歌时出现，点它回播放页后 visualizer 挂上（没有歌时播放页是空的，深色主题下就是「黑屏」）。
+// - 左上角不再有独立返回（用户定，移动端）；墙上点底部控制条回播放页（不受「播放后进入」偏好影响），visualizer 挂上。
 // - 2026-10-09：「信息条始终透明」时缝也是透光处——实色墙 + 透明缝不卸载 visualizer，关掉透明后照旧卸载；
 // - 墙后画面的模糊：有透光处时 visualizer 那一层加 CSS 模糊，回播放页撤掉；歌词开关经同一个通道报给 App。
 // 遮挡由 bravais 的 stage 在 effect 里报告，App 在首页完全显示 300ms 后才卸载，所以断言一律轮询。
@@ -24,18 +24,19 @@ const visualizerMounted = (page: Page) => surface(page).evaluate(element => elem
  * `look` 为 null 时不种透光档位，走 store 的默认档（实色）。信息条始终透明 2026-10-09 起默认开（实色墙 + 透明缝不卸载
  * visualizer），所以验证「实色档卸载」的用例显式种 `seamClear: false`；`seamClear: null` 不种、走默认。
  */
-const bootHome = async (page: Page, suite: 'bravais' | 'grid', look: 'solid' | 'partial' | null, { seamClear = false }: { seamClear?: boolean | null } = {}) => {
+const bootHome = async (page: Page, suite: 'bravais' | 'grid', look: 'solid' | 'partial' | null, { seamClear = false, entryView = null }: { seamClear?: boolean | null; entryView?: 'player' | 'lattice' | 'stay' | null } = {}) => {
     await installBaseState(page, { neteaseMode: 'guest' });
-    await page.addInitScript(([suiteId, wallLook, clearSeam]) => {
+    await page.addInitScript(([suiteId, wallLook, clearSeam, playbackEntryView]) => {
         localStorage.setItem('library_suite', suiteId as string);
         if (wallLook) localStorage.setItem('library_wall_look', wallLook as string);
         if (clearSeam !== null) localStorage.setItem('library_wall_seam_clear', String(clearSeam));
+        if (playbackEntryView) localStorage.setItem('playback_entry_view', playbackEntryView);
         // 打开设置弹窗要这两个桥接方法（与 homeCardPosition 同一份最小桥）。
         Object.assign((window as Window & { electron?: Record<string, unknown> }).electron ?? {}, {
             getSettings: async () => ({}),
             getCacheDirectory: async () => ({ path: '', isDefault: true }),
         });
-    }, [suite, look, seamClear] as const);
+    }, [suite, look, seamClear, entryView] as const);
     await mockNeteaseApi(page, 'guest');
     await openApp(page);
 };
@@ -108,7 +109,7 @@ test('the solid bravais home unmounts the visualizer; see-through looks and the 
     await page.evaluate(async () => {
         const path = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(path);
-        useSettingsModalStore.getState().openSettings('options');
+        useSettingsModalStore.getState().openSettings();
     });
     await expect(page.locator('[data-ponder-page-scope="settings-page"]')).toBeVisible();
     await expect(page.locator('[data-library-stage="bravais"]')).toBeVisible();
@@ -128,15 +129,15 @@ test('the grid home keeps the visualizer mounted whatever the bravais look prefe
 });
 
 // 用户实测「首页点左上角返回回到黑屏」：那是没有歌时的空播放页（visualizer 照常挂上，只是没有可画的东西），不是挂载链路的问题。
-// 现在首页根层没有歌时不画这颗按钮；有歌时它回到播放页，实色档卸载过的 visualizer 立即重新挂上。
-test('the bravais back button at the home root only shows with a song and brings the visualizer back on the player', async ({ page }) => {
-    await bootHome(page, 'bravais', 'solid');
+// 现在墙上不再单独放返回（用户定，移动端），回到可视化播放页点底部的控制条：实色档卸载过的 visualizer 立即重新挂上。
+test('the bravais wall has no separate back, and the player bar at the home root brings the visualizer back', async ({ page }) => {
+    // 「播放后进入的视图」故意选队列拼贴：墙上点胶囊这一下不受它影响，仍然回可视化播放页。
+    await bootHome(page, 'bravais', 'solid', { entryView: 'lattice' });
     const stage = page.locator('[data-library-stage="bravais"]');
     await expect(stage).toHaveAttribute('data-bravais-look', 'solid');
     await expect(stage).not.toHaveAttribute('data-bravais-settling', /.*/, { timeout: 15_000 });
     await expect.poll(() => visualizerMounted(page)).toBe(false);
-    const back = stage.locator('.lattice-back');
-    await expect(back).toHaveCount(0);
+    await expect(stage.locator('.lattice-back')).toHaveCount(0);
 
     await page.evaluate(async () => {
         const path = '/src/stores/usePlaybackStore.ts';
@@ -144,11 +145,10 @@ test('the bravais back button at the home root only shows with a song and brings
         const song = { id: 5001, name: 'Back Seed', artists: [{ id: 1, name: 'Seed Artist' }], album: { id: 1, name: 'Seed Album' }, durationMs: 180_000 };
         usePlaybackStore.setState({ playQueue: [song], currentSong: song });
     });
-    await expect(back).toHaveAccessibleName('Back to the player');
-    await page.mouse.move(700, 500);
-    await page.mouse.move(60, 60);
-    await expect(back).toHaveClass(/\bis-revealed\b/);
-    await back.click();
+    const capsule = page.locator('[data-ponder="player-bar"]');
+    await expect(capsule).toBeVisible();
+    // 点胶囊左端的空白（进度条与按钮之外），走「回可视化播放页」这一下。
+    await capsule.click({ position: { x: 4, y: 12 } });
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#player');
     await expect.poll(() => visualizerMounted(page)).toBe(true);
 });

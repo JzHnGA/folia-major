@@ -3,7 +3,7 @@
 // enhanced LRC (with translations, CJK lines and an instrumental break), and a folder cover. Nothing is
 // fetched, so it works offline, in a fresh profile, and with no platform signed in.
 
-export const MOCK_SONG_ARTIST = 'Folia Dev';
+export const MOCK_SONG_ARTIST = 'Ecria Dev';
 export const MOCK_SONG_TITLE = 'Mock Song';
 export const MOCK_SONG_ALBUM = 'Dev Fixtures';
 export const MOCK_SONG_SECONDS = 72;
@@ -45,7 +45,7 @@ const LYRIC_LINES: MockLyricLine[] = [
     { start: 44, words: ['Faster ', 'words ', 'pile ', 'up ', 'and ', 'run ', 'and ', 'stop'], span: 2 },
     { start: 48, words: ['夜', 'が', '明', 'け', 'る', 'ま', 'で'], translation: '直到天亮' },
     { start: 52, words: ['最后', '一句', '慢慢', '地', '落下'] },
-    { start: 56, words: ['Folia ', 'mock ', 'song, ', 'the ', 'end'], translation: 'Folia 测试歌曲，完' },
+    { start: 56, words: ['Ecria ', 'mock ', 'song, ', 'the ', 'end'], translation: 'Ecria 测试歌曲，完' },
 ];
 
 const pad2 = (value: number) => `${value}`.padStart(2, '0');

@@ -33,7 +33,7 @@ export const hifiCommands: CommandPaletteCommand[] = [
             }
             // The full-volume warning is asked in the settings, never skipped from here.
             if (!settings.isHifiVolumeConfirmed()) {
-                settings.openSettings('options', 'playback', null, 'hifiEngine');
+                settings.openSettings('playback', null, 'hifiEngine');
                 return;
             }
             settings.setHifiEnabled(true);
@@ -76,7 +76,7 @@ export const hifiCommands: CommandPaletteCommand[] = [
         'hifi-software-volume-toggle',
         'settings',
         'HiFi software volume',
-        "Turn on or off letting Folia's volume slider set mpv's volume; not bit-perfect while on",
+        "Turn on or off letting Ecria's volume slider set mpv's volume; not bit-perfect while on",
         ['software volume', 'digital volume', 'mpv volume', 'volume slider', 'dac volume', '软件音量', '数字音量', '音量滑杆', '数字衰减'],
         context => context.settings.toggleHifiSoftwareVolume(),
         { platform: ['electron'], icon: SlidersHorizontal, isAvailable: whereHifiIsSupported },
@@ -107,11 +107,11 @@ export const hifiCommands: CommandPaletteCommand[] = [
         id: 'hifi-download-mpv',
         group: 'settings',
         title: 'Download or update mpv',
-        description: 'Download the recommended mpv for HiFi, or update the one Folia downloaded; the progress shows in the HiFi settings',
+        description: 'Download the recommended mpv for HiFi, or update the one Ecria downloaded; the progress shows in the HiFi settings',
         keywords: ['install mpv', 'get mpv', 'upgrade mpv', 'mpv installer', '安装 mpv', '获取 mpv', '升级 mpv', '下载播放器'],
         icon: Download,
         platform: ['electron'],
-        // Only where the engine settings offer the button: a build Folia can download, nothing running, something newer.
+        // Only where the engine settings offer the button: a build Ecria can download, nothing running, something newer.
         isAvailable: context => context?.settings.canInstallHifiRuntime() ?? false,
         // A download is not undone by pressing a key again, so no execute shortcut.
         execute: (_input, context) => {
@@ -126,7 +126,7 @@ export const hifiCommands: CommandPaletteCommand[] = [
                 setStatusMsg({ type: 'error', text: t(`hifi.errors.${result?.errorCode ?? 'INSTALL_FAILED'}`) });
             });
             // The progress bar and the cancel button are in the playback engine settings.
-            context.settings.openSettings('options', 'playback', null, 'hifiEngine');
+            context.settings.openSettings('playback', null, 'hifiEngine');
             return true;
         },
     }),

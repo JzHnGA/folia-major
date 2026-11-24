@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, ChevronUp } from 'lucide-react';
 import { MotionValue } from 'framer-motion';
 import ProgressBar from './ProgressBar';
 import { PlayerState, LyricData, Theme } from '../types';
@@ -42,7 +42,12 @@ import {
 import CompactCapsuleContent from './floating-player/compact/CompactCapsuleContent';
 import { useNowPlayingCardVisibility } from './app/overlays/now-playing-toast/useNowPlayingCardVisibility';
 import { useTransitionBorderCue } from './app/overlays/now-playing-toast/useTransitionBorderCue';
+import { usePlayerBarAutoHide } from './floating-player/usePlayerBarAutoHide';
+import { useCapsuleTrackSwipe } from './app/player-swipe/useCapsuleTrackSwipe';
+import { useCapsuleVerticalSwipe } from './app/player-swipe/useCapsuleVerticalSwipe';
+import { useReducedMotionFor } from '../hooks/useReducedMotionFor';
 import './floating-player/bottomDock.css';
+import './floating-player/playerBarAutoHide.css';
 
 export interface TrackNavigation {
     /** 当前曲目的稳定身份，用于识别「确实换歌了」；相邻两首同名时标题字符串不变，不能拿标题判断 */
@@ -118,7 +123,10 @@ interface FloatingPlayerControlsProps {
     onSeek: (time: number) => void;
     onTogglePlay: () => void;
     onToggleLoop: () => void;
+    /** 宿主给的原入口：播放页 / 网格首页上按「播放后进入的视图」去 Lattice 或播放页。 */
     onNavigateToPlayer: () => void;
+    /** 资料库墙上点控制条：一律回可视化播放页（不受「播放后进入」偏好影响）。网格首页不给，仍走 onNavigateToPlayer。 */
+    onReturnToVisualizer?: () => void;
     onFocusLatticeCurrentSong?: () => void;
     noTrackText?: string;
     primaryColor?: string;
@@ -170,6 +178,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     onTogglePlay,
     onToggleLoop,
     onNavigateToPlayer,
+    onReturnToVisualizer,
     onFocusLatticeCurrentSong,
     noTrackText = 'No Track',
     primaryColor = 'var(--text-primary)',
@@ -194,6 +203,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     const isCompanionOpen = useBottomDockStore(state => Object.keys(state.openCompanions).length > 0);
     const wallLocate = useBottomDockStore(selectWallLocate);
     const hasCompanion = isCompact && companionCount > 0;
+    // 墙上的那一下「回可视化」：宿主给的回调（App 的 navigateToPlayer）。网格首页不给（仍按「播放后进入」偏好）。
+    const returnToVisualizer = onReturnToVisualizer;
     // 首页上没有挂件（网格集合页右下角是它自己的按钮）时胶囊照旧让出两边，底距也照旧。
     const isCompactWide = isCompact && (currentView !== 'home' || hasCompanion);
     const capsuleBaseBottomPx = isCompactWide ? COMPACT_CAPSULE_BASE_BOTTOM_PX : PLAYER_BOTTOM_BAR_BASE_OFFSET_PX;
@@ -206,10 +217,14 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     const { ref: layoutRef, invalidate: invalidateLayout } = usePlayerOverlayObstacle('player-controls', 'playback', !isHidden);
     // 命令面板从胶囊原地长出来时要量它，所以胶囊节点除了交给遮挡登记，也留一份自己的。
     const capsuleElementRef = useRef<HTMLDivElement | null>(null);
+    // 左右滑动切歌也挂在胶囊上：节点换了要重挂监听，所以另存一份进 state。
+    const [capsuleNode, setCapsuleNode] = useState<HTMLDivElement | null>(null);
     const capsuleRef = useCallback((element: HTMLDivElement | null) => {
         layoutRef(element);
         capsuleElementRef.current = element;
+        setCapsuleNode(element);
     }, [layoutRef]);
+    const capsuleContentRef = useRef<HTMLDivElement | null>(null);
     // 面板正以胶囊为外壳开着：胶囊自己淡出，免得两个叠在一起。
     const isMorphedIntoPalette = useCapsulePaletteStore(state => state.isMorphed);
     // 刚从命令面板交还回来的那一次渲染：淡入要快，才能接上面板最后那点淡出。
@@ -234,6 +249,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     const [isHovered, setIsHovered] = useState(false);
     // 最近一次进入悬停区的是不是手指。只在进入和按下时写、值不变就不更新，不跟指针移动。
     const [isTouchHover, setIsTouchHover] = useState(false);
+    // 手指 / 鼠标此刻按在控制条上（拖进度条、长按按钮）。按住期间不自动收起，松手才重新数。
+    const [isBarPointerHeld, setIsBarPointerHeld] = useState(false);
     // 手指没有悬停：播放页上点开胶囊、或者一暂停，上方那排命令就直接浮出，连同撑开的胶囊
     // TOUCH_REVEAL_MS 没碰就一起收起；点胶囊以外的地方立刻收。
     const [isTouchRevealed, setIsTouchRevealed] = useState(false);
@@ -278,6 +295,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         if (event.type === 'pointerdown') {
             // 又按下了一次：上一下点出那排补发的 click 早该过去了，这一下的 click 是真的。
             swallowClickUntilRef.current = 0;
+            setIsBarPointerHeld(true);
             pressRef.current = { x: event.clientX, y: event.clientY, onSeek: isOnSeekTrack(event.target) };
             pressOpensPaletteRef.current = event.pointerType !== 'touch'
                 || touchRowShownRef.current
@@ -287,6 +305,19 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                 : null;
         }
     }, []);
+    // 松手在窗口任意地方都算：拖进度条时指针可能已经离开胶囊，甚至被 range input 捕获。
+    useEffect(() => {
+        if (!isBarPointerHeld) return undefined;
+        const release = () => setIsBarPointerHeld(false);
+        window.addEventListener('pointerup', release, true);
+        window.addEventListener('pointercancel', release, true);
+        window.addEventListener('blur', release);
+        return () => {
+            window.removeEventListener('pointerup', release, true);
+            window.removeEventListener('pointercancel', release, true);
+            window.removeEventListener('blur', release);
+        };
+    }, [isBarPointerHeld]);
     const [isTimelineOpen, setIsTimelineOpen] = useState(false);
     const expandTimeoutRef = useRef<number | null>(null);
     const collapseTimeoutRef = useRef<number | null>(null);
@@ -310,11 +341,36 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     // 主指针是触屏的设备不走停留；带触屏的笔记本主指针是鼠标，再按这一次进来的是不是手指拦。
     // 手指另走下面的 showTouchQuickActions：点开胶囊或暂停时直接浮出。
     const supportsFinePointer = useSupportsFinePointer();
+    // 键盘焦点在控制条里时不让它自动收起：条落到 inert 会把焦点丢到 body，键盘用户要重新找回来。
+    // 只有键盘（Tab / 方向键）给的焦点才算：点按钮、按底边把手时浏览器也会把焦点放进条里（tabIndex=-1 的
+    // 胶囊、Chromium 的按钮），那不是键盘用户在操作，不能让条永远停着。用最近一次输入是键盘还是指针来分辨。
+    const [barHasFocus, setBarHasFocus] = useState(false);
+    const keyboardIntentRef = useRef(false);
+    useEffect(() => {
+        const onKeyDown = () => { keyboardIntentRef.current = true; };
+        const onPointerDown = () => { keyboardIntentRef.current = false; };
+        window.addEventListener('keydown', onKeyDown, true);
+        window.addEventListener('pointerdown', onPointerDown, true);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown, true);
+            window.removeEventListener('pointerdown', onPointerDown, true);
+        };
+    }, []);
+    const onBarFocus = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+        if (!keyboardIntentRef.current) return;
+        const target = event.target as Element;
+        if (typeof target.matches === 'function' && !target.matches(':focus-visible')) return;
+        setBarHasFocus(true);
+    }, []);
+    const onBarBlur = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setBarHasFocus(false);
+    }, []);
     // 紧凑档里指针从胶囊挪到挂在右端的按钮上时，胶囊当作还在悬停（按钮不是胶囊的子节点）。
     const isHoverActive = (isHovered || (isCompact && companionHovered)) && !isHoverSuppressed;
     const hasDwelled = useCapsuleQuickActionsDwell(isHoverActive && !isTouchHover);
     // 手指浮出的只在播放页：首页点胶囊是去播放页，歌曲墙上是定位到当前歌曲，都不是要这排。
-    const touchRowAllowed = currentView === 'player' && !showSlotSuggestion && slotPicker === null
+    // 播放页上点胶囊浮出；任何页面上滑胶囊也浮出（useCapsuleVerticalSwipe），所以这里不再限定播放页。
+    const touchRowAllowed = !showSlotSuggestion && slotPicker === null
         && !isHidden && !isPositioning && !controlsDisabled && !isHoverSuppressed;
     const showTouchQuickActions = isTouchRevealed && touchRowAllowed;
     touchRowShownRef.current = showTouchQuickActions;
@@ -338,14 +394,71 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     // 刚换完按钮也再展开一会儿，让人看见换上去的结果。
     // 变成命令面板期间胶囊照常收起或展开，只是看不见：它在面板接手的那一刻就立刻隐去，
     // 收起时透过遮罩看不到它往下缩；面板收回时量的正是它此刻的样子，收回去的宽度就对得上。
-    const showExpanded = isPositioning || hoverExpands || (isTouchRevealed && currentView === 'player') || slotPicker !== null || showSlotSuggestion || slotCustomization.isShowingChange || (canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home' && !isHoverSuppressed);
+    const showExpanded = isPositioning || hoverExpands || isTouchRevealed || slotPicker !== null || showSlotSuggestion || slotCustomization.isShowingChange || (canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home' && !isHoverSuppressed);
     showExpandedRef.current = showExpanded;
+
+    // 空闲时整条控制条滑到屏幕下方，底边留一个向上箭头（见 usePlayerBarAutoHide / playerBarAutoHide.css）。
+    // 只在触屏、没有悬停 / 展开 / 面板 / 定位 / 时间轴 / 键盘焦点时成立；桌面沿用播放页自己的自动隐藏。
+    // 暂停时墙上（home / lattice）也收，播放页暂停仍留着；指针停在控制条上不算空闲（触屏补发的 mouseenter 用
+    // isTouchHover 排除）。
+    const pointerHovering = isHoverActive && !isTouchHover;
+    const canAutoHideBar = !supportsFinePointer
+        && currentSong !== null
+        && !hideControlBar
+        && !isHidden
+        && !isMorphedIntoPalette
+        && !isPositioning
+        && slotPicker === null
+        && !showSlotSuggestion
+        && !showQuickActions
+        && !isTouchRevealed
+        && !pointerHovering
+        && !barHasFocus
+        && !isBarPointerHeld
+        && !isCompanionOpen
+        && !isTimelineOpen
+        && !controlsDisabled
+        // 暂停 / 未播放时，资料库墙（home）和队列拼贴墙（lattice）都不留控制条；
+        // 播放页的暂停仍留着（那里要随时能继续）。
+        && (playerState === PlayerState.PLAYING || currentView !== 'player');
+    const autoHideResetKey = `${currentView}|${currentSong?.name ?? ''}|${trackNavigation?.currentTrackKey ?? ''}|${playerState}`;
+    // 收起时按「底距 + 胶囊高度 + 32」算滑出距离：用户把控制条拖高之后也能整条滑出屏幕。直接写在
+    // 外层节点的 CSS 变量上——在隐藏属性落下的同一帧之前就写好，不经过一次多余的 React 提交。
+    const barShellRef = useRef<HTMLDivElement>(null);
+    const measureBarHideDistance = useCallback(() => {
+        const shell = barShellRef.current;
+        if (!shell) return;
+        const distance = Math.ceil(bottomBarBottomPx.get() + shell.offsetHeight + 32);
+        shell.style.setProperty('--player-bar-hide-distance', `${distance}px`);
+        // 挂在胶囊上的面板按钮跟着滑出同样的距离（bottomDock.css 的 data-capsule-hidden）。
+        document.documentElement.style.setProperty('--player-bar-hide-distance', `${distance}px`);
+    }, [bottomBarBottomPx]);
+    const { hidden: isBarAutoHidden, reveal: revealBar } = usePlayerBarAutoHide({
+        enabled: canAutoHideBar,
+        resetKey: autoHideResetKey,
+        onBeforeHide: measureBarHideDistance,
+    });
+    // 收起 / 回来后重新登记遮挡区：滑出动画是 CSS，不会触发 framer 的 onUpdate。
+    useLayoutEffect(() => {
+        invalidateLayout();
+        const timer = window.setTimeout(invalidateLayout, 420);
+        return () => window.clearTimeout(timer);
+    }, [invalidateLayout, isBarAutoHidden]);
+
+    // 资料库墙上，点胶囊就是回可视化播放页（handleClick 里给了 onReturnToVisualizer 的那一支）。触屏没有悬停可试，
+    // 胶囊上方那条小横条把这个动作画出来（用户定，移动端）：它不是另一颗按钮，点它和点胶囊是同一件事。
+    // 鼠标靠悬停展开胶囊，横条会被撑开、顶到指针外面，所以只在粗指针上画。
+    const showReturnToVisualizerHint = returnToVisualizer !== undefined && currentView === 'home' && !supportsFinePointer
+        && !isHidden && !isPositioning && !isMorphedIntoPalette && !isBarAutoHidden && !isHoverSuppressed
+        && !showQuickActions && !showSlotSuggestion && slotPicker === null;
 
     // 胶囊的离散状态写进 store（再写到 <html data-capsule>）：挂件、卡片让位、字幕按它摆，不量胶囊。
     // 胶囊淡出了（播放页控件自动隐藏、或者它正当着命令面板）就算收着：暂停时它虽然“展开”，
     // 但看不见，字幕和卡片不该为它让位；挂件仍算挂着，免得控件一隐一现时右下角的按钮来回跳。
-    const isCapsuleVisible = !isHidden && !isMorphedIntoPalette;
-    const dockCapsuleState: DockCapsuleState = hideControlBar
+    // 自动收起时也算收着（字幕、卡片不再为它让位）；但挂件不回右下角单独出现：另记一笔 capsuleAutoHidden，
+    // 挂件仍挂在胶囊上、跟着胶囊一起滑出屏幕，点把手回来时一起回来。
+    const isCapsuleVisible = !isHidden && !isMorphedIntoPalette && !isBarAutoHidden;
+    const dockCapsuleState: DockCapsuleState = hideControlBar || isBarAutoHidden
         ? 'none'
         : !isCapsuleVisible ? 'rest'
             : showQuickActions && showExpanded ? 'quick' : showExpanded ? 'expanded' : 'rest';
@@ -353,6 +466,11 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         useBottomDockStore.getState().setCapsule(dockCapsuleState);
     }, [dockCapsuleState]);
     useEffect(() => () => useBottomDockStore.getState().setCapsule('none'), []);
+    const isCapsuleAutoHidden = isBarAutoHidden && !hideControlBar;
+    useEffect(() => {
+        useBottomDockStore.getState().setCapsuleAutoHidden(isCapsuleAutoHidden);
+    }, [isCapsuleAutoHidden]);
+    useEffect(() => () => useBottomDockStore.getState().setCapsuleAutoHidden(false), []);
 
     // 紧凑档的形态切换不走 framer 的 layout 动画（那是缩放，按钮会被拉扁、内容会从顶边往上挪）：胶囊直接定到
     // 最终尺寸，用 clip-path 从底边往上展开（open）、快捷行多出的那一截往上长（grow）、收起时往下收（close，
@@ -432,7 +550,14 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     }, [currentView, isHidden, isMorphedIntoPalette, isPositioning, isTouchHover, playerState, revealOnTouch, supportsFinePointer]);
 
     // 离开播放页、控件自动隐藏、进定位模式、胶囊变成命令面板：浮出的那排都不该留着，面板交还时胶囊照常收着。
-    const touchRevealMustEnd = currentView !== 'player' || isHidden || isPositioning || isMorphedIntoPalette || isHoverSuppressed;
+    // 换页（点胶囊去播放页、返回墙上）也收：上一页展开的胶囊不带到下一页。
+    const previousRevealViewRef = useRef(currentView);
+    useEffect(() => {
+        if (previousRevealViewRef.current === currentView) return;
+        previousRevealViewRef.current = currentView;
+        endTouchReveal();
+    }, [currentView, endTouchReveal]);
+    const touchRevealMustEnd = isHidden || isPositioning || isMorphedIntoPalette || isBarAutoHidden || isHoverSuppressed;
     useEffect(() => {
         if (touchRevealMustEnd) {
             endTouchReveal();
@@ -510,6 +635,39 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         }
     }, []);
 
+    // 底边的向上箭头：往上拖一小段就滑回来；点一下也算（手指按下去没挪动）。拖动只在箭头自己的命中区里，
+    // 不碰控制条的高度设置。
+    const revealDragRef = useRef<{ startY: number; revealed: boolean; } | null>(null);
+    const handleRevealPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        revealDragRef.current = { startY: event.clientY, revealed: false };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    }, []);
+    const handleRevealPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = revealDragRef.current;
+        if (!drag || drag.revealed) return;
+        if (drag.startY - event.clientY >= 12) {
+            drag.revealed = true;
+            revealBar();
+        }
+    }, [revealBar]);
+    const handleRevealPointerEnd = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = revealDragRef.current;
+        revealDragRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        if (!drag) return;
+        // 没怎么挪（点了一下）也让它回来；拖到一半松手但已经过阈值时，move 里已经唤回来了。
+        if (!drag.revealed && Math.abs(event.clientY - drag.startY) <= 8) revealBar();
+    }, [revealBar]);
+    const handleRevealPointerCancel = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+        revealDragRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    }, []);
+
     // 定位模式只在播放页的控制条上成立。离开播放页或把控制条整条隐藏后，
     // 拖手和退出按钮都不在场了，状态留着会把胶囊永久钉在展开且不可交互的样子上。
     useEffect(() => {
@@ -529,7 +687,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     }, []);
 
     // 胶囊看得见、能点时才让命令面板从它长出来；隐藏、定位模式或整条不画时面板回到顶上的遮罩。
-    const canAnchorPalette = !isHidden && !isPositioning && !hideControlBar;
+    const canAnchorPalette = !isHidden && !isPositioning && !hideControlBar && !isBarAutoHidden;
     useEffect(() => {
         const element = capsuleElementRef.current;
         if (!canAnchorPalette || !element) {
@@ -586,6 +744,28 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         0,
         Math.round(Math.min(HOVER_HITBOX_BOTTOM_BUFFER_PX, capsuleBaseBottomPx) - (savedBottomBarOffset - PLAYER_BOTTOM_BAR_BASE_OFFSET_PX)),
     );
+
+    // 胶囊上左右滑动切歌（左滑下一首、右滑上一首），收起着也能划，每个页面都开。播放页整屏的滑动不接控制条上
+    // 起手的触摸（data-player-bar-shell），所以不会一划切两首。定位模式下胶囊是被拖的物体，不切歌。
+    const reduceUiMotion = useReducedMotionFor('uiMicroMotion');
+    useCapsuleTrackSwipe({
+        target: capsuleNode,
+        contentRef: capsuleContentRef,
+        enabled: !isPositioning && Boolean(trackNavigation),
+        canNext: Boolean(trackNavigation?.canNext),
+        canPrev: Boolean(trackNavigation?.canPrev),
+        onNext: () => trackNavigation?.onNext(),
+        onPrev: () => trackNavigation?.onPrev(),
+        reducedMotion: reduceUiMotion,
+    });
+
+    // 胶囊上上滑展开（显示更多信息与那排命令，计时同点出来的那样），下滑收起。点胶囊仍是去可视化播放页 / 在播放页上展开。
+    useCapsuleVerticalSwipe({
+        target: capsuleNode,
+        enabled: !isPositioning && !isMorphedIntoPalette && !isHidden && !controlsDisabled,
+        onSwipeUp: revealOnTouch,
+        onSwipeDown: endTouchReveal,
+    });
 
     // 槽位上下文：调用方给的那份，加上胶囊自己掌握的循环模式、歌词时间轴和相邻曲目可用性。
     const resolvedSlotContext = useMemo<PlayerControlSlotContext>(() => ({
@@ -695,7 +875,10 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
             }
             return;
         }
-        if (currentView !== 'lattice') {
+        if (currentView === 'home' && returnToVisualizer) {
+            // 资料库墙上：回可视化播放页（用户定，移动端）。胶囊上方的小横条提示这一下。
+            returnToVisualizer();
+        } else if (currentView !== 'lattice') {
             onNavigateToPlayer();
         } else {
             onFocusLatticeCurrentSong?.();
@@ -709,14 +892,23 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     return (
         <>
             {/*
-                定位层和动画层必须分开。这一层用 Tailwind 的 `-translate-x-1/2` 做水平居中，
-                而下面那层的 animate 会写 y/scale —— framer-motion 生成的 transform 会整个
-                盖掉同一节点上的 Tailwind transform，合并两层会让胶囊丢失居中、向右偏出去。
-                bottom 走共享 MotionValue（默认 32，即原来的 bottom-8），不是 transform 属性，
+                定位层和动画层必须分开。这一层的水平居中与收起位移都由 playerBarAutoHide.css 的
+                translate 负责（`-50% 0`，收起时 `-50% <距离>`）；下面那层的 animate 会写 y/scale ——
+                framer-motion 生成的 transform 会整个盖掉同一节点上的 transform，合并两层会让胶囊丢失居中、
+                向右偏出去。bottom 走共享 MotionValue（默认 32，即原来的 bottom-8），不是 transform 属性，
                 所以挂在这一层不会干扰居中。
+                data-player-bar-shell：播放页整屏的左右滑动切歌不接控制条上起手的触摸（拖进度条、胶囊自己的左右 / 上下滑动），
+                胶囊上的左右滑动由 useCapsuleTrackSwipe 自己切歌，两边都接会一划切两首。这层本身 pointer-events: none，
+                只有落在胶囊上的触摸才会以它的子元素为目标。不用 data-player-swipe-ignore：胶囊自己的滑动也认那个标记。
             */}
             <motion.div
-                className={`absolute left-1/2 -translate-x-1/2 z-60 w-full flex justify-center pointer-events-none
+                ref={barShellRef}
+                data-mobile-tutorial="player"
+                data-player-bar-shell
+                onFocus={onBarFocus}
+                onBlur={onBarBlur}
+                data-auto-hidden={isBarAutoHidden || undefined}
+                className={`player-bar-shell absolute left-1/2 z-60 w-full flex justify-center pointer-events-none
                     ${isCompactWide
                         // 紧凑档：两侧各留 12，最宽 520（再加模组的加宽量）；bottomDock.css 里挂件的位置按同一组数算。
                         ? 'max-w-[min(calc(544px_+_var(--folium-player-bar-extra,0px)),100vw)] px-3'
@@ -732,6 +924,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                 className="w-full flex justify-center pointer-events-none"
                 onUpdate={invalidateLayout}
                 initial={false}
+                inert={isBarAutoHidden}
+                aria-hidden={isBarAutoHidden || undefined}
                 animate={{
                     opacity: isHidden || isMorphedIntoPalette ? 0 : 1,
                     y: isHidden ? 24 : 0,
@@ -739,7 +933,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                 }}
                 // 面板接手的那一刻胶囊立刻让出来；交还时在面板最后的淡出里很快接上，两边只交叉一下。
                 transition={{ duration: isMorphedIntoPalette ? 0 : morphJustEnded ? 0.1 : 0.26, ease: 'easeOut' }}
-                style={{ pointerEvents: isHidden || isMorphedIntoPalette ? 'none' : 'auto' }}
+                style={{ pointerEvents: isHidden || isMorphedIntoPalette || isBarAutoHidden ? 'none' : 'auto' }}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div
@@ -791,6 +985,28 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     </div>
                     {/* 包一层是为了紧凑档的 automix 描边：它贴着胶囊外沿画，得是胶囊的兄弟、和胶囊同一个参照框。 */}
                     <div className="relative flex w-full justify-center">
+                    {showReturnToVisualizerHint && (
+                        // 胶囊上方的横条：提示「点控制条回可视化」。按它本身也算这一下（和点胶囊同一条路），
+                        // 高度留到 24 给手指，画出来的只有中间 5px 高的一条。
+                        <button
+                            type="button"
+                            data-player-return-hint
+                            aria-label={t('player.backToVisualizer')}
+                            title={t('player.backToVisualizer')}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onReturnToVisualizer?.();
+                            }}
+                            className="group absolute bottom-full left-1/2 z-10 mb-1.5 flex h-6 w-20 -translate-x-1/2 items-center justify-center bg-transparent p-0"
+                        >
+                            <span
+                                aria-hidden
+                                className={`h-[5px] w-12 rounded-full transition-colors duration-200 ${isDaylight
+                                    ? 'bg-black/20 group-hover:bg-black/35 group-active:bg-black/45'
+                                    : 'bg-white/30 group-hover:bg-white/45 group-active:bg-white/60'}`}
+                            />
+                        </button>
+                    )}
                     {isCompact && compactInfo && transitionCue && (
                         <CompactCapsuleBorder
                             targetRef={capsuleElementRef}
@@ -802,6 +1018,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     )}
                     <motion.div
                         ref={capsuleRef}
+                        tabIndex={-1}
                         title={clickOpensPalette && !isPositioning ? t('player.capsuleOpensPalette') : undefined}
                         onUpdate={invalidateLayout}
                         onLayoutAnimationComplete={invalidateLayout}
@@ -834,6 +1051,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                                 : `rounded-full ${showExpanded ? `p-3 ${glassBgExpanded} w-full` : `px-4 py-2 ${glassBgCollapsed} ${COLLAPSED_WIDTH_CLASS}`}`}`}
                     >
                         <motion.div
+                            ref={capsuleContentRef}
                             layout
                             transition={{ layout: isCompact ? INSTANT_LAYOUT : CONTROL_LAYOUT_SPRING }}
                             // 定位模式下 seek 和所有按钮一起失效：这时胶囊是个被拖的物体，不是控件。
@@ -909,6 +1127,32 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
             </motion.div>
             </motion.div>
 
+            {/* 控制条收起后的底边把手：向上箭头，往上拖 / 点一下把整条滑回来。常驻 DOM，只切换显隐：
+                收起时 tabIndex 0、读屏可读，展开后 -1 / aria-hidden，键盘与读屏都碰不到它。 */}
+            <button
+                type="button"
+                className="player-bar-reveal"
+                data-visible={isBarAutoHidden || undefined}
+                aria-hidden={isBarAutoHidden ? undefined : true}
+                tabIndex={isBarAutoHidden ? 0 : -1}
+                aria-label={t('player.showControlBar')}
+                title={t('player.showControlBar')}
+                onPointerDown={handleRevealPointerDown}
+                onPointerMove={handleRevealPointerMove}
+                onPointerUp={handleRevealPointerEnd}
+                onPointerCancel={handleRevealPointerCancel}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    revealBar();
+                    // 键盘 / 读屏按这个把手时，焦点不能留在马上要 aria-hidden 的按钮上；交给刚回来的控制条。
+                    window.requestAnimationFrame(() => capsuleElementRef.current?.focus({ preventScroll: true }));
+                }}
+            >
+                <span className="player-bar-reveal-icon" aria-hidden>
+                    <ChevronUp />
+                </span>
+            </button>
+
             {slotPicker && (
                 <PlayerControlSlotPicker
                     anchorRect={slotPicker.anchorRect}
@@ -921,7 +1165,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     }}
                     onOpenSettings={() => {
                         closeSlotPicker();
-                        openSettings('options', 'player', null, 'bottomUiSettings', 'playerControlSlots');
+                        openSettings('player', null, 'bottomUiSettings', 'playerControlSlots');
                     }}
                     onClose={closeSlotPicker}
                     isDaylight={isDaylight}

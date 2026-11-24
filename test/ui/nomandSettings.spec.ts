@@ -21,7 +21,7 @@ test('switches Nomand Paper effects and exposes matching tuning controls', async
     await page.evaluate(async () => {
         const storeModulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(storeModulePath);
-        useSettingsModalStore.getState().openSettings('options', 'visualizer', 'visualizer');
+        useSettingsModalStore.getState().openSettings('visualizer', 'visualizer');
     });
 
     await page.getByRole('button', { name: 'Background Settings', exact: true }).click();

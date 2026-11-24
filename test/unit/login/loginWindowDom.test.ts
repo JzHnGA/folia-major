@@ -75,7 +75,7 @@ describe('the sign-in window, drawn', () => {
         const screen = (isOpen: boolean, phase: LibraryLoginPhase): React.ReactElement => React.createElement(LoginScreen, {
             isOpen, onClose: () => { }, rows: [row('a')], activeProviderId: null, chosen: { providerId: 'a', lead: 'sign-in' },
             login: {
-                id: 1, providerId: 'a', phase, methods: [], selectedMethodId: null, inBrowser: false, codeImage: '', canReopenLoginPage: false,
+                id: 1, providerId: 'a', phase, methods: [], selectedMethodId: null, inBrowser: false, codeImage: '', codeUrl: '', canReopenLoginPage: false,
                 failure: null, selfCheck: null, localService: { available: false, failed: false, error: null, restarting: false }, texts: null,
                 checksAfterLogin: false,
             },

@@ -182,7 +182,7 @@ test('the settings section offers stay here, and the command palette switches to
     await page.evaluate(async () => {
         const modulePath = '/src/stores/useSettingsModalStore.ts';
         const { useSettingsModalStore } = await import(/* @vite-ignore */ modulePath);
-        useSettingsModalStore.getState().openSettings('options', 'general', null, 'playbackEntryView');
+        useSettingsModalStore.getState().openSettings('general', null, 'playbackEntryView');
     });
     const choiceRow = page.locator('[data-settings-row="playbackEntryViewChoice"]');
     await expect(choiceRow.getByRole('button')).toHaveCount(3);
@@ -207,4 +207,66 @@ test('the settings section offers stay here, and the command palette switches to
     await expect(row).toBeVisible();
     await row.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('playback_entry_view'))).toBe('stay');
+});
+
+test('[settings] the three entry-view choices stay on one line at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(([version, guideKey]) => {
+        localStorage.clear();
+        localStorage.setItem('library_suite_prompt_seen', 'true');
+        localStorage.setItem('folia_app_language', 'en');
+        localStorage.setItem('static_mode', 'true');
+        localStorage.setItem('playback_entry_view_chosen', 'true');
+        localStorage.setItem(guideKey, version);
+    }, [APP_VERSION, GUIDE_VERSION_STORAGE_KEY]);
+    await mockNeteaseApi(page, 'guest');
+    await page.goto('/');
+    await waitForAppMounted(page);
+    await page.evaluate(async () => {
+        const modulePath = '/src/stores/useSettingsModalStore.ts';
+        const { useSettingsModalStore } = await import(/* @vite-ignore */ modulePath);
+        useSettingsModalStore.getState().openSettings('general', null, 'playbackEntryView');
+    });
+    const choiceRow = page.locator('[data-settings-row="playbackEntryViewChoice"]');
+    const choices = choiceRow.getByRole('button');
+    await expect(choices).toHaveCount(3);
+    const tops = await choices.evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(1);
+    const hint = await choiceRow.getByText('Which view opens by default after you press play.').boundingBox();
+    const firstCard = await choices.first().boundingBox();
+    expect(hint).not.toBeNull();
+    expect(firstCard).not.toBeNull();
+    expect(firstCard!.y - (hint!.y + hint!.height)).toBeGreaterThanOrEqual(12);
+});
+
+test('[settings] in the native shell the visualizer is not a choice, and the two left share the row', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(([version, guideKey]) => {
+        localStorage.clear();
+        localStorage.setItem('library_suite_prompt_seen', 'true');
+        localStorage.setItem('folia_app_language', 'en');
+        localStorage.setItem('static_mode', 'true');
+        localStorage.setItem('playback_entry_view', 'player');
+        localStorage.setItem('playback_entry_view_chosen', 'true');
+        localStorage.setItem(guideKey, version);
+    }, [APP_VERSION, GUIDE_VERSION_STORAGE_KEY]);
+    await mockNeteaseApi(page, 'guest');
+    await page.goto('/?nightstand=1');
+    await waitForAppMounted(page);
+    // 旧装机存着的 player 在原生壳里改成 stay：可视化只随横屏进入。
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('playback_entry_view'))).toBe('stay');
+    await page.evaluate(async () => {
+        const modulePath = '/src/stores/useSettingsModalStore.ts';
+        const { useSettingsModalStore } = await import(/* @vite-ignore */ modulePath);
+        useSettingsModalStore.getState().openSettings('general', null, 'playbackEntryView');
+    });
+    const choiceRow = page.locator('[data-settings-row="playbackEntryViewChoice"]');
+    const choices = choiceRow.getByRole('button');
+    await expect(choices).toHaveCount(2);
+    await expect(choiceRow.getByRole('button', { name: 'Visualizer' })).toHaveCount(0);
+    await expect(choiceRow.getByRole('button', { name: 'Stay here' })).toHaveAttribute('aria-pressed', 'true');
+    const boxes = await choices.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()).map(r => ({ top: Math.round(r.top), width: Math.round(r.width) })));
+    expect(new Set(boxes.map(box => box.top)).size).toBe(1);
+    expect(Math.abs(boxes[0].width - boxes[1].width)).toBeLessThanOrEqual(1);
+    await choiceRow.screenshot({ path: test.info().outputPath('entry-view-mobile.png') });
 });

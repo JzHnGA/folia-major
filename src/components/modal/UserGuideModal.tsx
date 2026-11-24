@@ -27,7 +27,7 @@ export const UserGuideModal: React.FC<{ theme?: Theme | null }> = ({ theme }) =>
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-4"
+                    className="overlay-safe fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-4"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="ponder-onboarding-title"

@@ -6,6 +6,7 @@ import type { CreditsFrame, SongMetadata } from './lumiereKernel';
 import type { LumiereProgram } from './lumiereProgram';
 import { applyLumiereSceneQuality, type LumiereSceneQuality } from './lumiereSceneEntry';
 import type { LightSprites } from './light/sprites';
+import type { FrameSafeSides } from './text/lineWrap';
 import type { LumiereSceneTuning } from './types';
 
 // src/components/visualizer/lumiere/lumiereCreditsLayer.ts
@@ -28,6 +29,7 @@ export interface LumiereCreditsMetadata {
 export interface LumiereCreditsBuildContext {
     width: number;
     height: number;
+    safeSides?: FrameSafeSides;
     resolution: number;
     theme: Theme;
     metadata: LumiereCreditsMetadata;
@@ -78,6 +80,7 @@ export class LumiereCreditsLayer {
         this.credits = createLumiereCredits(this.pixi, {
             width: context.width,
             height: context.height,
+            safeSides: context.safeSides,
             resolution: context.resolution,
             theme: context.theme,
             metadata: toSongMetadata(context.metadata),

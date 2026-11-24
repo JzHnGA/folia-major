@@ -153,17 +153,17 @@ const AppearanceSection: React.FC<AppearanceSectionProps> = ({
     };
 
     const openVisualizerSettings = () => {
-        openSettings('options', 'visualizer', 'visualizer');
+        openSettings('visualizer', 'visualizer');
         onClosePanel?.();
     };
 
     const openSceneSettings = () => {
-        openSettings('options', 'scene');
+        openSettings('scene');
         onClosePanel?.();
     };
 
     const openBackgroundSettings = () => {
-        openSettings('options', 'visualizer', 'background');
+        openSettings('visualizer', 'background');
         onClosePanel?.();
     };
 

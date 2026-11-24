@@ -38,12 +38,24 @@ const FRAME_CLEARANCE_TOP = 0.035;
  */
 const SUBTITLE_CLEARANCE = 0.2;
 
-export const frameBand = (width: number, height: number): FrameBand => {
+/** 左右安全区（逻辑像素，iPhone 横屏的灵动岛 / 刘海）；与 src/hooks/useSafeAreaSidesPx 的 SafeAreaSides 同形。 */
+export interface FrameSafeSides {
+    left: number;
+    right: number;
+}
+
+const NO_SAFE_SIDES: FrameSafeSides = { left: 0, right: 0 };
+
+export const frameBand = (width: number, height: number, sides: FrameSafeSides = NO_SAFE_SIDES): FrameBand => {
     const { padX, padY } = frameInsets(width, height);
-    const left = padX / height + FRAME_CLEARANCE_X;
+    // 安全区叠在画框边距外面：横屏时灵动岛占掉约 59px，只靠 padX（约 55px）字会钻到它下面。
+    // 两侧各自算：灵动岛只在一侧时另一侧不必让。安全区为 0 时 (padX + 0) / height 与原来的 padX / height
+    // 逐位相同，right 也仍是 width / height - left 的写法，桌面 / 竖屏的排版一个字节都不变。
+    const left = (padX + sides.left) / height + FRAME_CLEARANCE_X;
+    const rightInset = (padX + sides.right) / height + FRAME_CLEARANCE_X;
     return {
         left,
-        right: width / height - left,
+        right: width / height - rightInset,
         top: padY / height + FRAME_CLEARANCE_TOP,
         bottom: Math.max(padY / height + FRAME_CLEARANCE_TOP + 0.2, 1 - SUBTITLE_CLEARANCE),
     };

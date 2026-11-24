@@ -19,6 +19,7 @@ import { buildSettingsNavGroups, flattenSettingsNavItems } from '../../../src/co
 
 const DESKTOP = { isElectron: true };
 const WEB = { isElectron: false };
+const PHONE = { isElectron: false, mobile: true };
 
 const createStorage = (initial: Record<string, string> = {}): SettingsSectionStorage & { data: Record<string, string> } => {
     const data = { ...initial };
@@ -51,6 +52,12 @@ describe('settingsLastSection', () => {
             const sidebarIds = flattenSettingsNavItems(buildSettingsNavGroups(key => key, availability)).map(item => item.id);
             expect(getAvailableSettingsSectionIds(availability)).toEqual(sidebarIds);
         }
+    });
+
+    it('lists the same sections the sidebar shows on the phone shell', () => {
+        const sidebarIds = flattenSettingsNavItems(buildSettingsNavGroups(key => key, PHONE)).map(item => item.id);
+        expect(getAvailableSettingsSectionIds(PHONE)).toEqual(sidebarIds);
+        expect(getAvailableSettingsSectionIds(PHONE)).not.toContain('graphics');
     });
 
     describe('read', () => {
@@ -87,6 +94,12 @@ describe('settingsLastSection', () => {
             expect(readLastSettingsSection(WEB, storage)).toBeNull();
         });
 
+        it('returns null for a mobileHidden section on the phone shell', () => {
+            const storage = createStorage({ [SETTINGS_LAST_SECTION_STORAGE_KEY]: 'graphics' });
+            expect(readLastSettingsSection(PHONE, storage)).toBeNull();
+            expect(readLastSettingsSection(WEB, storage)).toBe('graphics');
+        });
+
         it('returns null instead of throwing when storage is unavailable', () => {
             expect(readLastSettingsSection(WEB, throwingStorage)).toBeNull();
             expect(readLastSettingsSection(WEB, null)).toBeNull();
@@ -103,6 +116,12 @@ describe('settingsLastSection', () => {
         it('does not store a section the platform hides', () => {
             const storage = createStorage();
             writeLastSettingsSection('desktop', WEB, storage);
+            expect(storage.data).toEqual({});
+        });
+
+        it('does not store a mobileHidden section on the phone shell', () => {
+            const storage = createStorage();
+            writeLastSettingsSection('interaction', PHONE, storage);
             expect(storage.data).toEqual({});
         });
 

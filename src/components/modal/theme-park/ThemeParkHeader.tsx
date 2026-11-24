@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { RotateCcw } from 'lucide-react';
 import { Button, Segmented } from '../settings/kit';
 import type { ThemeEditTarget } from './themeParkDraft';
 
@@ -42,16 +43,24 @@ type ThemeParkHeaderActionsProps = {
     onSave: () => void;
 };
 
-/** At the bar's end: reset and save. */
+/** At the bar's end: reset and save, shortened on a phone. */
 export const ThemeParkHeaderActions: React.FC<ThemeParkHeaderActionsProps> = ({ target, canSave, onReset, onSave }) => {
     const { t } = useTranslation();
 
     return (
         <>
-            <Button onClick={onReset}>{t('ui.resetToDefaultTheme')}</Button>
-            <Button variant="primary" onClick={onSave} disabled={!canSave}>
-                {t(target === 'custom' ? 'options.saveAndApplyCustomTheme' : 'options.aiThemeQuickEditSave')}
-            </Button>
+            {/* On a phone the bar has room for the title and two short buttons only: reset is its icon
+                and save is "Save"; the target switch on the line below says which theme it saves. */}
+            <span className="contents max-sm:hidden">
+                <Button onClick={onReset}>{t('ui.resetToDefaultTheme')}</Button>
+                <Button variant="primary" onClick={onSave} disabled={!canSave}>
+                    {t(target === 'custom' ? 'options.saveAndApplyCustomTheme' : 'options.aiThemeQuickEditSave')}
+                </Button>
+            </span>
+            <span className="hidden max-sm:contents">
+                <Button onClick={onReset} icon={RotateCcw} tip={t('ui.resetToDefaultTheme')} />
+                <Button variant="primary" onClick={onSave} disabled={!canSave}>{t('options.save')}</Button>
+            </span>
         </>
     );
 };

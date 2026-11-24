@@ -27,7 +27,7 @@ describe('sign-in in the browser through Omni', () => {
         const auth = getOnlineMusicProvider('ytm')!.auth!;
         vi.spyOn(auth, 'startLogin').mockResolvedValue('web-1');
         const open = vi.spyOn(auth, 'openLoginPage').mockResolvedValue(undefined);
-        expect(await omni.startLogin('ytm')).toEqual({ key: 'web-1', imageUrl: '' });
+        expect(await omni.startLogin('ytm')).toEqual({ key: 'web-1', imageUrl: '', codeUrl: '' });
         expect(omni.confirmsLoginInBrowser('ytm')).toBe(true);
         await omni.openLoginPage('ytm', 'web-1');
         expect(open).toHaveBeenCalledExactlyOnceWith('web-1');
@@ -37,7 +37,7 @@ describe('sign-in in the browser through Omni', () => {
         const auth = getOnlineMusicProvider('bodian')!.auth!;
         vi.spyOn(auth, 'startLogin').mockResolvedValue('qr-key');
         vi.spyOn(auth, 'createQr').mockResolvedValue('data:image/png;base64,qr');
-        expect(await omni.startLogin('bodian')).toEqual({ key: 'qr-key', imageUrl: 'data:image/png;base64,qr' });
+        expect(await omni.startLogin('bodian')).toEqual({ key: 'qr-key', imageUrl: 'data:image/png;base64,qr', codeUrl: '' });
         await expect(omni.openLoginPage('bodian', 'qr-key')).rejects.toMatchObject({ code: 'unsupported' });
     });
 

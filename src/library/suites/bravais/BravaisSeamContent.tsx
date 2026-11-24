@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { ChevronLeft, FoldHorizontal, ListFilter, ListPlus, Maximize2, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { BravaisLayer } from './bravaisLayer';
@@ -22,6 +22,7 @@ import BravaisSeamAlbumPoster from './BravaisSeamAlbumPoster';
 import { BravaisSeamFlipText } from './BravaisSeamFlip';
 import { BravaisSeamFullRow, BravaisSeamSpineRow } from './BravaisSeamRow';
 import BravaisSeamHomeRow from './BravaisSeamHomeRow';
+import { useBravaisSpineTitleFit } from './useBravaisSpineTitleFit';
 
 // src/library/suites/bravais/BravaisSeamContent.tsx
 // 缝里的四套内容（设计稿 §5）：首页窄缝（竖排「书库」+ 竖排页签）、首页书脊、完整信息条（面包屑行、竖排标题、
@@ -33,7 +34,7 @@ import BravaisSeamHomeRow from './BravaisSeamHomeRow';
 // 首页层的面板是目录树（BravaisDirectoryPanel），集合层的面板仍是歌曲列表。
 // 集合页的描述在标题下方（元数据行之后），与歌手页的「关于艺术家」共用 BravaisSeamAbout（同一套正文样式、
 // 截断 + 展开，都不加小节标题），书脊上没有。歌手页的统计是那一节的附注，元数据行与它相同时不再重复。
-// 换层 / 换形态由外层整条翻（useBravaisSeam）；同一层里元数据（计数、匹配数）与状态文字变了，新的一行翻进来（BravaisSeamFlipText）。
+// 换层 / 换形态由外层翻（useBravaisSeam；首页换页签就地换）；同一层里元数据（计数、匹配数）与状态文字变了，新的一行翻进来（BravaisSeamFlipText）。
 // 当前页过滤（设计稿 §7.6）：完整信息条的面包屑行下面是缝自己的过滤输入位（BravaisSeamFilterField）；书脊放不下输入框，
 // 过滤中只留一个过滤图标（点它或在墙上打字，缝临时展开成完整信息条）。
 // 歌手页、专辑页的完整等级画成海报（BravaisSeamPoster / BravaisSeamAlbumPoster，相机把它带到视口最左边）；过滤、面板、表单时回到上面这几套。
@@ -135,6 +136,12 @@ const SpineSeam: React.FC<{ layer: BravaisLayer; actions: BravaisSeamActions }> 
     const { seam } = layer;
     const { setLevel } = actions;
     const expand = useCallback(() => setLevel('full'), [setLevel]);
+    const titleRef = useRef<HTMLDivElement>(null);
+    const titleFontSize = useBravaisSpineTitleFit({
+        slotRef: titleRef,
+        text: seam.title,
+        basePx: verticalTitleSize(seam.title, 30, 18),
+    });
     return (
         <div className="bravais-seam-spine">
             {layer.onDone && (
@@ -144,8 +151,13 @@ const SpineSeam: React.FC<{ layer: BravaisLayer; actions: BravaisSeamActions }> 
                 </button>
             )}
             <FoldButton onClick={() => actions.setLevel('hidden')} />
-            <BravaisSeamSpineTitle title={seam.title} fontSize={verticalTitleSize(seam.title, 30, 18)} label={t('libraryBravais.seamRestore')}
-                onExpand={expand} />
+            {/* 标题槽：竖屏时 display: contents，标题仍是书脊的直接子级、计数与 spacer 照旧；矮横屏时
+                （bravais.css 的 max-height 块）才变成可伸缩的一段，竖排标题只排一列，字号按槽高收缩
+                （useBravaisSpineTitleFit），不会折出第二列被 64px 的书脊裁掉。 */}
+            <div ref={titleRef} className="bravais-seam-spine-title">
+                <BravaisSeamSpineTitle title={seam.title} fontSize={titleFontSize} label={t('libraryBravais.seamRestore')}
+                    onExpand={expand} />
+            </div>
             <BravaisSeamFlipText as="div" axis="y" flipKey={seam.meta} className="bravais-seam-vcount">{seam.meta}</BravaisSeamFlipText>
             {/* 过滤中：一个强调色的过滤图标（点它把缝临时展开、焦点进输入位；书脊上放不下输入框）。 */}
             {seam.filter?.query && (

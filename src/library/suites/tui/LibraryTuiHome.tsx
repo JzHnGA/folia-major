@@ -253,7 +253,7 @@ const LibraryTuiHome: React.FC<LibraryHomeSurfaceProps> = (props) => {
                 <LibraryTuiNavidromeList
                     {...common}
                     overview={homeResources.navidromeOverview}
-                    onOpenSettings={props.onOpenSettings ? () => props.onOpenSettings?.('help') : undefined}
+                    onOpenSettings={props.onOpenSettings ? () => props.onOpenSettings?.() : undefined}
                 />
             )}
 

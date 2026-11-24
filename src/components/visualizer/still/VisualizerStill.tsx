@@ -48,7 +48,11 @@ const VisualizerStill: React.FC<VisualizerSharedProps> = ({
             />
 
             {showText && (
-                <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none px-12 pb-16 gap-8">
+                <div
+                    className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none px-12 pb-16 gap-8"
+                    // 横屏时灵动岛 / 刘海在左右两侧：折行的长句不压进安全区（没有安全区时仍是 px-12）。
+                    style={{ paddingLeft: 'max(3rem, env(safe-area-inset-left))', paddingRight: 'max(3rem, env(safe-area-inset-right))' }}
+                >
                     {[-1, 0, 1].map((offset) => {
                         const lineIndex = effectiveIndex + offset;
                         const line = lines[lineIndex];

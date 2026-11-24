@@ -263,6 +263,29 @@ export const COVER_SIZE_STEPS = [256, 512, 1024] as const;
 export const COVER_MAX_SIZE = 1200;
 
 /**
+ * Most screen density a wall sizes its covers for. On a 3x phone every card used to ask for 1.5x the
+ * pixels of a 2x screen, which pushed most of them to the 1024 / 1200 steps (4-6 MB decoded each):
+ * opening the wall decoded dozens at once, and iOS killed the web process under the memory spike
+ * (2026-11-20 recording: 33 covers at 1024-1200 in nine seconds, page memory 220 -> 483 MB). At 2x a
+ * cover is still at least as sharp as the screen's CSS pixels need.
+ */
+export const COVER_MAX_PIXEL_RATIO = 2;
+
+/**
+ * Whether a surface may decode a provider's original cover (often 3000x3000, ~36 MB decoded) where one
+ * picture spans a large area (the album wall's mosaic). Not in the native iOS shell: there the web
+ * process shares a phone's memory and is killed under pressure, so it stays at COVER_MAX_SIZE.
+ */
+export const coverOriginalsAllowed = (): boolean => (
+    typeof window === 'undefined' || window.Capacitor?.isNativePlatform?.() !== true
+);
+
+/** The device pixel ratio a wall multiplies its card sizes by when it picks a cover step. */
+export const coverPixelRatio = (devicePixelRatio: number): number => (
+    Math.min(COVER_MAX_PIXEL_RATIO, Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1)
+);
+
+/**
  * Smallest step that still covers `size` device pixels. Past the top step there is no bucket left
  * to ask for, so the answer is `Infinity`: the caller asks for `COVER_MAX_SIZE`, not the provider's
  * own asset.

@@ -14,6 +14,7 @@ import { useReducedMotionFor } from './hooks/useReducedMotionFor';
 import AppShell from './components/app/AppShell';
 import Home from './components/app/Home';
 import PlayerPanel from './components/app/PlayerPanel';
+import PlayerTrackSwipeHint from './components/app/player-swipe/PlayerTrackSwipeHint';
 import ThemeQuickEditorHost from './components/panelTab/ThemeQuickEditor';
 import AppDialogs from './components/app/dialogs/AppDialogs';
 import { useProviderSignOut } from './components/app/dialogs/useProviderSignOut';
@@ -21,6 +22,10 @@ import LoginHost from './components/login/LoginHost';
 import { useSettingsDialogModel } from './components/app/dialogs/useSettingsDialogModel';
 import AppOverlays from './components/app/overlays/AppOverlays';
 import PonderHost from './components/ponder/PonderHost';
+import { isNightstandSupported } from './components/nightstand/nightstandPlatform';
+import MobileTutorialHost from './components/mobile-tutorial/MobileTutorialHost';
+// Nightstand（床头钟）只在原生 iOS 壳里激活，浏览器里 NightstandHost 自己返回 null。
+import NightstandHost from './components/nightstand/NightstandHost';
 // Lazy so animejs (~38KB gz) stays out of the bootstrap chunk: this overlay only ever draws when the
 // animation switch is on AND the mode is automix, both off by default, so it is mounted only then.
 const AutomixTransitionAnimation = lazy(() => import('./components/app/overlays/AutomixTransitionAnimation'));
@@ -84,6 +89,7 @@ import { isNavidromeEnabled } from './services/navidromeService';
 import { useAppNavigation } from './hooks/useAppNavigation';
 import { useNeteaseLibrary } from './hooks/useNeteaseLibrary';
 import { useLibraryAccountController } from './library/app/useLibraryAccountController';
+import { setProviderSongCleanup } from './services/onlineMusic/account/providerSongCleanup';
 import { createLibraryAccountSwitchCleanupPort } from './library/app/createLibraryAccountPort';
 import { useAppWallToolsHost } from './components/app/wall-tools/useAppWallToolsHost';
 import { useRemoteQueueCommands } from './components/app/playback/bridges/useRemoteQueueCommands';
@@ -167,7 +173,7 @@ import { selectDesktopSettingsSnapshot, useDesktopSettingsStore } from './stores
 import { selectSleepTimerSnapshot, useSleepTimerStore } from './stores/useSleepTimerStore';
 import { selectStageSettingsSnapshot, useStageSettingsStore } from './stores/useStageSettingsStore';
 import { selectAudioSettingsSnapshot, useAudioSettingsStore } from './stores/useAudioSettingsStore';
-import { useSettingsModalStore } from './stores/useSettingsModalStore';
+import { selectSettingsCoversApp, useSettingsModalStore } from './stores/useSettingsModalStore';
 import { audioBands, audioPower, bass, currentTime, lowMid, lyricCurrentTime, mid, spectrum, treble, vocal } from './stores/motionSignals';
 import { useAppChromeStore } from './stores/useAppChromeStore';
 import { useAppViewStore } from './stores/useAppViewStore';
@@ -195,6 +201,7 @@ import { usePlayerBottomBarPositioningEntry } from './hooks/usePlayerBottomBarPo
 import { PlayerBottomBarLayoutContext } from './components/floating-player/PlayerBottomBarLayoutContext';
 import { useFoliumHostBridge } from './mods/runtime/hostBridge';
 import { useFoliumHostActions } from './mods/runtime/hostActions';
+import { registerCarPlayPlayback } from './services/carplay/carplayPlayback';
 import { useFoliumAnimationIntensity } from './mods/runtime/visualizer/hostAnimationIntensity';
 import { refreshPrefetchAfterQueueEdit } from './services/prefetchService';
 import { FoliumStageLayerSlot } from './mods/folium/registries/stageLayers';
@@ -788,6 +795,11 @@ export default function App() {
         setLyrics: setLyricsStable,
         setIsLyricsLoading,
     })));
+    // 设置里「清除所有登录信息」经 omni 退出所有平台时，也要把这些平台留在播放器里的歌移走。
+    useEffect(() => {
+        setProviderSongCleanup(providerId => providerSwitchCleanup.dropSongsOf(providerId));
+        return () => setProviderSongCleanup(null);
+    }, [providerSwitchCleanup]);
     const accountController = useLibraryAccountController({
         logout: signOut,
         confirmLogout,
@@ -1659,6 +1671,8 @@ export default function App() {
     // 独立隐藏指针：空闲一段就自己藏起来，控制栏保持显示。与控制栏的自动隐藏互不依赖，谁满足谁藏。
     const idleCursorHidden = useIdleCursorHide(isPlayerView && hideCursorWhenIdle && !isMainWindowClickThroughEnabled);
     const isSettingsModalOpen = settingsModalState.isOpen;
+    // Lowered for a preview on a phone, the window leaves the app above it seen and usable.
+    const settingsCoversApp = useSettingsModalStore(selectSettingsCoversApp);
     const {
         obsBrowserSourceStatus,
         isObsBrowserSourceRendering,
@@ -2101,6 +2115,10 @@ export default function App() {
         syncStageLyricsClock,
     ]);
 
+    // 车机上点的歌：带着它所在的列表作队列播放，手机停在原来的画面上（不跳去播放页）。
+    useEffect(() => registerCarPlayPlayback({
+        playSong: (song, queue) => { void playSong(song, queue, false, { shouldNavigateToPlayer: false }); },
+    }), [playSong]);
     // Folium services (folium.playback / folium.ui) call through to these App handlers.
     useFoliumHostActions({
         play: resumePlayback,
@@ -2336,6 +2354,7 @@ export default function App() {
         toggleLoop,
         navigateToPlayer,
         navigateFromPlayerCapsule,
+        homeIsWall: isWallLibrarySuite(activeLibrarySuiteId),
         shouldHidePlayerProgressBar,
         onSeekMainAudio: seekMainAudio,
         onStagePlayerSeek: publishStagePlayerPlaybackUpdate,
@@ -2416,7 +2435,7 @@ export default function App() {
     }, [hasHomeWallPeer]);
     const { shouldKeepHomeMounted, shouldShowHomeSurface, shouldRevealHomeSurface } = buildHomeSurfacePresentation({
         currentView,
-        isSettingsModalOpen,
+        isSettingsModalOpen: settingsCoversApp,
         isPanelOpen,
         keepsHomeForHandoff: wallHandoff.keepsHome,
     });
@@ -2920,11 +2939,19 @@ export default function App() {
             <LegacyModelsPrompt isDaylight={isDaylight} />
 
             {/* 思索教程。常驻的只有悬停探测和提示胶囊；教程层自己走 React.lazy，
-                animejs 不进 bootstrap chunk。 */}
-            <PonderHost theme={theme} isDaylight={isDaylight} />
+                animejs 不进 bootstrap chunk。iOS 壳不挂 Ponder，由手机新手教程替代。 */}
+            {!isNightstandSupported() && <PonderHost theme={theme} isDaylight={isDaylight} />}
+            {isNightstandSupported() && <MobileTutorialHost theme={theme} isDaylight={isDaylight} />}
 
             {currentView === 'player' && !(isLyricMatchOpen && isLocalPlaybackSong(currentSong)) && (
                 <PlayerPanel model={playerPanelModel} />
+            )}
+            {/* 播放页左右滑动切歌：箭头只做反馈，手势在组件内部挂 window 监听。 */}
+            {currentView === 'player' && (
+                <PlayerTrackSwipeHint
+                    onNextTrack={() => { void handleNextTrack(); }}
+                    onPrevTrack={handlePrevTrack}
+                />
             )}
 
             <ThemeQuickEditorHost onSaveAiTheme={saveEditedAiDualTheme} onSaveCustomTheme={saveCustomDualTheme} />
@@ -2988,9 +3015,18 @@ export default function App() {
                 isDaylight={isDaylight}
                 onClose={startupExperience.closeReleaseNotes}
             />
-            <UserGuideModal theme={theme} />
+            {!isNightstandSupported() && <UserGuideModal theme={theme} />}
             <PlaybackEntryViewPrompt theme={theme} />
             <LatticeFmNotice />
+            {/* Nightstand：iOS 横屏时切到可视化播放页并叠加时钟；竖屏回首页 Bravais 墙。 */}
+            <NightstandHost
+                currentView={currentView}
+                theme={theme}
+                isDaylight={isDaylight}
+                navigateToPlayer={navigateToPlayer}
+                navigateToHome={navigateToHome}
+                navigateToLattice={navigateToLattice}
+            />
         </AppShell>
     );
 }

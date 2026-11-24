@@ -81,13 +81,18 @@ export const useLibraryHomeSources = ({
         canListPlaylists, cloudPlaylist, explore, personalFmModes, playlists, provider, providerId, recommendations, user, userAlbums, userLibrary,
     ]);
 
+    const localAvailability = getLocalLibraryAvailability();
+
     // The explore tab is gone after a switch to a provider without one, and a stored choice of it
     // may be older than the switch.
     useEffect(() => {
         if (tab === 'explore' && !online.canUseExplore) setTab('playlist');
     }, [online.canUseExplore, setTab, tab]);
 
-    const localAvailability = getLocalLibraryAvailability();
+    // 本地页签在不支持 File System Access 的构建里不存在：存储里可能还记着它。
+    useEffect(() => {
+        if (tab === 'local' && !localAvailability.supported) setTab('playlist');
+    }, [localAvailability.supported, setTab, tab]);
     const tabs = useMemo(() => translateHomeTabs(resolveHomeTabs({
         visibility,
         navidromeEnabled,

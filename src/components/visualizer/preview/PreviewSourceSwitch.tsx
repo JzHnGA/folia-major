@@ -26,7 +26,7 @@ const PreviewSourceSwitch: React.FC<PreviewSourceSwitchProps> = ({
     value,
     onChange,
     liveEmpty,
-    className = 'absolute right-[60px] top-3 z-40 inline-flex',
+    className = 'absolute right-[64px] top-4 z-40 inline-flex',
 }) => {
     const { t } = useTranslation();
     const options = useMemo(() => [
@@ -36,7 +36,7 @@ const PreviewSourceSwitch: React.FC<PreviewSourceSwitchProps> = ({
 
     return (
         <Tooltip text={value === 'live' && liveEmpty ? t('options.previewSourceLiveEmpty') : t('options.previewSource')} className={className}>
-            <div role="group" aria-label={t('options.previewSource')} className="rounded-lg bg-black/45" style={PLATE_TOKENS}>
+            <div role="group" aria-label={t('options.previewSource')} className="w-max rounded-lg bg-black/45" style={PLATE_TOKENS}>
                 <Segmented value={value} options={options} onChange={onChange} />
             </div>
         </Tooltip>

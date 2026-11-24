@@ -1,4 +1,5 @@
-import type { TemperaGlyphPlacement } from './temperaLayout';
+import { resolveTemperaSafeBand, type TemperaGlyphPlacement } from './temperaLayout';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import type { TemperaPalette } from './temperaPalette';
 import type { TemperaDecorFragment, TemperaDecorWatermark } from './types';
 import type { TemperaGlyphMotionInput } from './temperaMotion';
@@ -157,6 +158,8 @@ interface TemperaFragmentViewOptions {
     width: number;
     height: number;
     layer: import('pixi.js').Container;
+    /** 左右安全区（px）：散字按安全区之间那一段换算横向位置，不落进灵动岛下面。缺省时与原来相同。 */
+    safeSides?: SafeAreaSides;
 }
 
 // Stray glyphs parked in the margins of sparse compositions. They carry no timeline: the
@@ -166,6 +169,7 @@ export const buildTemperaFragmentViews = (
     options: TemperaFragmentViewOptions,
 ) => {
     const { Text, TextStyle } = pixi;
+    const band = resolveTemperaSafeBand(options.width, options.safeSides);
     options.fragments.forEach(fragment => {
         const node = new Text({
             text: fragment.char,
@@ -177,7 +181,7 @@ export const buildTemperaFragmentViews = (
             }),
         });
         node.anchor.set(0.5);
-        node.position.set(fragment.x * options.width, fragment.y * options.height);
+        node.position.set(band.left + fragment.x * band.width, fragment.y * options.height);
         node.rotation = fragment.rotation;
         node.alpha = 0.42;
         options.layer.addChild(node);

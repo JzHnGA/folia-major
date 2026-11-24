@@ -54,6 +54,8 @@ export const APPEARANCE_DESTINATIONS = {
     'use_native_mac_traffic_lights': { config: null, why: '主窗口标题栏，OBS 页面没有（用户 2026-11-08 定：配置码也用于 web 版 OBS 链接，只加 OBS 页面看得到的）' },
     'window_titlebar_side': { config: null, why: '主窗口标题栏，OBS 页面没有（用户 2026-11-08 定：配置码也用于 web 版 OBS 链接，只加 OBS 页面看得到的）' },
     // src/stores/useScratchpadSettingsStore.ts
+    'scratchpad_handle_move_hint_seen': { config: null, why: '一次性的提示看过没有，不是样子' },
+    'scratchpad_handle_side': { config: null, why: '速记簿把手贴哪条边（手机），OBS 页面没有（同 scratchpad_handle_position）' },
     'scratchpad_handle_position': { config: null, why: '速记簿把手，OBS 页面没有（用户 2026-11-08 定：配置码也用于 web 版 OBS 链接，只加 OBS 页面看得到的）' },
     'scratchpad_handle_style': { config: 'scratchpadHandleStyle' },
     'scratchpad_show_handle': { config: null, why: '速记簿把手，OBS 页面没有（用户 2026-11-08 定：配置码也用于 web 版 OBS 链接，只加 OBS 页面看得到的）' },

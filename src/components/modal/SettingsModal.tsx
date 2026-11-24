@@ -17,16 +17,12 @@ import LyricFilterSettingsModal from './LyricFilterSettingsModal';
 import type { LyricFilterDraft } from './LyricFilterSettingsModal';
 import GlobalLyricOffsetModal from './settings/GlobalLyricOffsetModal';
 import type { PlayerCapConnectionStatus } from '../../types/playerCap';
-import { PageHeader } from './settings/kit';
+import { PageHeader, SettingsDeviceProvider } from './settings/kit';
 import { SettingsKitThemeContext, settingsTokens } from './settings/kit/kitTheme';
 import { kitMotionTokens, useKitReducedMotion } from './settings/kit/motion';
 import { parseNumberText } from './settings/kit/numberText';
 import { SETTINGS_PAGES, SETTINGS_PAGE_OPTIONS } from './settings/pages';
-import HelpPage from './settings/pages/HelpPage';
 import { SettingsPageContext, type CacheCategory, type SettingsPageContextValue } from './settings/pages/settingsPageContext';
-import { AiHelpPromptModal } from './AiHelpPromptModal';
-import ReleaseNotesDialog from './ReleaseNotesDialog';
-import meowImageUrl from '../../../build/miao.png';
 import type { LyricData } from '../../types';
 import { type SettingsModalState, type SettingsSubviewId, type VisualizerSettingsSection } from '../../stores/useSettingsModalStore';
 import { SettingsAnchorProvider, useSettingsAnchorList, useSettingsAnchorStore } from './settings/navigation/SettingsAnchorContext';
@@ -35,11 +31,16 @@ import SettingsSideList from './settings/navigation/SettingsSideList';
 import { settingsAnchorSubview } from './settings/navigation/settingsAnchorModel';
 import { buildSettingsNavGroups, findSettingsNavItem, type SettingsSectionId } from './settings/navigation/settingsNavModel';
 import { buildSettingsSearchEntries, searchSettings, type SettingsSearchEntry } from './settings/navigation/settingsNavSearch';
-import { isSettingsSectionSubview, resolveInitialSettingsSection, sectionForSettingsSubview, writeLastSettingsSection } from './settings/navigation/settingsLastSection';
+import { isSettingsSectionSubview, resolveInitialSettingsSection, sectionForSettingsSubview, writeLastSettingsSection, DEFAULT_SETTINGS_SECTION } from './settings/navigation/settingsLastSection';
+import { isNightstandSupported } from '../nightstand/nightstandPlatform';
 import { useSettingsLanding, type SettingsLandingTarget } from './settings/navigation/useSettingsLanding';
+import { openPonderNavigation } from '../../services/ponder/pagePonderTarget';
+import { hasUsableDeviceAiKey, isDeviceAiHost, useDeviceAiSettingsStore } from '../../services/deviceAi/deviceAiSettings';
+import { openMobileTutorial } from '../../stores/useMobileTutorialStore';
 import { runsOnWindows } from '../../utils/platform';
 import { openOutsideLink } from '../../utils/system/outsideLink';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useSwipeDownToClose } from './settings/useSwipeDownToClose';
 import { useSettingsScrollSpy } from '../../hooks/useSettingsScrollSpy';
 import { useReducedMotionFor } from '../../hooks/useReducedMotionFor';
 import { useShallow } from 'zustand/react/shallow';
@@ -57,13 +58,13 @@ import { selectPlayerChromeSettingsSnapshot, usePlayerChromeSettingsStore } from
 import { selectThemeSettingsSnapshot, useThemeSettingsStore } from '../../stores/useThemeSettingsStore';
 import { selectDesktopSettingsSnapshot, useDesktopSettingsStore } from '../../stores/useDesktopSettingsStore';
 import { useSettingsModalStore } from '../../stores/useSettingsModalStore';
+import { useAutoWallPreview } from './settings/useAutoWallPreview';
 import { setNavidromeEnabledState, useLibraryStore } from '../../stores/useLibraryStore';
 
 const DEFAULT_OPENAI_TEMPERATURE = '0.7';
 
 interface SettingsModalProps {
     onClose: () => void;
-    initialTab?: 'help' | 'options';
     initialSubview?: SettingsSubviewId | null;
     initialVisualizerSection?: VisualizerSettingsSection | null;
     /** A section inside the subview to land on, rather than its top. */
@@ -126,7 +127,6 @@ const hasElectronBridge = () => typeof window !== 'undefined' && Boolean((window
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
-    initialTab = 'help',
     initialSubview = null,
     initialVisualizerSection = null,
     initialAnchor = null,
@@ -280,13 +280,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     } = useVisualizerAssetStore(useShallow(selectVisualizerAssetSnapshot));
     const resolvedToggleTransparentPlayerBackground = onToggleTransparentPlayerBackground ?? onToggleTransparentPlayerBackgroundFromStore;
     const setIsSubSettingsViewOpen = useSettingsModalStore(state => state.setIsSubSettingsViewOpen);
-    // Help is a page of the same window, reached from the foot of the side list.
-    const [activeTab, setActiveTab] = useState<'help' | 'options'>(initialTab);
+    // The phone shell hides the desktop- and keyboard-centred sections; constant for the session.
+    const nightstand = isNightstandSupported();
     // A bare open (no subview, no anchor) restores the last section the user entered; any named target wins.
     const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(() => resolveInitialSettingsSection({
         initialSubview,
         hasInitialAnchor: initialAnchor !== null,
         isElectron: hasElectronBridge(),
+        mobile: nightstand,
     }));
     const [searchQuery, setSearchQuery] = useState('');
     const isSearching = searchQuery.trim() !== '';
@@ -298,16 +299,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         setLandingTarget({ id, groupId, seq: landingSeqRef.current });
     };
     const handleSelectSettingsSection = (section: SettingsSectionId) => {
-        setActiveTab('options');
         setSearchQuery('');
         setLandingTarget(null);
         setActiveSettingsSection(section);
-        writeLastSettingsSection(section, { isElectron: hasElectronBridge() });
-    };
-    const handleSelectHelp = () => {
-        setActiveTab('help');
-        setSearchQuery('');
-        setLandingTarget(null);
+        writeLastSettingsSection(section, { isElectron: hasElectronBridge(), mobile: nightstand });
     };
     const handleSearchQueryChange = (query: string) => {
         setSearchQuery(query);
@@ -322,6 +317,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const contentScrollRef = useRef<HTMLDivElement>(null);
     // Matches the md: split of the window: under it the side list is a strip that scrolls sideways.
     const isWideSettingsLayout = useMediaQuery('(min-width: 768px)');
+    // On a phone the window fills the screen like an iOS sheet, and is pulled down to close.
+    const swipeCloseRef = useSwipeDownToClose<HTMLDivElement>(!isWideSettingsLayout, onClose);
+    // Phone only: the window lowered to the bottom of the screen, so a change can be seen on the
+    // live app above it. The app above takes touches meanwhile; it lasts until the window closes.
+    const previewSplit = useSettingsModalStore(state => state.isSettingsPreviewSplit);
+    const setPreviewSplit = useSettingsModalStore(state => state.setIsSettingsPreviewSplit);
+    const isPreviewSplit = previewSplit && !isWideSettingsLayout;
+    // A phone turned wide shows the full window again; the preview does not come back by itself.
+    useEffect(() => {
+        if (isWideSettingsLayout && previewSplit) setPreviewSplit(false);
+    }, [isWideSettingsLayout, previewSplit, setPreviewSplit]);
+    // Closing the window by any path ends the preview with it.
+    useEffect(() => () => setPreviewSplit(false), [setPreviewSplit]);
+    // A change to how the wall looks lowers the window by itself, so the change is seen.
+    useAutoWallPreview(!isWideSettingsLayout);
     const settingsAnchorStore = useSettingsAnchorStore();
     const settingsAnchors = useSettingsAnchorList(settingsAnchorStore);
 
@@ -330,14 +340,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const [showSceneWindow, setShowSceneWindow] = useState(false);
     const [showLyricFilterSettings, setShowLyricFilterSettings] = useState(false);
     const [showGlobalLyricOffset, setShowGlobalLyricOffset] = useState(false);
-    const [showAiHelpPrompt, setShowAiHelpPrompt] = useState(false);
-    const [showReleaseNotes, setShowReleaseNotes] = useState(false);
-    const [, setAuthorClickCount] = useState(0);
-    const [meowEasterEgg, setMeowEasterEgg] = useState<{ id: number; } | null>(null);
     const shouldCloseModalOnSubviewBack = initialSubview !== null;
 
     useEffect(() => {
-        setActiveTab(initialTab);
         setShowVisPlayground(initialSubview === 'visualizer');
         setShowThemePark(initialSubview === 'themePark');
         setShowSceneWindow(initialSubview === 'scene');
@@ -350,12 +355,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             setActiveSettingsSection(targetSection);
             // 只有真正进入某个分区页才记忆；二级面板和调参台不算「进入」分区。
             if (isSettingsSectionSubview(initialSubview)) {
-                writeLastSettingsSection(targetSection, { isElectron: hasElectronBridge() });
+                writeLastSettingsSection(targetSection, { isElectron: hasElectronBridge(), mobile: nightstand });
             }
         } else {
             setActiveSettingsSection(prev => prev || 'appearance');
         }
-    }, [initialSubview, initialTab]);
+    }, [initialSubview, nightstand]);
 
     // A request for one place in the settings: show the page settingsAnchorModel puts it on, then
     // land on it. Each request has its own seq, so naming the same place again lands again.
@@ -367,7 +372,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         if (section) {
             setActiveSettingsSection(section);
         }
-        setActiveTab('options');
         setSearchQuery('');
         // A request may name one row of the section; the section is where it lands while that row is not drawn.
         landOn(initialAnchor.rowId ?? initialAnchor.id, initialAnchor.id);
@@ -426,7 +430,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const savedAiApiKey = savedElectronAiCredentials.AI_PROVIDER === 'openai'
         ? savedElectronAiCredentials.OPENAI_API_KEY
         : savedElectronAiCredentials.GEMINI_API_KEY;
-    const aiApiKeyStatus: 'loading' | 'configured' | 'missing' = !isElectronRuntime
+    // The iOS app keeps its own key (services/deviceAi); the web build's key is the deployment's.
+    const deviceAiHost = !isElectronRuntime && isDeviceAiHost();
+    const deviceAiKeyState = useDeviceAiSettingsStore(useShallow(state => ({
+        // An unreadable Keychain is not "no key": it must not switch the theme source to the cover.
+        loaded: state.keysLoaded && !state.keysFailed,
+        failed: state.keysFailed,
+        usable: hasUsableDeviceAiKey(state.config, state.saved),
+        loadKeys: state.loadKeys,
+    })));
+    useEffect(() => {
+        if (deviceAiHost && !deviceAiKeyState.loaded && !deviceAiKeyState.failed) void deviceAiKeyState.loadKeys();
+    }, [deviceAiHost, deviceAiKeyState]);
+    const aiApiKeyStatus: 'loading' | 'configured' | 'missing' = deviceAiHost
+        ? !deviceAiKeyState.loaded ? 'loading' : deviceAiKeyState.usable ? 'configured' : 'missing'
+        : !isElectronRuntime
         ? 'configured'
         : !electronSettingsLoaded
             ? 'loading'
@@ -516,23 +534,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             // Seeing the settings panel should never fail the panel itself.
         });
     }, [updateStatus?.availableVersion, updateStatus?.updateSeen]);
-
-    const handleAuthorLabelClick = () => {
-        setAuthorClickCount((prev) => {
-            const nextCount = prev + 1;
-
-            if (nextCount >= 7) {
-                const id = Date.now();
-                setMeowEasterEgg({ id });
-                window.setTimeout(() => {
-                    setMeowEasterEgg((current) => (current?.id === id ? null : current));
-                }, 2200);
-                return 0;
-            }
-
-            return nextCount;
-        });
-    };
 
     const saveElectronSettings = async () => {
         if ((window as any).electron) {
@@ -832,11 +833,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     useEffect(() => {
-        if (activeTab === 'options') {
-            // Like the answers above, it lands while the window is opening.
-            void getCacheUsageByCategory().then(usage => startTransition(() => applyCacheUsage(usage)));
-        }
-    }, [activeTab]);
+        // Like the answers above, it lands while the window is opening.
+        void getCacheUsageByCategory().then(usage => startTransition(() => applyCacheUsage(usage)));
+    }, []);
 
     const handleClear = async (category: CacheCategory) => {
         setIsCleaning(category);
@@ -907,11 +906,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         || showThemePark
         || showSceneWindow
         || showLyricFilterSettings
-        || showGlobalLyricOffset
-        || showAiHelpPrompt
-        || showReleaseNotes;
+        || showGlobalLyricOffset;
 
-    // Escape reaches this window only with none of its four dialogs open: they are sheets, and an
+    // Escape reaches this window only with neither of its two sheets open: they are sheets, and an
     // open sheet takes the key on the document and stops it (shared/Sheet.tsx). A menu or a pick
     // list that is open takes the key before this window hears it as well. The two work windows
     // leave Escape to their owner, so they are what it can find open here.
@@ -998,15 +995,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const canEnableAutoUpdate = Boolean(electronSettings.ENABLE_UPDATE_CHECK && updateStatus?.autoUpdateSupported);
 
     const settingsNavGroups = useMemo(
-        () => buildSettingsNavGroups(t, { isElectron }),
-        [t, isElectron],
+        () => buildSettingsNavGroups(t, { isElectron, mobile: nightstand }),
+        [t, isElectron, nightstand],
     );
     const activeSettingsNavItem = findSettingsNavItem(settingsNavGroups, activeSettingsSection);
+    // A named target (a subview or an anchor) can point at a section this build hides; land on the
+    // default section instead of showing a blank column.
+    useEffect(() => {
+        if (!activeSettingsNavItem) {
+            setActiveSettingsSection(DEFAULT_SETTINGS_SECTION);
+        }
+    }, [activeSettingsNavItem]);
     // A category this build does not list (a desktop-only one on web) has no page to show.
     const ActivePage = activeSettingsNavItem ? SETTINGS_PAGES[activeSettingsSection] : null;
     const searchEntries = useMemo(
-        () => buildSettingsSearchEntries(settingsNavGroups, SETTINGS_PAGE_OPTIONS, t, { isElectron }),
-        [settingsNavGroups, t, isElectron],
+        () => buildSettingsSearchEntries(settingsNavGroups, SETTINGS_PAGE_OPTIONS, t, { isElectron, isMobile: nightstand }),
+        [settingsNavGroups, t, isElectron, nightstand],
     );
     const searchHits = useMemo(
         () => searchSettings(searchEntries, searchQuery, i18n.language),
@@ -1018,7 +1022,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const { activeAnchorId, scrollToAnchor } = useSettingsScrollSpy({
         containerRef: contentScrollRef,
         anchors: settingsAnchors,
-        enabled: activeTab === 'options' && !isSearching,
+        enabled: !isSearching,
         reducedMotion: prefersReducedMotion,
     });
 
@@ -1028,7 +1032,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         if (contentScrollRef.current) {
             contentScrollRef.current.scrollTop = 0;
         }
-    }, [activeSettingsSection, activeTab, isSearching]);
+    }, [activeSettingsSection, isSearching]);
 
     // It runs after the reset above on purpose — that reset fires on the same commit the page
     // changes on, and a scrollTop write would abort the smooth scroll a landing starts.
@@ -1053,7 +1057,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         },
         onOpenVisPlayground: () => setShowVisPlayground(true),
         onOpenThemePark: () => setShowThemePark(true),
-        onOpenSceneWindow: () => setShowSceneWindow(true),
         onToggleTransparentPlayerBackground: resolvedToggleTransparentPlayerBackground,
         viewProps: {
             appearance: {
@@ -1178,100 +1181,91 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             exit={{ opacity: 0 }}
             transition={shellTransition}
             data-folia-keyboard-window="true"
-            data-ponder-page-scope={activeTab === 'help' ? 'help-page' : 'settings-page'}
-            className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-8 sm:px-5 sm:py-12"
-            style={{ backgroundColor: overlayBackground }}
+            data-ponder-page-scope="settings-page"
+            className={`overlay-safe fixed inset-0 z-[100] flex justify-center p-0 sm:px-5 sm:py-12 ${isPreviewSplit ? 'pointer-events-none items-end' : 'items-center'}`}
+            style={{ backgroundColor: isPreviewSplit ? 'transparent' : overlayBackground, transition: 'background-color 240ms ease' }}
             onMouseDown={handleOverlayMouseDown}
             onClick={(event) => handleBackdropClose(event, onClose)}
         >
-            <motion.div
-                {...panelMotion}
-                transition={shellTransition}
-                role="dialog"
-                aria-modal="true"
-                aria-label={t('options.settingsWindowName')}
-                className="st-window relative flex h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:h-[86vh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
-                style={{ ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reducedKitMotion) }}
-                onClick={(event) => event.stopPropagation()}
+            {/* Carries the pull-down-to-close drag on a phone (useSwipeDownToClose), apart from the
+                panel's own open and close motion; from md up it is no box at all. */}
+            <div
+                ref={swipeCloseRef}
+                className={`pointer-events-auto flex w-full md:contents ${isPreviewSplit ? 'h-[55%]' : 'h-full'}${reducedKitMotion ? '' : ' transition-[height] duration-300 ease-out'}`}
             >
-                <SettingsKitThemeContext.Provider value={kitTheme}>
-                    <SettingsSideList
-                        groups={settingsNavGroups}
-                        activeId={isSearching ? null : activeTab === 'help' ? 'help' : activeSettingsSection}
-                        onSelectSection={handleSelectSettingsSection}
-                        onSelectHelp={handleSelectHelp}
-                        query={searchQuery}
-                        onQueryChange={handleSearchQueryChange}
-                        onSubmitQuery={() => {
-                            if (searchHits.length > 0) handleSelectSearchHit(searchHits[0]);
-                        }}
-                        isWide={isWideSettingsLayout}
-                    />
-                    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                        <PageHeader
-                            title={isSearching
-                                ? t('options.settingsSearchTitle')
-                                : activeTab === 'help' ? t('help.title') : activeSettingsNavItem?.label ?? ''}
-                            contents={settingsAnchors}
-                            activeId={activeAnchorId}
-                            onSelect={landOnGroup}
-                            summary={isSearching
-                                ? (searchHits.length > 0 ? t('options.settingsSearchCount', { n: searchHits.length }) : t('options.settingsSearchEmpty'))
-                                : undefined}
-                            closeLabel={t('ui.close')}
-                            onClose={onClose}
-                        />
-                        <div
-                            ref={contentScrollRef}
-                            className="relative min-h-0 flex-1 overflow-y-auto px-4 pb-12 md:px-8 md:pb-16 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-4 [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[var(--st-fill2)] [&::-webkit-scrollbar-thumb]:bg-clip-content [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-3"
-                        >
-                            {isSearching ? (
-                                <SettingsSearchResults hits={searchHits} onSelect={handleSelectSearchHit} />
-                            ) : activeTab === 'help' ? (
-                                <SettingsPageContext.Provider value={pageContext}>
-                                    <div className="st-page-in">
-                                        <HelpPage
-                                            onOpenReleaseNotes={() => setShowReleaseNotes(true)}
-                                            onOpenAiHelp={() => setShowAiHelpPrompt(true)}
-                                            onProjectLabelClick={handleAuthorLabelClick}
-                                        />
-                                    </div>
-                                </SettingsPageContext.Provider>
-                            ) : ActivePage ? (
-                                <SettingsAnchorProvider store={settingsAnchorStore} section={activeSettingsSection}>
-                                    <SettingsPageContext.Provider value={pageContext}>
-                                        {/* Keyed by the category, so each page comes in with the kit's motion. */}
-                                        <div key={activeSettingsSection} className="st-page-in">
-                                            <ActivePage />
-                                        </div>
-                                    </SettingsPageContext.Provider>
-                                </SettingsAnchorProvider>
-                            ) : null}
-                        </div>
-                    </div>
-                </SettingsKitThemeContext.Provider>
-
-                {/* Footer (Empty now) */}
-                {/* <div className="mt-8 pt-0 border-t-0 p-0" /> */}
-                <AnimatePresence>
-                    {meowEasterEgg && (
-                        <motion.img
-                            key={meowEasterEgg.id}
-                            src={meowImageUrl}
-                            alt=""
-                            aria-hidden="true"
-                            className="pointer-events-none absolute bottom-5 left-1/2 z-20 w-28 -translate-x-1/2 drop-shadow-[0_18px_32px_rgba(0,0,0,0.4)] select-none sm:w-32"
-                            initial={{ opacity: 0, y: 140, scale: 0.92 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 120, scale: 0.96 }}
-                            transition={{
-                                duration: 0.6,
-                                ease: [0.22, 1, 0.36, 1],
+                <motion.div
+                    {...panelMotion}
+                    transition={shellTransition}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={t('options.settingsWindowName')}
+                    className="st-window relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:h-[86vh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
+                    style={{ ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reducedKitMotion) }}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <SettingsKitThemeContext.Provider value={kitTheme}>
+                        <SettingsSideList
+                            groups={settingsNavGroups}
+                            activeId={isSearching ? null : activeSettingsSection}
+                            onSelectSection={handleSelectSettingsSection}
+                            onOpenPonderNavigation={openPonderNavigation}
+                            mobile={nightstand}
+                            onOpenMobileTutorial={() => {
+                                onClose();
+                                window.setTimeout(openMobileTutorial, 240);
                             }}
+                            query={searchQuery}
+                            onQueryChange={handleSearchQueryChange}
+                            onSubmitQuery={() => {
+                                if (searchHits.length > 0) handleSelectSearchHit(searchHits[0]);
+                            }}
+                            isWide={isWideSettingsLayout}
                         />
-                    )}
-                </AnimatePresence>
-            </motion.div>
+                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                            <PageHeader
+                                title={isSearching
+                                    ? t('options.settingsSearchTitle')
+                                    : activeSettingsNavItem?.label ?? ''}
+                                contents={settingsAnchors}
+                                activeId={activeAnchorId}
+                                onSelect={landOnGroup}
+                                summary={isSearching
+                                    ? (searchHits.length > 0 ? t('options.settingsSearchCount', { n: searchHits.length }) : t('options.settingsSearchEmpty'))
+                                    : undefined}
+                                closeLabel={t('ui.close')}
+                                onClose={onClose}
+                                preview={isWideSettingsLayout ? undefined : {
+                                    active: isPreviewSplit,
+                                    label: t(isPreviewSplit ? 'options.settingsPreviewOff' : 'options.settingsPreviewOn'),
+                                    onToggle: () => setPreviewSplit(!isPreviewSplit),
+                                }}
+                            />
+                            <div
+                                ref={contentScrollRef}
+                                className="relative min-h-0 flex-1 overflow-y-auto px-4 pb-12 md:px-8 md:pb-16 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-4 [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[var(--st-fill2)] [&::-webkit-scrollbar-thumb]:bg-clip-content [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-3"
+                            >
+                                {isSearching ? (
+                                    <SettingsSearchResults hits={searchHits} onSelect={handleSelectSearchHit} />
+                                ) : ActivePage ? (
+                                    <SettingsAnchorProvider store={settingsAnchorStore} section={activeSettingsSection}>
+                                        <SettingsDeviceProvider isMobile={nightstand}>
+                                            <SettingsPageContext.Provider value={pageContext}>
+                                                {/* Keyed by the category, so each page comes in with the kit's motion. */}
+                                                <div key={activeSettingsSection} className="st-page-in">
+                                                    <ActivePage />
+                                                </div>
+                                            </SettingsPageContext.Provider>
+                                        </SettingsDeviceProvider>
+                                    </SettingsAnchorProvider>
+                                ) : null}
+                            </div>
+                        </div>
+                    </SettingsKitThemeContext.Provider>
+
+                    {/* Footer (Empty now) */}
+                    {/* <div className="mt-8 pt-0 border-t-0 p-0" /> */}
+                </motion.div>
+            </div>
             <AnimatePresence>
                 {showVisPlayground && (
                     <VisPlayground
@@ -1440,16 +1434,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 lyrics={currentLyrics}
                 lyricCurrentTime={lyricCurrentTime}
                 onClose={() => closeSubviewOrModal(() => setShowGlobalLyricOffset(false))}
-            />
-            <AiHelpPromptModal
-                isOpen={showAiHelpPrompt}
-                isDaylight={isDaylight}
-                onClose={() => setShowAiHelpPrompt(false)}
-            />
-            <ReleaseNotesDialog
-                isOpen={showReleaseNotes}
-                isDaylight={isDaylight}
-                onClose={() => setShowReleaseNotes(false)}
             />
         </motion.div>
     );

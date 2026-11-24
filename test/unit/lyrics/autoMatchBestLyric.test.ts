@@ -12,6 +12,9 @@ import { useOnlineProviderAccountStore } from '@/stores/useOnlineProviderAccount
 // Unit tests for the best lyric auto-matcher.
 
 vi.mock('@/services/onlineMusic/netease/netease', () => ({
+    resolveConfiguredNeteaseApiBase: () => null,
+    getNeteaseRemoteApiBase: () => null,
+    setNeteaseApiBaseOverride: () => undefined,
     neteaseApi: {
         cloudSearch: vi.fn(),
         getLyric: vi.fn(),

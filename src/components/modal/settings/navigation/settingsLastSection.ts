@@ -1,5 +1,5 @@
 import type { SettingsSubviewId } from '../../../../stores/useSettingsModalStore';
-import { SETTINGS_NAV_GROUP_SPECS, type SettingsSectionId } from './settingsNavModel';
+import { SETTINGS_NAV_GROUP_SPECS, isSettingsSectionShown, type SettingsSectionId } from './settingsNavModel';
 
 // src/components/modal/settings/navigation/settingsLastSection.ts
 // Remembers which options-tab section the settings dialog was last on, and decides which section it
@@ -19,13 +19,15 @@ export type SettingsSectionStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 export interface SettingsSectionAvailability {
     isElectron: boolean;
+    /** The phone shell additionally hides the sections marked mobileHidden, and shows the appOnly ones. */
+    mobile?: boolean;
 }
 
 /** Section ids the sidebar actually shows on this runtime, in sidebar order. */
-export const getAvailableSettingsSectionIds = ({ isElectron }: SettingsSectionAvailability): SettingsSectionId[] => (
+export const getAvailableSettingsSectionIds = ({ isElectron, mobile }: SettingsSectionAvailability): SettingsSectionId[] => (
     SETTINGS_NAV_GROUP_SPECS
         .flatMap(group => group.sections)
-        .filter(section => !section.electronOnly || isElectron)
+        .filter(section => isSettingsSectionShown(section, { isElectron, mobile }))
         .map(section => section.id)
 );
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { AudioBands, LyricRenderScale, MonetAudioStyle, Theme } from '../../../types';
-import { resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
+import { lyricDevicePixelRatio, resolveLyricPixelRatio } from '../../../utils/lyricRenderQuality';
 import { colorWithAlpha } from '../colorMix';
 
 // src/components/visualizer/monet/AudioOverlay.tsx
@@ -183,7 +183,7 @@ const AudioOverlay: React.FC<AudioOverlayProps> = ({
 
         const resizeCanvas = () => {
             const rect = canvas.getBoundingClientRect();
-            const dpr = resolveLyricPixelRatio(window.devicePixelRatio || 1, renderScale);
+            const dpr = resolveLyricPixelRatio(lyricDevicePixelRatio(), renderScale);
             const nextWidth = Math.max(1, Math.floor(rect.width * dpr));
             const nextHeight = Math.max(1, Math.floor(rect.height * dpr));
             canvasWidth = rect.width;

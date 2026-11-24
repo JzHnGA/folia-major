@@ -7,7 +7,7 @@ import { NEW_FEATURES_RELEASE } from './newFeaturesRelease';
 // 修改这里的介绍的同时，需要修改 src\components\modal\userGuideContent.ts 中的 USER_GUIDE_AUTO_OPEN_VERSION 到下一个发布版本号
 // The intro, then the features as the rows of one card. A major update carries a tag above the
 // intro with its codename. It is drawn with the settings kit's variables, so it goes inside a
-// sheet (ReleaseNotesDialog) or the settings window.
+// sheet (ReleaseNotesDialog).
 export const NewFeaturesIntro: React.FC = () => {
     const { t } = useTranslation();
     const { i18nKey, features, majorUpdate } = NEW_FEATURES_RELEASE;

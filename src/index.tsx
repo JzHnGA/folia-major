@@ -22,6 +22,9 @@ installMemorySampleFeed();
 // if (import.meta.env.DEV) installCoverSizeAudit();
 installGlobalVisualizerFrameRateLimiter();
 
+// Capacitor 原生壳（iOS）：给根元素挂上 ios-shell 类，安全区内边距的样式挂在它下面（src/index.css）。
+if (window.Capacitor?.isNativePlatform?.()) document.documentElement.classList.add('ios-shell');
+
 void import('./bootstrap');
 // window.__foliaDev and the ?skipStartup / ?mockSong launch flags (src/dev/devLaunchFlags.ts).
 if (import.meta.env.DEV) void import('./dev/devTools');

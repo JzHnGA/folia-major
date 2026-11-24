@@ -31,9 +31,8 @@
 .bravais-root[data-wall-handoff-veil='on'] .lattice-poster.bravais-tile-face.is-window { opacity: 0; }
 :root[data-reduce-motion~='lattice'] .bravais-root .lattice-poster.bravais-tile-face.is-window { transition: none; }
 
-/* 折叠等级的悬浮按钮、左上角隐藏式返回：交接期间收起来（缝本身随开口补间合上 / 张开）。 */
-.bravais-root[data-wall-handoff] .bravais-seam-tab,
-.bravais-root[data-wall-handoff] .lattice-back {
+/* 折叠等级的悬浮按钮：交接期间收起来（缝本身随开口补间合上 / 张开）。 */
+.bravais-root[data-wall-handoff] .bravais-seam-tab {
     opacity: 0;
     pointer-events: none;
     transition: opacity 200ms ease;

@@ -250,6 +250,11 @@
 
 .scratchpad-root.is-daylight .scratchpad-drawer { box-shadow: 0 24px 64px rgb(42 35 27 / 18%); }
 
+/* 触屏上小舌头挪到右缘时，面板贴右缘、从右边滑进（ScratchpadHost 的 panelFrom）；上下两边仍贴左缘，只是从上 / 下弹出。 */
+.scratchpad-drawer.is-panel.is-from-right { left: auto; right: 0; }
+/* 贴右缘时顶上那条信息条从面板左边探出 36px（纸的框由 scratchpadPaper.ts 的 panelPaperFrame 跟着改），右端的按钮不被窗口裁掉。 */
+.scratchpad-drawer.is-panel.is-from-right .scratchpad-panel-band { margin-left: -36px; }
+
 /* 展开整页（ScratchpadSheet，设计稿 F）：铺满整个窗口，里面那张纸倾斜（文件末尾「展开整页」一节）。
    信息条、细纸带、卡片之外的墙面是透明的（用户定，2026-11-06）：隔着一层半透明的纱看得见后面的播放页或墙；
    纱按主题深浅取色、八成浓（用户定），墙上的字（跳到栏、操作提示、组头）在亮的封面上也看得清。不用 backdrop-filter（后面常是在动的歌词画面）。 */
@@ -2108,3 +2113,166 @@
     font-weight: 700;
     line-height: 1.6;
 }
+
+/* —— 手机上的把手（ScratchpadTouchTab）——
+   没有指针悬停，左缘那条悬停展开的标签用不上：贴在一条屏幕边上的米白小舌头，点一下开抽屉，按住拖到任意一条边。
+   沿边的位置（--scratchpad-tab-position，0–1）在让开 safe-area 与两端 24px 之后的那一段上；舌头上三颗握把点
+   说明它能拖。数字与 ScratchpadTouchTab 的 TAB_LENGTH、EDGE_MARGIN 一致。 */
+.scratchpad-touch-tab,
+.scratchpad-touch-hint {
+    --scratchpad-tab-length: 64px;
+    --scratchpad-tab-thickness: 20px;
+    --scratchpad-tab-margin: 24px;
+    --scratchpad-tab-run-v: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--scratchpad-tab-margin) - var(--scratchpad-tab-length));
+    --scratchpad-tab-run-h: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right) - 2 * var(--scratchpad-tab-margin) - var(--scratchpad-tab-length));
+    --scratchpad-tab-along-v: calc(env(safe-area-inset-top) + var(--scratchpad-tab-margin) + var(--scratchpad-tab-position, 0) * var(--scratchpad-tab-run-v));
+    --scratchpad-tab-along-h: calc(env(safe-area-inset-left) + var(--scratchpad-tab-margin) + var(--scratchpad-tab-position, 0) * var(--scratchpad-tab-run-h));
+}
+
+.scratchpad-touch-tab {
+    position: fixed;
+    z-index: 95;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: var(--scratchpad-paper);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
+    color: var(--scratchpad-ink);
+    opacity: 0.9;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* 摸得到的地方比看到的大一圈：20px 宽的舌头不好按。 */
+.scratchpad-touch-tab::after { position: absolute; inset: -12px; content: ''; }
+
+.scratchpad-touch-tab:active { opacity: 1; }
+
+.scratchpad-touch-tab.is-left,
+.scratchpad-touch-tab.is-right {
+    top: var(--scratchpad-tab-along-v);
+    width: var(--scratchpad-tab-thickness);
+    height: var(--scratchpad-tab-length);
+    flex-direction: column;
+}
+
+.scratchpad-touch-tab.is-top,
+.scratchpad-touch-tab.is-bottom {
+    left: var(--scratchpad-tab-along-h);
+    width: var(--scratchpad-tab-length);
+    height: var(--scratchpad-tab-thickness);
+}
+
+/* 贴边的那一侧方的、朝里的一侧圆的，红边压在朝里那侧，像从屏幕边上伸出来的书签。 */
+.scratchpad-touch-tab.is-left { left: env(safe-area-inset-left); border-radius: 0 10px 10px 0; border-right: 3px solid var(--scratchpad-mark); }
+.scratchpad-touch-tab.is-right { right: env(safe-area-inset-right); border-radius: 10px 0 0 10px; border-left: 3px solid var(--scratchpad-mark); }
+.scratchpad-touch-tab.is-top { top: env(safe-area-inset-top); border-radius: 0 0 10px 10px; border-bottom: 3px solid var(--scratchpad-mark); }
+.scratchpad-touch-tab.is-bottom { bottom: env(safe-area-inset-bottom); border-radius: 10px 10px 0 0; border-top: 3px solid var(--scratchpad-mark); }
+
+/* 握把：三颗小点沿着边排开，告诉人这东西能按住拖。 */
+.scratchpad-touch-grip { display: flex; flex-direction: inherit; gap: 3px; }
+.scratchpad-touch-grip > i { display: block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.55; }
+
+.scratchpad-touch-count {
+    display: grid;
+    min-width: 16px;
+    height: 16px;
+    box-sizing: border-box;
+    padding: 0 3px;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--scratchpad-mark);
+    color: var(--scratchpad-paper);
+    font-family: Inter, sans-serif;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    line-height: 1;
+}
+
+/* 拖动时：跟着手指，四角都圆、浮起来一点。 */
+.scratchpad-touch-tab.is-dragging {
+    border-radius: 10px;
+    box-shadow: 0 14px 32px rgb(0 0 0 / 50%);
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.12);
+    transition: none;
+}
+
+/* 还没挪过：舌头沿着边轻轻晃两下，旁边一句提示。 */
+.scratchpad-touch-tab.is-hinting.is-left,
+.scratchpad-touch-tab.is-hinting.is-right { animation: scratchpad-tab-nudge-v 2.4s ease-in-out 0.6s 2; }
+.scratchpad-touch-tab.is-hinting.is-top,
+.scratchpad-touch-tab.is-hinting.is-bottom { animation: scratchpad-tab-nudge-h 2.4s ease-in-out 0.6s 2; }
+
+@keyframes scratchpad-tab-nudge-v {
+    0%, 40%, 100% { transform: translateY(0); }
+    15% { transform: translateY(-8px); }
+    28% { transform: translateY(6px); }
+}
+
+@keyframes scratchpad-tab-nudge-h {
+    0%, 40%, 100% { transform: translateX(0); }
+    15% { transform: translateX(-8px); }
+    28% { transform: translateX(6px); }
+}
+
+.scratchpad-touch-tab.is-pulsing { animation: scratchpad-pulse 0.9s ease-out; }
+
+.scratchpad-touch-hint {
+    position: fixed;
+    z-index: 95;
+    max-width: min(220px, 60vw);
+    padding: 7px 11px;
+    border: 0;
+    border-radius: 10px;
+    background: rgb(20 20 22 / 88%);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    text-align: left;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    animation: scratchpad-hint-in 0.3s ease-out 0.4s both;
+}
+
+/* 提示放在舌头朝里的一侧，与舌头的中线对齐。 */
+.scratchpad-touch-hint.is-left { left: calc(env(safe-area-inset-left) + var(--scratchpad-tab-thickness) + 10px); top: calc(var(--scratchpad-tab-along-v) + var(--scratchpad-tab-length) / 2); transform: translateY(-50%); }
+.scratchpad-touch-hint.is-right { right: calc(env(safe-area-inset-right) + var(--scratchpad-tab-thickness) + 10px); top: calc(var(--scratchpad-tab-along-v) + var(--scratchpad-tab-length) / 2); transform: translateY(-50%); }
+.scratchpad-touch-hint.is-top { top: calc(env(safe-area-inset-top) + var(--scratchpad-tab-thickness) + 10px); left: clamp(12px, calc(var(--scratchpad-tab-along-h) + var(--scratchpad-tab-length) / 2 - 110px), calc(100vw - 232px)); }
+.scratchpad-touch-hint.is-bottom { bottom: calc(env(safe-area-inset-bottom) + var(--scratchpad-tab-thickness) + 10px); left: clamp(12px, calc(var(--scratchpad-tab-along-h) + var(--scratchpad-tab-length) / 2 - 110px), calc(100vw - 232px)); }
+
+@keyframes scratchpad-hint-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* 拖动时四条边亮起来，离手指最近的那条最亮。 */
+.scratchpad-touch-guides {
+    position: fixed;
+    inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    z-index: 94;
+    pointer-events: none;
+}
+
+.scratchpad-touch-guide {
+    position: absolute;
+    border-radius: 2px;
+    background: var(--scratchpad-paper);
+    opacity: 0.18;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.scratchpad-touch-guide.is-near { background: var(--scratchpad-mark); opacity: 0.9; }
+.scratchpad-touch-guide.is-left { top: 24px; bottom: 24px; left: 0; width: 4px; }
+.scratchpad-touch-guide.is-right { top: 24px; right: 0; bottom: 24px; width: 4px; }
+.scratchpad-touch-guide.is-top { top: 0; right: 24px; left: 24px; height: 4px; }
+.scratchpad-touch-guide.is-bottom { right: 24px; bottom: 0; left: 24px; height: 4px; }
+
+.scratchpad-root.is-calm .scratchpad-touch-tab,
+.scratchpad-root.is-calm .scratchpad-touch-hint { animation: none; }

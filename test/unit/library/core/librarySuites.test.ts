@@ -12,6 +12,7 @@ import {
     LIBRARY_ARTIST_ACTION_IDS,
     LIBRARY_SURFACE_IDS,
     resolveDeclaredMutationActions,
+    resolveDefaultLibrarySuiteId,
     resolveLibrarySuiteInitialChoice,
 } from '@/library/core/suite/librarySuites';
 import { EMPTY_COLLECTION_MUTATION_SNAPSHOT } from '@/library/core/collection/mutations/collectionMutationCapabilities';
@@ -203,6 +204,15 @@ describe('initial choice and the effective suite (B0)', () => {
         expect(resolveLibrarySuiteInitialChoice('  ')).toBe('bravais');
         expect(resolveLibrarySuiteInitialChoice(' tui ')).toBe('tui');
         expect(resolveLibrarySuiteInitialChoice(true)).toBe('bravais');
+    });
+
+    it('lets the build move the default suite (the iOS shell points it at bravais)', () => {
+        // 没有覆盖时仍是 grid；iOS 的 .env.ios 给 VITE_LIBRARY_DEFAULT_SUITE=bravais。
+        expect(resolveDefaultLibrarySuiteId(undefined)).toBe('grid');
+        expect(resolveDefaultLibrarySuiteId('')).toBe('grid');
+        expect(resolveDefaultLibrarySuiteId('  ')).toBe('grid');
+        expect(resolveDefaultLibrarySuiteId(true)).toBe('grid');
+        expect(resolveDefaultLibrarySuiteId(' bravais ')).toBe('bravais');
     });
 
     it('resolves an unavailable initial choice and unknown ids to the default suite', () => {

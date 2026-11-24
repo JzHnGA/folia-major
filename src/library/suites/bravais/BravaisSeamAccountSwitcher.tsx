@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plug } from 'lucide-react';
+import { Loader2, Plug } from 'lucide-react';
 import type { BravaisHomeAccount } from './bravaisHomeModels';
 import BravaisProviderAvatar from './BravaisProviderAvatar';
 import './bravaisAccount.css';
@@ -19,9 +19,13 @@ const BravaisSeamAccountSwitcher: React.FC<{
 }> = ({ account, compact, measure = false }) => {
     const status = [account.providerLabel, account.detail].filter(Boolean).join(' · ');
     const label = `${account.guest ? account.connectLabel : account.toggleLabel} · ${status}`;
+    const checking = account.checking === true;
+    const neutral = account.guest || checking;
     const picture = account.guest
         ? <span className="bravais-account-avatar is-connect" aria-hidden data-bravais-account-avatar="connect"><Plug /></span>
-        : <BravaisProviderAvatar providerId={account.providerId} name={account.providerLabel} avatarUrl={account.avatarUrl} />;
+        : checking
+            ? <span className="bravais-account-avatar is-connect" aria-hidden data-bravais-account-avatar="checking"><Loader2 className="animate-spin motion-reduce:animate-none" /></span>
+            : <BravaisProviderAvatar providerId={account.providerId} name={account.providerLabel} avatarUrl={account.avatarUrl} />;
     const open = (event: React.MouseEvent<HTMLButtonElement>) => account.onOpen(event.currentTarget);
 
     if (measure) {
@@ -32,7 +36,7 @@ const BravaisSeamAccountSwitcher: React.FC<{
             </span>
         ) : (
             <span className="bravais-account-switcher">
-                <span className={`bravais-account-entry ${account.guest ? 'bravais-account-connect' : 'bravais-account-toggle'}`}>
+                <span className={`bravais-account-entry ${neutral ? 'bravais-account-connect' : 'bravais-account-toggle'}`}>
                     <span className="bravais-account-avatar" />
                     <span className="is-name">{account.checking ? account.detail : account.guest ? account.connectLabel : account.nickname ?? account.providerLabel}</span>
                 </span>
@@ -53,7 +57,7 @@ const BravaisSeamAccountSwitcher: React.FC<{
 
     return (
         <div className={`bravais-account-switcher${account.guest ? ' is-guest' : ''}`} data-bravais-account={account.checking ? 'checking' : account.guest ? 'guest' : 'signed-in'}>
-            <button type="button" className={`bravais-account-entry ${account.guest ? 'bravais-account-connect' : 'bravais-account-toggle'}`}
+            <button type="button" className={`bravais-account-entry ${neutral ? 'bravais-account-connect' : 'bravais-account-toggle'}`}
                 data-bravais-account-toggle={account.guest ? 'connect' : 'strip'} aria-haspopup="dialog" aria-label={label} title={label} onClick={open}>
                 {picture}
                 <span className="is-name">{account.checking ? account.detail : account.guest ? account.connectLabel : account.nickname ?? account.providerLabel}</span>

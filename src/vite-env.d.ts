@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { ModClearCacheResult, ModExportProgress, ModFfmpegStatus, ModLogEntry, ModMainCallStats, ModRpcMessage, ModRuntimeInfo, ModRuntimeSnapshot, ModSecretChange, ModStorageUsageResult } from './mods/types';
+import type { EcriaSecurityBridge } from './services/security/types';
 
 declare global {
   const __COMMIT_HASH__: string;
@@ -23,6 +24,33 @@ declare global {
       aiProvider?: 'gemini' | 'openai';
       /** Docker gateway 注入 'docker'；其他部署不带这个字段。 */
       deployment?: 'docker';
+    };
+    /** Capacitor 原生壳（iOS）注入的桥；网页与桌面端没有。Plugins 里挂着原生插件的代理。 */
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      getPlatform?: () => string;
+      Plugins?: {
+        AppLauncher?: { openUrl: (options: { url: string }) => Promise<{ completed: boolean }> };
+        KeepAwake?: { keepAwake: () => Promise<void>; allowSleep: () => Promise<void> };
+        /** 原生启动动画（ios/App/App/LaunchSplash*）。React 挂载后调用 hide 让原生层淡出。 */
+        LaunchSplash?: { hide: () => Promise<void> };
+        /** 五个安全支柱的原生桥（ios/App/App/EcriaSecurityPlugin.swift）。 */
+        EcriaSecurity?: EcriaSecurityBridge;
+        /** CarPlay 与网页层的一问一答（ios/App/App/CarPlayBridge.swift；网页侧 services/carplay/carplayBridge.ts）。 */
+        EcriaCarPlay?: {
+            addListener: (event: 'request', listener: (request: { requestId: string; kind: string; params?: Record<string, unknown> }) => void) => Promise<{ remove: () => Promise<void> }>;
+            ready: () => Promise<void>;
+            respond: (options: { requestId: string; ok: boolean; data?: Record<string, unknown>; error?: string }) => Promise<void>;
+        };
+        Share?: { share: (options: { title?: string; text?: string; url?: string; dialogTitle?: string }) => Promise<unknown> };
+        CapacitorCalendar?: {
+            checkPermission: (options: { scope: string }) => Promise<{ result: string }>;
+            requestPermission: (options: { scope: string }) => Promise<{ result: string }>;
+            listEventsInRange: (options: { from: number; to: number }) => Promise<{
+                result: { title: string; startDate: number; endDate: number; isAllDay: boolean }[];
+            }>;
+        };
+      };
     };
   }
 

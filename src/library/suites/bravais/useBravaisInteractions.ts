@@ -33,7 +33,7 @@ import { PlayerState } from '../../../types';
 // 私人 FM 卡直接播放、不记起点；歌单类卡片的眼睛按钮；F6 切页签与批量按键（bravaisHomeKeys）；Esc 阶梯的「视图」一级
 // 退出管理隐藏。
 // Tab（用户实测：原先进缝后按 DOM 顺序一格格走、缝折叠时把焦点交给浏览器，焦点框跳到墙上的按钮或页面别处）：Tab / Shift+Tab
-// 只在墙与缝两站之间切换——墙上（含墙上的按钮、左上角返回）或没有焦点时进缝（bravaisSeamFocus 的落点），缝里（含过滤位等
+// 只在墙与缝两站之间切换——墙上（含墙上的按钮）或没有焦点时进缝（bravaisSeamFocus 的落点），缝里（含过滤位等
 // 输入框、缝的边缘标签）时回墙（上次的焦点磁贴，没有就是有限拼贴的 rank 0 / 无限墙上离缝最近的一张）；缝里的控件之间用方向键走。
 // 键盘在边缘标签上按 Enter 恢复缝后，等缝张开再把焦点交进缝里（focusSeamWhenOpen，落点同 Tab 进缝），不落空到 body。
 // fb3：聚焦卡的「立即播放」（点按钮或展开后再按 Enter）在正在播放的那首上是暂停 / 继续（宿主的播放开关）；其余的照旧
@@ -149,11 +149,12 @@ export const useBravaisInteractions = ({
                 toggle();
                 return;
             }
-            armBravaisPlayingCard(layer.key, item.key);
+            // 放不了的歌不会成为正在播放的那首，不记「回来时展开它」。
+            if (!item.unavailable) armBravaisPlayingCard(layer.key, item.key);
             layer.onPlayItem?.(item.key);
         },
         // #834 双击歌曲磁贴直接播放。与聚焦卡的播放键不同，双击正在播放的那首不会把它暂停：只在它停着时继续。
-        // 批量模式里双击仍只是两下切换选中；放不了的歌（播放键是灰的）不播。
+        // 批量模式里双击仍只是两下切换选中；放不了的歌也交给播放，由它说明为什么放不了（有别的版本时问要不要换）。
         playFromWall: slotKey => {
             const item = itemAt(slotKey);
             const layer = displayRef.current?.layer;
@@ -163,8 +164,8 @@ export const useBravaisInteractions = ({
                 if (selectDisplayPlayerState(usePlaybackStore.getState()) !== PlayerState.PLAYING) toggle();
                 return;
             }
-            if (item.unavailable) return;
-            armBravaisPlayingCard(layer.key, item.key);
+            // 放不了的歌不会成为正在播放的那首，不记「回来时展开它」。
+            if (!item.unavailable) armBravaisPlayingCard(layer.key, item.key);
             layer.onPlayItem?.(item.key);
         },
         togglesCurrent,

@@ -42,7 +42,7 @@ describe('command palette registry contract', () => {
         expect(command.settingsTarget).toEqual({ subview: 'appearance', anchorId: 'electronSettings' });
         const opened: unknown[][] = [];
         await command.execute('', { settings: { openSettings: (...args: unknown[]) => opened.push(args) } } as unknown as Parameters<typeof command.execute>[1]);
-        expect(opened).toEqual([['options', 'appearance', null, 'electronSettings']]);
+        expect(opened).toEqual([['appearance', null, 'electronSettings']]);
     });
 
     it('keeps command ids unique', () => {

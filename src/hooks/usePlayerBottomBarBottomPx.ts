@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useSpring, useTransform, type MotionValue } from 'framer-motion';
 import { playerBottomBarLiveOffset } from '../stores/motionSignals';
 import { usePlayerChromeSettingsStore } from '../stores/usePlayerChromeSettingsStore';
 import { useIsPlayerBottomBarHost, usePreviewBottomBarOffset } from '../components/floating-player/PlayerBottomBarLayoutContext';
 import { useMediaQuery } from './useMediaQuery';
+import { useSafeAreaBottomPx } from './useSafeAreaBottomPx';
 import {
     COMPACT_CAPSULE_BASE_BOTTOM_PX,
     COMPACT_SUBTITLE_CLEARANCE_PX,
@@ -15,6 +16,7 @@ import { useBottomDockStore } from '../stores/useBottomDockStore';
 
 // src/hooks/usePlayerBottomBarBottomPx.ts
 // 所有贴在底部基线上的组件从这里取自己的 bottom：把全局抬升量叠加到各自原有的底距上。
+// iPhone 的 Home 指示条（底部安全区）也加在这里：固定定位的层吃不到 #root 的安全区内边距。
 
 /**
  * 返回可直接绑定到 motion 元素 bottom 样式的值。
@@ -22,12 +24,18 @@ import { useBottomDockStore } from '../stores/useBottomDockStore';
  */
 export const usePlayerBottomBarBottomPx = (
     componentBaseBottomPx = PLAYER_BOTTOM_BAR_BASE_OFFSET_PX,
-): MotionValue<number> => (
-    useTransform(
+): MotionValue<number> => {
+    const safeBottomPx = useSafeAreaBottomPx();
+    const bottom = useTransform(
         playerBottomBarLiveOffset,
-        value => resolvePlayerBottomComponentBottomPx(value, componentBaseBottomPx),
-    )
-);
+        value => resolvePlayerBottomComponentBottomPx(value, componentBaseBottomPx) + safeBottomPx,
+    );
+    // 安全区跟着方向变（竖屏 34、横屏 21 之类）：补一次，不让 bottom 等到下次抬升才更新。
+    useEffect(() => {
+        bottom.set(resolvePlayerBottomComponentBottomPx(playerBottomBarLiveOffset.get(), componentBaseBottomPx) + safeBottomPx);
+    }, [bottom, componentBaseBottomPx, safeBottomPx]);
+    return bottom;
+};
 
 /** 原来的 `bottom-28 sm:bottom-6`，即 sm 断点上下各自的底距。 */
 const SIDE_PANEL_BASE_BOTTOM_PX = { wide: 24, narrow: 112 } as const;
@@ -69,20 +77,31 @@ export const usePlayerSubtitleBottomPx = (isPlayerChromeHidden: boolean): Motion
     // 底栏被整条关掉只对播放页成立；预览里那个全局开关和它无关。
     const isControlBarAbsent = isPlayerChromeHidden || (isBottomBarHost && isControlBarHidden);
     const controlBarPresence = useSpring(isControlBarAbsent ? 0 : 1, SUBTITLE_PRESENCE_SPRING);
+    const safeBottomPx = useSafeAreaBottomPx();
 
     useEffect(() => {
         // useSpring 的 set 是「动画到」，不是跳变，所以这里就是那段过渡本身。
         controlBarPresence.set(isControlBarAbsent ? 0 : 1);
     }, [controlBarPresence, isControlBarAbsent]);
 
-    return useTransform(
-        [controlBarPresence, playerBottomBarLiveOffset],
-        ([presence, offset]: number[]) => resolvePlayerSubtitleBottomFromPresence(
+    const resolve = useCallback((presence: number, offset: number) => (
+        resolvePlayerSubtitleBottomFromPresence(
             isBottomBarHost ? offset : previewOffset,
             presence,
             isCompact ? COMPACT_SUBTITLE_GEOMETRY : undefined,
-        ),
+        ) + (isBottomBarHost ? safeBottomPx : 0)
+    ), [isBottomBarHost, isCompact, previewOffset, safeBottomPx]);
+
+    const bottom = useTransform(
+        [controlBarPresence, playerBottomBarLiveOffset],
+        ([presence, offset]: number[]) => resolve(presence, offset),
     );
+    // 安全区 / 布局档变了（换方向、窗口变窄）就补一次，不等下一次 spring 或拖动。
+    useEffect(() => {
+        bottom.set(resolve(controlBarPresence.get(), playerBottomBarLiveOffset.get()));
+    }, [bottom, controlBarPresence, resolve]);
+
+    return bottom;
 };
 
 const COMPACT_SUBTITLE_GEOMETRY = {

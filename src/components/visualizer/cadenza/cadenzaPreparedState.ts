@@ -18,13 +18,16 @@ const chooseFontPx = (width: number, line: Line) => {
     return clamp(widthBase - lengthPenalty - densityPenalty, 28, 104);
 };
 
+/** 有安全区时落点离安全区边缘至少留的距离：给唱到时的 1.3 倍放大和唱过后的漂移。 */
+const SAFE_EDGE_GAP = 16;
+
 const buildCanvasFont = (theme: Theme, fontPx: number) => `${resolveThemeFontWeight(theme, 700)} ${fontPx}px ${resolveThemeFontStack(theme)}`;
 
 export const buildPreparedState = (
     line: Line,
     context: PreparedStateCacheContext,
 ) => {
-    const { showText, viewport, theme, tuning } = context;
+    const { showText, viewport, safeSides, theme, tuning } = context;
 
     if (!showText || viewport.width <= 0 || viewport.height <= 0) {
         return null;
@@ -38,13 +41,19 @@ export const buildPreparedState = (
     const text = prepared.segments.join('');
     const { segmentMetas, graphemes } = buildSegmentMetas(prepared);
     const lineHeight = Math.round(fontPx * (isCJK(text) ? 1.22 : 1.1));
-    const availableWidth = Math.max(viewport.width - 48, 120);
+    // 换行宽度按安全区内的宽度算（横屏时灵动岛 / 刘海占掉两侧）；没有安全区时就是整个视口宽
+    const safeWidth = viewport.width - safeSides.left - safeSides.right;
+    const availableWidth = Math.max(safeWidth - 48, 120);
     const minWidth = Math.min(220, availableWidth);
     const wrapCompression = graphemes.length > 12
         ? clamp(0.92 - (graphemes.length - 12) * 0.018, 0.62, 0.92)
         : 0.92;
     const compactWidthRatio = tuning.widthRatio * wrapCompression;
-    const maxWidth = clamp(Math.min(viewport.width * compactWidthRatio, 820), minWidth, availableWidth);
+    const maxWidth = clamp(Math.min(safeWidth * compactWidthRatio, 820), minWidth, availableWidth);
+    // 落点平时可以比换行宽度往外多散 72px；有安全区时再限在安全区内（留一点给放大和漂移），
+    // 没有安全区时不设限，和以前一样
+    const hasSafeSides = safeSides.left > 0 || safeSides.right > 0;
+    const horizontalLimit = hasSafeSides ? Math.max(safeWidth / 2 - SAFE_EDGE_GAP, maxWidth / 2) : Infinity;
     const layout = layoutWithLines(prepared, maxWidth, lineHeight);
     const ranges = findWordRanges(line, graphemes, theme);
     const lineFragments = buildLineFragments(prepared, segmentMetas, graphemes, layout, ranges);
@@ -56,6 +65,7 @@ export const buildPreparedState = (
         theme.animationIntensity,
         line.startTime * 1000,
         line.fullText === '......',
+        horizontalLimit,
     );
 
     return {

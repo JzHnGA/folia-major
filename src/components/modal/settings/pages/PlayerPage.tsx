@@ -20,6 +20,7 @@ import { ensureVideoLayerFileRestored, useVideoLayerSettingsStore, VIDEO_LAYER_O
 import { PLAYER_BOTTOM_BAR_BASE_OFFSET_PX, resolvePlayerBottomBarMaxOffset } from '../../../../utils/playerBottomBarLayout';
 import { Button, FoldedGroup, Group, PictureChoice, Reveal, Row, Segmented, Select, Slider, TextField, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { EntryViewPicture } from './pictures';
+import { isNightstandSupported } from '../../../nightstand/nightstandPlatform';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/PlayerPage.tsx
@@ -28,10 +29,13 @@ import { useSettingsPage } from './settingsPageContext';
 // group of switches that hide or pin parts of the player. The card's 在首页显示 switch is not drawn
 // while the home screen is a wall (bravais): the card is always on the wall, whatever it says.
 
+const ENTRY_VIEWS = ['player', 'lattice', 'stay'] as const;
+const ENTRY_VIEWS_MOBILE = ['lattice', 'stay'] as const;
+
 const VIEW: SettingsGroupDef = { id: 'playbackEntryView', titleKey: 'options.settingsHeadingView' };
 const BAR: SettingsGroupDef = { id: 'bottomUiSettings', titleKey: 'options.settingsHeadingControlBar' };
-const CARD: SettingsGroupDef = { id: 'stageTrackPill', titleKey: 'options.stageTrackPill' };
-const VIDEO: SettingsGroupDef = { id: 'videoLayerSettings', titleKey: 'options.videoLayerSettings' };
+const CARD: SettingsGroupDef = { id: 'stageTrackPill', titleKey: 'options.stageTrackPill', mobileHidden: true };
+const VIDEO: SettingsGroupDef = { id: 'videoLayerSettings', titleKey: 'options.videoLayerSettings', mobileHidden: true };
 const PLAYER_UI: SettingsGroupDef = { id: 'labPlayerUi', titleKey: 'options.labPlayerUiSection' };
 
 const O = {
@@ -43,10 +47,10 @@ const O = {
     tintIntensity: option(VIEW, 'latticePosterTintIntensity', 'options.latticePosterTintIntensity'),
     badgeCurrentOnly: option(VIEW, 'latticeBadgeCurrentOnly', 'options.latticeBadgeCurrentOnly'),
     autoHide: option(BAR, 'autoHidePlayerChrome', 'options.autoHidePlayerChrome'),
-    autoHideCursor: option(BAR, 'autoHideCursorWithPlayerChrome', 'options.autoHideCursorWithPlayerChrome'),
-    idleCursorHide: option(BAR, 'hideCursorWhenIdle', 'options.hideCursorWhenIdle'),
-    barOffset: option(BAR, 'playerBottomBarOffset', 'options.playerBottomBarOffset'),
-    barReposition: option(BAR, 'playerBottomBarReposition', 'options.playerBottomBarReposition'),
+    autoHideCursor: option(BAR, 'autoHideCursorWithPlayerChrome', 'options.autoHideCursorWithPlayerChrome', { mobileHidden: true }),
+    idleCursorHide: option(BAR, 'hideCursorWhenIdle', 'options.hideCursorWhenIdle', { mobileHidden: true }),
+    barOffset: option(BAR, 'playerBottomBarOffset', 'options.playerBottomBarOffset', { mobileHidden: true }),
+    barReposition: option(BAR, 'playerBottomBarReposition', 'options.playerBottomBarReposition', { mobileHidden: true }),
     controlSlots: option(BAR, 'playerControlSlots', 'options.playerControlSlots'),
     cardMode: option(CARD, 'stageTrackPillMode', 'options.stageTrackPillMode'),
     cardTimeout: option(CARD, 'stageTrackPillTimeout', 'options.stageTrackPillTimeout'),
@@ -182,6 +186,13 @@ const PlayerPage: React.FC = () => {
     useEffect(() => {
         setUrlDraft(video.url);
     }, [video.url]);
+    // 原生壳里可视化播放页只随横屏进入（NightstandHost 负责），竖屏下按播放不能去那里，所以不列「可视化」。
+    const entryViewOptions = (isNightstandSupported() ? ENTRY_VIEWS_MOBILE : ENTRY_VIEWS).map(view => ({
+        value: view,
+        label: t(`playbackEntryView.${view}.title`),
+        picture: <EntryViewPicture view={view} />,
+    }));
+
     const pickVideo = async () => {
         try {
             await video.pickLocalFile();
@@ -196,12 +207,9 @@ const PlayerPage: React.FC = () => {
             <Group def={VIEW}>
                 <Row option={O.entryView} hint={t('options.playbackEntryViewDesc')}>
                     <PictureChoice
+                        columns={entryViewOptions.length}
                         value={playbackEntryView}
-                        options={[
-                            { value: 'player', label: t('playbackEntryView.player.title'), picture: <EntryViewPicture view="player" /> },
-                            { value: 'lattice', label: t('playbackEntryView.lattice.title'), picture: <EntryViewPicture view="lattice" /> },
-                            { value: 'stay', label: t('playbackEntryView.stay.title'), picture: <EntryViewPicture view="stay" /> },
-                        ]}
+                        options={entryViewOptions}
                         onChange={setPlaybackEntryView}
                     />
                 </Row>

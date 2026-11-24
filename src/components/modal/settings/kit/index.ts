@@ -5,6 +5,7 @@ export { Button } from './Button';
 export { Chips } from './Chips';
 export { CopyButton, CopyValue } from './CopyButton';
 export { FoldedGroup } from './FoldedGroup';
+export { SettingsDeviceProvider, useSettingsDevice } from './device';
 export { Group } from './Group';
 export { KeyCapture, Keys } from './KeyCapture';
 export { SAMPLE_COVERS, useSettingsKitTheme } from './kitTheme';

@@ -12,7 +12,7 @@ import { buildMockAudio, buildMockCover, buildMockLyrics, MOCK_SONG_ARTIST, MOCK
 // played, matched and shown like any local file), and it plays through the same playback service a
 // Folium mod uses. Calling it again reuses the folder and the library record.
 
-const MOCK_FOLDER_NAME = 'Folia Dev Mock';
+const MOCK_FOLDER_NAME = 'Ecria Dev Mock';
 const MOCK_AUDIO_FILE = `${MOCK_SONG_ARTIST} - ${MOCK_SONG_TITLE}.wav`;
 const MOCK_LYRICS_FILE = `${MOCK_SONG_ARTIST} - ${MOCK_SONG_TITLE}.lrc`;
 const MOCK_COVER_FILE = 'cover.png';

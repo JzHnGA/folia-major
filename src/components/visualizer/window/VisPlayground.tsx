@@ -545,7 +545,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     labels={hotspotLabels}
                 />
                 <PreviewSourceSwitch value={previewSource} onChange={setPreviewSource} liveEmpty={previewSource === 'live' && live === null} />
-                <Tooltip text={t(isPreviewPaused ? 'options.resumePreview' : 'options.pausePreview')} className="absolute right-3 top-3 z-40 inline-flex">
+                <Tooltip text={t(isPreviewPaused ? 'options.resumePreview' : 'options.pausePreview')} className="absolute right-4 top-4 z-40 inline-flex">
                     <button
                         type="button"
                         onClick={() => setIsPreviewPaused(previous => !previous)}
@@ -571,8 +571,9 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                         setActiveEditSection('visualizer');
                     }}
                     label={t('ui.animationMode')}
-                    maxHeight={250}
-                    className="-mx-4"
+                    maxHeight={isWideWindow ? 250 : undefined}
+                    horizontal={!isWideWindow}
+                    className={isWideWindow ? '-mx-4' : ''}
                 />
             </div>
         </>

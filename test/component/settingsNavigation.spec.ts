@@ -34,6 +34,8 @@ test.describe('settings navigation - wide layout', () => {
         await expect(contentsEntry(page, 'Echo Section')).toBeVisible();
         await expect(page.locator('aside').getByRole('button', { name: 'Alpha Section' })).toHaveCount(0);
         await expect(page.locator('aside').getByRole('button', { name: 'settingsPagePlayer', exact: true })).toBeVisible();
+        // 教程索引是侧栏底部的一项，不是类别页。
+        await expect(page.locator('aside').getByRole('button', { name: 'All tutorials', exact: true })).toBeVisible();
     });
 
     test('slots a late-arriving section into its document position', async ({ mount, page }) => {

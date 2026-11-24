@@ -8,7 +8,7 @@ import { Crosshair } from 'lucide-react';
 // A press answers at once with a ring that leaves the button and a mark that turns into place.
 // A page that was opened to show the song (the player's "playing from") may still wait for the
 // tracks that hold it: rings keep leaving the button for as long as it does.
-// The walls (lattice, and the bravais library) carry the same button above their tools button, for their tiles.
+// The walls (lattice, and the bravais library) carry the same button, alone in the wall's bottom-left corner.
 
 interface GridLocateButtonProps {
     isDaylight: boolean;
@@ -19,9 +19,11 @@ interface GridLocateButtonProps {
     isSeeking: boolean;
     title: string;
     onLocate: () => void;
+    /** 'tools': above a grid's action button; 'corner': alone in the wall's bottom-left corner. */
+    placement?: 'tools' | 'corner';
 }
 
-export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, accentColor, isHere, isSeeking, title, onLocate }) => {
+export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, accentColor, isHere, isSeeking, title, onLocate, placement = 'tools' }) => {
     const [presses, setPresses] = useState(0);
     return (
         <button
@@ -35,8 +37,10 @@ export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, 
                 setPresses(count => count + 1);
                 onLocate();
             }}
-            // It moves with the action button below it: half out of the way on a narrow window, whole on a wide one.
-            className={`relative mr-1 flex h-10 w-10 translate-x-1/2 items-center justify-center rounded-full opacity-60 shadow-lg backdrop-blur-md transition-all duration-300 active:scale-90 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105 ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
+            // Above a grid's action button it moves with it; alone in a corner it stands still.
+            className={`relative flex h-10 w-10 items-center justify-center rounded-full opacity-60 shadow-lg backdrop-blur-md transition-all duration-300 active:scale-90 ${placement === 'corner'
+                ? 'hover:opacity-100 md:hover:scale-105'
+                : 'mr-1 translate-x-1/2 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105'} ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
         >
             {isSeeking
                 ? <span className="locate-seeking pointer-events-none absolute inset-0 rounded-full border" style={{ borderColor: accentColor }} />

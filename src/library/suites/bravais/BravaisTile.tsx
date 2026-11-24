@@ -3,8 +3,10 @@ import { WallTitle } from '../../../components/wall/WallTitle';
 import { useWallPosterArtwork } from '../../../components/wall/useWallPosterArtwork';
 import { parseWallSlotKey } from '../../../components/wall/wallSlots';
 import { isWallDoubleClickOn, noteWallPress } from '../../../components/wall/wallDoubleClick';
+import { wallFlipKeyframe } from '../../../components/wall/wallFlip';
+import { bravaisTileTransform } from './bravaisTileTransform';
 import { countRender } from '../../../dev/renderCount';
-import { getSizedCoverUrl } from '../../../utils/coverUrl';
+import { coverOriginalsAllowed, getSizedCoverUrl } from '../../../utils/coverUrl';
 import {
     BRAVAIS_ALBUM_COVER_PX,
     BRAVAIS_METRICS,
@@ -94,7 +96,6 @@ type BravaisTileProps = {
     handlers: BravaisTileHandlers;
 };
 
-const rotation = (degrees: number) => `perspective(1400px) rotateY(${degrees}deg)`;
 /** 整墙出场 / 入场（lift wave）里内容层离开时的样子：往上抬、缩小、淡出。 */
 const LIFTED: Keyframe = { transform: `translate3d(0, -${WALL_WAVE_LIFT}px, 0) scale(0.88)`, opacity: 0 };
 const SETTLED: Keyframe = { transform: 'none', opacity: 1 };
@@ -191,7 +192,7 @@ function BravaisTile({
             : wave
             ? face.animate([SETTLED, LIFTED], { duration: WALL_WAVE_OUT_MS, delay: step.delay, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' })
             : face.animate(
-                [{ transform: rotation(0) }, { transform: rotation(90 * step.direction) }],
+                [wallFlipKeyframe(0), wallFlipKeyframe(90 * step.direction)],
                 { duration: BRAVAIS_TILE_FLIP_OUT_MS, delay: step.delay, easing: 'cubic-bezier(.55,0,.9,.45)', fill: 'forwards' },
             );
         outAnimationRef.current = out;
@@ -233,7 +234,7 @@ function BravaisTile({
                 fill: 'backwards',
             })
             : face.animate(
-                [{ transform: rotation(-90 * pending.direction) }, { transform: rotation(0) }],
+                [wallFlipKeyframe(-90 * pending.direction), wallFlipKeyframe(0)],
                 { duration: BRAVAIS_TILE_FLIP_IN_MS, easing: 'cubic-bezier(.2,.7,.25,1)' },
             );
         inAnimationRef.current = back;
@@ -298,10 +299,11 @@ function BravaisTile({
     const art = display && !face.seeThrough && !isExpanded ? display.coverArt : undefined;
     const artSpots = useBravaisCoverSpots(art?.mode === 'shard' ? art.url : undefined);
     // 拼贴整块只有一张图，解码一次就够，保留原图；碎片每块一张不同的封面，和墙上一样封顶。
+    // iOS 壳里拼贴也封顶（coverOriginalsAllowed）：原图解码后约 36 MB，手机上会把网页进程挤爆。
     const artUrl = useWallPosterArtwork(
         art?.url,
         (art?.mode === 'mosaic' ? BRAVAIS_ALBUM_MOSAIC_PX : Math.max(rect.width, rect.height) * 2.75) * pixelScale,
-        { keepOriginal: art?.mode === 'mosaic' },
+        { keepOriginal: art?.mode === 'mosaic' && coverOriginalsAllowed() },
     );
     // 拼贴的大图到之前垫一张海报封面那档（已经在缓存里，放大后是糊的）：两层背景，大图解码完就盖住它。
     const artStandIn = art?.mode === 'mosaic' ? getSizedCoverUrl(art.url, BRAVAIS_ALBUM_COVER_PX) : '';
@@ -334,7 +336,7 @@ function BravaisTile({
     };
 
     const style = {
-        transform: `translate3d(${rect.x}px, ${rect.y}px, 0)`,
+        transform: bravaisTileTransform(rect.x, rect.y),
         width: rect.width,
         height: rect.height,
         '--bravais-pop-x': ((rect.width + BRAVAIS_METRICS.gap * 2) / Math.max(rect.width, 1)).toFixed(4),

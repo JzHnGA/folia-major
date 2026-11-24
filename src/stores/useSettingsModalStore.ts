@@ -13,9 +13,7 @@ import { applyAppLanguagePreference, readStoredAppLanguagePreference, type AppLa
 import { setStatusMessage } from './useStatusMessageStore';
 import type { SettingsAnchorId } from '../components/modal/settings/navigation/settingsAnchorModel';
 
-export type SettingsModalInitialTab = 'help' | 'options';
-
-export type SettingsSubviewId = 'appearance' | 'player' | 'home' | 'playback' | 'lyrics' | 'general' | 'interaction' | 'integration' | 'storage' | 'desktop' | 'graphics' | 'mods' | 'visualizer' | 'themePark' | 'scene' | 'lyricFilter' | 'globalLyricOffset';
+export type SettingsSubviewId = 'appearance' | 'player' | 'home' | 'playback' | 'lyrics' | 'general' | 'interaction' | 'integration' | 'ai' | 'storage' | 'account' | 'desktop' | 'graphics' | 'mods' | 'visualizer' | 'themePark' | 'scene' | 'lyricFilter' | 'globalLyricOffset';
 
 /** 歌词动画调参台的五页。列成数组是为了让「思索」的设置直达在单测里能核对 section 真实存在。 */
 export const VISUALIZER_SETTINGS_SECTIONS = ['common', 'background', 'visualizer', 'subtitle', 'global'] as const;
@@ -23,7 +21,6 @@ export type VisualizerSettingsSection = typeof VISUALIZER_SETTINGS_SECTIONS[numb
 
 export type SettingsModalState = {
     isOpen: boolean;
-    initialTab: SettingsModalInitialTab;
     initialSubview?: SettingsSubviewId | null;
     initialVisualizerSection?: VisualizerSettingsSection | null;
     /**
@@ -44,13 +41,18 @@ export type SettingsModalUiState = {
     pinnedCommandIds: PinnedCommandIds;
     isSubSettingsViewOpen: boolean;
     settingsModalState: SettingsModalState;
+    /**
+     * The phone's preview: the settings window lowered to the bottom of the screen, so the app above
+     * it is seen and used while a setting changes. Ends with the window.
+     */
+    isSettingsPreviewSplit: boolean;
+    setIsSettingsPreviewSplit: (split: boolean) => void;
     lastSeenGuideVersion: string | null;
     isUserGuideModalOpen: boolean;
     setLastSeenGuideVersion: (version: string) => void;
     setIsUserGuideModalOpen: (isOpen: boolean) => void;
     setIsSubSettingsViewOpen: (open: boolean) => void;
     openSettings: (
-        initialTab?: SettingsModalInitialTab,
         initialSubview?: SettingsSubviewId | null,
         initialVisualizerSection?: VisualizerSettingsSection | null,
         initialAnchorId?: SettingsAnchorId | null,
@@ -65,9 +67,10 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
     appLanguagePreference: readStoredAppLanguagePreference(),
     pinnedCommandIds: readPinnedCommandIds(),
     isSubSettingsViewOpen: false,
+    isSettingsPreviewSplit: false,
+    setIsSettingsPreviewSplit: (split) => set({ isSettingsPreviewSplit: split }),
     settingsModalState: {
         isOpen: false,
-        initialTab: 'help',
         initialSubview: null,
         initialVisualizerSection: null,
         initialAnchor: null,
@@ -82,10 +85,9 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
     },
     setIsUserGuideModalOpen: (isOpen) => set({ isUserGuideModalOpen: isOpen }),
     setIsSubSettingsViewOpen: (open) => set({ isSubSettingsViewOpen: open }),
-    openSettings: (initialTab = 'help', initialSubview = null, initialVisualizerSection = null, initialAnchorId = null, initialRowId = null) => set({
+    openSettings: (initialSubview = null, initialVisualizerSection = null, initialAnchorId = null, initialRowId = null) => set({
         settingsModalState: {
             isOpen: true,
-            initialTab,
             initialSubview,
             initialVisualizerSection,
             initialAnchor: initialAnchorId
@@ -102,6 +104,7 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
             ...state.settingsModalState,
             isOpen: false,
         },
+        isSettingsPreviewSplit: false,
     })),
     handleSetAppLanguagePreference: async (preference) => {
         await applyAppLanguagePreference(preference);
@@ -161,10 +164,17 @@ export const selectSettingsModalSnapshot = (state: SettingsModalUiState) => ({
 
 // Module-level handles for the assembly layer; actions need no subscription.
 export const openSettings = (
-    initialTab?: SettingsModalInitialTab,
     initialSubview?: SettingsSubviewId | null,
     initialVisualizerSection?: VisualizerSettingsSection | null,
     initialAnchorId?: SettingsAnchorId | null,
     initialRowId?: string | null,
-) => useSettingsModalStore.getState().openSettings(initialTab, initialSubview, initialVisualizerSection, initialAnchorId, initialRowId);
+) => useSettingsModalStore.getState().openSettings(initialSubview, initialVisualizerSection, initialAnchorId, initialRowId);
 export const closeSettings = () => useSettingsModalStore.getState().closeSettings();
+
+/**
+ * Whether the settings window hides the app: open, and not lowered for a preview. What the home
+ * wall and the player's lyrics go by; the command palette still waits for the window to close.
+ */
+export const selectSettingsCoversApp = (state: SettingsModalUiState): boolean => (
+    state.settingsModalState.isOpen && !state.isSettingsPreviewSplit
+);

@@ -409,15 +409,16 @@
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-rows: auto minmax(0, 1fr);
         grid-template-areas: 'title title' 'info side';
-        gap: 6px 12px;
+        /* 竖屏的横条有固定高度：标题 / 计数留在上面，动作落到下面的空处，中间留出呼吸。 */
+        gap: 10px 12px;
     }
 
     .bravais-seam .bravais-seam-row .bravais-seam-title-area { grid-area: title; align-self: start; margin: -4px -8px; padding: 4px 8px; }
     .bravais-seam .bravais-seam-row-info { grid-area: info; justify-content: flex-start; }
-    .bravais-seam .bravais-seam-row-side { grid-area: side; flex-direction: row; align-items: center; align-self: start; gap: 2px; }
+    .bravais-seam .bravais-seam-row-side { grid-area: side; flex-direction: row; align-items: center; align-self: end; justify-content: flex-end; gap: 2px; }
 
     .bravais-seam .bravais-seam-row .bravais-seam-quote { display: none; }
-    .bravais-seam .bravais-seam-row.is-full .bravais-seam-vtitle { font-size: 26px !important; -webkit-line-clamp: 1; }
+    .bravais-seam .bravais-seam-row.is-full .bravais-seam-vtitle { font-size: 30px !important; -webkit-line-clamp: 1; }
 
     /* 动作只留图标：按钮里的字收成 0 号（仍是按钮的可访问名），图标尺寸是写死的。 */
     .bravais-seam .bravais-seam-row-side .bravais-seam-actions { gap: 2px; }
@@ -439,3 +440,52 @@
     .bravais-seam .bravais-seam-home-row .bravais-seam-tools { gap: 2px; }
 }
 
+
+/* ---------- 字母页签点开成全名 ---------- */
+
+/* 短形档里点开的页签占回文字宽度、字距恢复，其余仍是方块字母。展开时中段不渲染（BravaisSeamHomeRow），
+   导航段横向滚动并右侧淡出。 */
+.bravais-seam .bravais-seam-home-row .bravais-seam-tabs.is-short .bravais-seam-home-tab.is-revealed {
+    min-width: 0;
+    padding-inline: 12px;
+    letter-spacing: 0.04em;
+    text-align: start;
+    color: var(--text-primary, #f7f4ee);
+    background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* 宽度的展开 / 收起与左右字母被推开由 framer-motion 的 layout 弹簧负责（BravaisSeamHomeRow 的 TAB_REVEAL_SPRING，
+   它占用 transform，这里不再放 transform 动画）；底色和字色只做淡变。 */
+.bravais-seam .bravais-seam-home-row .bravais-seam-tabs.is-short .bravais-seam-home-tab {
+    transition: background-color 220ms ease-out, color 220ms ease-out;
+}
+/* clip 层裁住交叉淡化时被 popLayout 绝对定位出去的那份旧文字；不裁按钮本身，免得把 ::after 的 44px 触区也裁掉。 */
+.bravais-seam .bravais-seam-home-row .bravais-seam-home-tab-clip { position: relative; display: block; overflow: hidden; }
+.bravais-seam .bravais-seam-home-row .bravais-seam-home-tab-text { display: inline-block; }
+
+:root[data-reduce-motion~='uiMicroMotion'] .bravais-seam .bravais-seam-home-row .bravais-seam-tabs.is-short .bravais-seam-home-tab {
+    transition: none;
+}
+
+/* 触屏：信息条图标、页签、账户入口的不可见点击区扩大到 44×44，视觉尺寸不变。
+   用 ::after（页签的 ::before 是选中底色），伪元素透明、只负责命中。 */
+@media (pointer: coarse) {
+    .bravais-seam-home-row .bravais-seam-icon,
+    .bravais-seam-home-row .bravais-seam-home-tab,
+    .bravais-seam-home-row .bravais-account-entry {
+        position: relative;
+        touch-action: manipulation;
+    }
+    .bravais-seam-home-row .bravais-seam-icon::after,
+    .bravais-seam-home-row .bravais-seam-home-tab::after,
+    .bravais-seam-home-row .bravais-account-entry::after {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        content: '';
+        transform: translate(-50%, -50%);
+    }
+}

@@ -147,7 +147,7 @@ export const buildNebbiaScene = (
     source: NebbiaSourceLine[],
     glyphs: NebbiaGlyphCache,
     tuning: NebbiaTuning,
-    size: { W: number; H: number; fontScale: number },
+    size: { W: number; H: number; fontScale: number; insetL?: number; insetR?: number },
     seed: string | number,
 ): LaidLine[] => {
     const seedHash = hashVisualizerSeed(String(seed));
@@ -161,7 +161,7 @@ export const buildNebbiaScene = (
     const lingerAt = (i: number) => Math.max(fogAt(i), Math.min(fogAt(i) + LINGER_MAX, (source[i + LINGER_LINES]?.t ?? Infinity) + tuning.hold, beforeCredits(i)));
     const goneAt = (i: number) => fogAt(i) + fadeOf(i);
     const pos = layoutNebbiaSong(source, {
-        W: size.W, H: size.H, jitter: tuning.jitter, layouts: tuning.layouts, fontScale: size.fontScale, visibleUntil: goneAt, fogAt,
+        W: size.W, H: size.H, jitter: tuning.jitter, layouts: tuning.layouts, fontScale: size.fontScale, insetL: size.insetL, insetR: size.insetR, visibleUntil: goneAt, fogAt,
         lingerUntil: i => lingerAt(i) + fadeOf(i),
     });
     const laid: LaidLine[] = source.map((line, li) => ({

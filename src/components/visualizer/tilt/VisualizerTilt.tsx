@@ -12,6 +12,7 @@ import { useVisualizerRuntime } from '../runtime';
 import VisualizerShell from '../VisualizerShell';
 import VisualizerSubtitleOverlay from '../VisualizerSubtitleOverlay';
 import { resolveSubtitleFontSizes } from '../subtitleFontSizes';
+import { useSafeAreaSidesPx, type SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 
 const CHAR_REF_LENGTH = 20;
 const LOG_OFFSET = 4;
@@ -51,9 +52,10 @@ const RESPLIT_THRESHOLD = 1.6;
 const SCALE_FLOOR_NORMAL = 0.55;
 const SCALE_FLOOR_TILT = 0.5;
 
-const getAvailableWidth = (): number => {
+// 一句可用的宽度：屏宽的 85%，横屏时先扣掉左右安全区（灵动岛 / 刘海），长句改按剩下的宽度折行、缩小。
+const getAvailableWidth = (safeSides: SafeAreaSides): number => {
     if (typeof window === 'undefined') return 1200;
-    return Math.max(320, window.innerWidth) * 0.85;
+    return Math.max(320, window.innerWidth - safeSides.left - safeSides.right) * 0.85;
 };
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -208,7 +210,14 @@ const seededRandom = (seed: number, offset: number): number => {
     return x - Math.floor(x);
 };
 
-const buildTiltLayout = (fullText: string, lineSeed: number, tuning: TiltTuning, theme: Theme, fontScale: number): TiltLayout => {
+const buildTiltLayout = (
+    fullText: string,
+    lineSeed: number,
+    tuning: TiltTuning,
+    theme: Theme,
+    fontScale: number,
+    safeSides: SafeAreaSides,
+): TiltLayout => {
     const fontStack = resolveThemeFontStack(theme);
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const measureMaxPx = Math.max(viewportWidth * 0.06875, 5.625 * REM_PX * fontScale);
@@ -216,7 +225,7 @@ const buildTiltLayout = (fullText: string, lineSeed: number, tuning: TiltTuning,
     const tiltBasePx = measureMaxPx;
     const normalFontSpec = `${resolveThemeFontWeight(theme, 400)} ${normalBasePx}px ${fontStack}`;
     const tiltFontSpec = `${resolveThemeFontWeight(theme, 300)} ${tiltBasePx}px ${fontStack} italic`;
-    const availableWidth = getAvailableWidth();
+    const availableWidth = getAvailableWidth(safeSides);
 
     const charCount = fullText.trim().length;
     const isEllipsisOnly = /^[\s.…·。]+$/.test(fullText.trim());
@@ -572,10 +581,12 @@ const VisualizerTilt: React.FC<VisualizerTiltProps & { staticMode?: boolean; }> 
         getLineEndTime: getLineRenderEndTime,
     });
 
+    // 转到横屏、安全区变了，这一句按新的可用宽度重排。
+    const safeSides = useSafeAreaSidesPx();
     const layout = useMemo<TiltLayout | null>(() => {
         if (!activeLine?.fullText) return null;
-        return buildTiltLayout(activeLine.fullText, activeLine.startTime, tiltTuning, theme, lyricsFontScale);
-    }, [activeLine?.fullText, activeLine?.startTime, tiltTuning, theme, lyricsFontScale]);
+        return buildTiltLayout(activeLine.fullText, activeLine.startTime, tiltTuning, theme, lyricsFontScale, safeSides);
+    }, [activeLine?.fullText, activeLine?.startTime, tiltTuning, theme, lyricsFontScale, safeSides]);
 
     const segmentTimings = useMemo(() => {
         if (!activeLine || !layout) return null;
@@ -635,7 +646,11 @@ const VisualizerTilt: React.FC<VisualizerTiltProps & { staticMode?: boolean; }> 
             audioBands={audioBands}
             sharedProps={props}
         >
-            <div className="relative z-10 w-full h-[70vh] flex items-center justify-center p-8 pointer-events-none">
+            <div
+                className="relative z-10 w-full h-[70vh] flex items-center justify-center p-8 pointer-events-none"
+                // 横屏时灵动岛 / 刘海在左右两侧：让开安全区（没有安全区时仍是 p-8）。
+                style={{ paddingLeft: 'max(2rem, env(safe-area-inset-left))', paddingRight: 'max(2rem, env(safe-area-inset-right))' }}
+            >
                 <AnimatePresence mode='popLayout'>
                     {showText && activeLine && layout ? (
                         <motion.div

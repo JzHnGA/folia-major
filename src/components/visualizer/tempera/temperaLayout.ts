@@ -1,4 +1,5 @@
 import type { TemperaSegment, TemperaShotKind } from './types';
+import type { SafeAreaSides } from '../../../hooks/useSafeAreaSidesPx';
 import { temperaHash01 } from './temperaRandom';
 import { resolveTemperaShotProfile } from './temperaShotProfiles';
 import { TEMPERA_ENTER_STYLES, type TemperaEnterStyle } from './temperaEnterStyles';
@@ -57,6 +58,11 @@ interface TemperaLayoutOptions {
     segmentColors?: (string | null)[][];
     /** 0..1 entrance pacing; see SETTLE_STRETCH. Defaults to the balanced middle. */
     settleStretch?: number;
+    /**
+     * 左右安全区（iPhone 横屏的灵动岛 / 刘海，px）：构图区域按 [left, width - right] 这一段换算，
+     * 歌词就排在它里面。缺省或都是 0 时这一段就是整块画布，换算结果与原来逐位相同。
+     */
+    safeSides?: SafeAreaSides;
 }
 
 interface LayoutRegion {
@@ -79,13 +85,31 @@ const TAU = Math.PI * 2;
 
 export const isTemperaLayoutSegment = (segment: TemperaSegment) => segment.text.trim().length > 0;
 
+/**
+ * 画布上歌词可以用的那一段横向范围（px）：去掉左右安全区。没有安全区时就是 [0, width]。
+ * 留出一个下限，免得极窄的窗口把排版宽度压成负数。
+ */
+export const resolveTemperaSafeBand = (width: number, safeSides?: SafeAreaSides) => {
+    const left = Math.max(0, safeSides?.left ?? 0);
+    const right = Math.max(0, safeSides?.right ?? 0);
+    if (left + right <= 0) return { left: 0, width };
+    return { left, width: Math.max(160, width - left - right) };
+};
+
 // Regions and entrance vectors are data, held per composition in temperaShotProfiles.
-const resolveRegion = (shotKind: TemperaShotKind, width: number, height: number): LayoutRegion => {
+// 横向的比例按安全区之间那一段换算：没有安全区时 left 是 0、那一段就是 width，`0 + cx * width` 与原来相同。
+const resolveRegion = (
+    shotKind: TemperaShotKind,
+    width: number,
+    height: number,
+    safeSides?: SafeAreaSides,
+): LayoutRegion => {
     const { region } = resolveTemperaShotProfile(shotKind);
+    const band = resolveTemperaSafeBand(width, safeSides);
     return {
-        centerX: region.cx * width,
+        centerX: band.left + region.cx * band.width,
         centerY: region.cy * height,
-        width: region.w * width,
+        width: region.w * band.width,
         height: region.h * height,
         align: region.align,
         rotation: region.rotation,
@@ -266,8 +290,9 @@ export const resolveTemperaLayout = ({
     seed,
     segmentColors,
     settleStretch = DEFAULT_SETTLE_STRETCH,
+    safeSides,
 }: TemperaLayoutOptions): TemperaGlyphPlacement[] => {
-    const region = resolveRegion(shotKind, width, height);
+    const region = resolveRegion(shotKind, width, height, safeSides);
     const ctx = createTemperaMeasureContext(fontFamily, fontWeight);
 
     // Fit loop: shrink until the packed rows sit inside the region.

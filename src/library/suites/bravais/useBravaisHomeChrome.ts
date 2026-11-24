@@ -125,7 +125,7 @@ export const useBravaisHomeChrome = ({
     const hasLattice = Boolean(onOpenLattice);
     const hasStage = Boolean(onOpenStagePlayer && stageEnabled);
     const hasSettings = Boolean(onOpenSettings);
-    // 「回到播放页」与左上角返回同一个判断：有当前歌曲才显示（没有歌时去的是空的播放页）。
+    // 「回到播放页」有当前歌曲才显示（没有歌时去的是空的播放页）。
     const hasCurrentSong = usePlaybackStore(selectBravaisHasCurrentSong);
     const hasPlayer = Boolean(onBackToPlayer) && hasCurrentSong;
     const updateAvailable = useUpdateIndicator();
@@ -135,12 +135,12 @@ export const useBravaisHomeChrome = ({
         if (hasPlayer) tools.push({ id: 'player', label: t('libraryBravaisHome.backToPlayer'), run: () => latest.current.props.onBackToPlayer() });
         // fb11：舞台开着时它单独占工具格最上面一行（图标 + 短名「舞台」），active 与 grid 的 data-stage-active 同义。
         if (hasStage) tools.push({ id: 'stage', label: t('libraryBravaisHome.stagePlayer'), shortLabel: t('libraryBravaisHome.stageShort'), active: stageActive, run: () => latest.current.props.onOpenStagePlayer?.() });
-        // 新版本说明在设置的「帮助」页（默认页）顶部，打开设置即视为看过，提示点随之消失。
+        // 打开设置即视为看过新版本，提示点随之消失。
         if (hasSettings) tools.push({
             id: 'settings',
             label: t('libraryBravaisHome.settings'),
             badge: updateAvailable ? t('options.updateAvailable') : undefined,
-            run: () => latest.current.props.onOpenSettings?.('help'),
+            run: () => latest.current.props.onOpenSettings?.(updateAvailable ? 'general' : undefined),
         });
         return tools;
     }, [hasLattice, hasPlayer, hasSettings, hasStage, stageActive, t, updateAvailable]);
