@@ -16,6 +16,7 @@ import { installFoliumHomePageDismissal } from './components/app/home/foliumHome
 import { installLibrarySuiteChromeCommands } from './library/app/installLibrarySuiteChromeCommands';
 import { noteFoliumFirstScreenMounted, startFoliumForMainWindow } from './mods/runtime/mainWindowStart';
 import { installNativeDragGuard } from './utils/nativeDragGuard';
+import { installDynamicType } from './utils/system/dynamicType';
 import { prewarmSavedVisualizer, prewarmVisualizersWhenIdle } from './components/visualizer/prewarmVisualizers';
 import { bootNavidromeServerPreset } from './services/navidromeServerPreset';
 import { isNavidromeEnabled } from './services/navidromeService';
@@ -46,6 +47,9 @@ const FIRST_SCREEN_MOD_WAIT_MS = 1500;
 // here, for every surface this bundle mounts, rather than inside App so the remote-control and OBS
 // roots are covered too and App.tsx does not grow. See utils/nativeDragGuard.ts.
 installNativeDragGuard();
+
+// iOS 壳：根字号跟随系统「文字大小」（HIG typography › Supporting Dynamic Type）。见 utils/system/dynamicType.ts。
+if (isNativeAppShell()) installDynamicType();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

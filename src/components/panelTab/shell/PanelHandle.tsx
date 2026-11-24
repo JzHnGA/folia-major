@@ -5,6 +5,7 @@ import { Settings2, X, Command } from 'lucide-react';
 import type { Theme } from '../../../types';
 import { usePlayerBottomBarBottomPx } from '../../../hooks/usePlayerBottomBarBottomPx';
 import { usePlayerOverlayObstacle } from '../../../hooks/usePlayerOverlayLayout';
+import { useNightstandActive } from '../../nightstand/useNightstandActive';
 import { holdCompanionHover, isDockCompactWithCapsule, releaseCompanionHover, useBottomDockStore, useIsDockCompactWithCapsule } from '../../../stores/useBottomDockStore';
 
 // src/components/panelTab/shell/PanelHandle.tsx
@@ -34,10 +35,13 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     isDaylight,
     showOpenPanelCloseButton,
     isPanelGuideHotspotActive,
-    hideToggleButton,
+    hideToggleButton: hideToggleButtonProp,
     onOpenCommandPalette,
     isCommandPaletteOpen,
 }) => {
+    // 横屏床头钟盖在播放页上时让位给床头钟右上角那一颗按钮；面板已经开着（竖屏打开后转横）时照旧留着关闭用。
+    const nightstandActive = useNightstandActive();
+    const hideToggleButton = hideToggleButtonProp || (nightstandActive && !isOpen);
     const [showGuideLine, setShowGuideLine] = React.useState(false);
     const [isDragging, setIsDragging] = React.useState(false);
     const guideHideTimeoutRef = React.useRef<number | null>(null);

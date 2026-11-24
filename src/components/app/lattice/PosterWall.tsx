@@ -102,6 +102,8 @@ export default function PosterWall({
     const containerRef = useRef<HTMLDivElement>(null);
     const worldRef = useRef<HTMLDivElement>(null);
     const cameraRef = useRef<LatticeCamera>({ ...CAMERA_HOME, scale: 0.76 });
+    /** 上一次写进 --wall-scale 的值（取整后），没变就不写。 */
+    const wallTextScaleRef = useRef<number | null>(null);
     const viewportRef = useRef({ width: 1280, height: 720 });
     const frameRef = useRef<number | null>(null);
     const trackedCurrentPosterRef = useRef<{
@@ -157,6 +159,13 @@ export default function PosterWall({
         cameraRef.current = next;
         if (worldRef.current) {
             worldRef.current.style.transform = formatWorldTransform(next.x, next.y, next.scale);
+            // 墙上的小字（角标、歌手名）按屏幕上的大小保底 11pt（wall.css 读 --wall-scale）。按 0.05 一档取整，
+            // 缩放动画里不会每帧都改变量、让整面墙重排文字。
+            const steppedScale = Math.round(next.scale * 20) / 20;
+            if (steppedScale !== wallTextScaleRef.current) {
+                wallTextScaleRef.current = steppedScale;
+                worldRef.current.style.setProperty('--wall-scale', String(steppedScale));
+            }
         }
         publishCurrentPosterVisibility(next);
         cameraWatchRef.current(next);

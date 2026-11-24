@@ -96,6 +96,9 @@ const BURN_IN_DRIFT_PX = 12;
 const BURN_IN_DRIFT_INTERVAL_MS = 45_000;
 const BURN_IN_DRIFT_TRANSITION_MS = 40_000;
 
+/** 右上角按钮闲置多久后淡出（ms）。 */
+const CHROME_IDLE_MS = 4_000;
+
 /** 移动拖拽的进行态：位移只影响视觉，松手才换算成顺序。 */
 type MoveDrag = {
     id: NightstandWidgetId;
@@ -152,6 +155,60 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
         }, BURN_IN_DRIFT_INTERVAL_MS);
         return () => window.clearInterval(id);
     }, []);
+
+    // 右上角按钮闲置一会儿就淡出，床头钟只剩小组件；碰一下屏幕（或读屏/键盘把焦点移到按钮上）就回来。编辑态一直显示。
+    const [chromeIdle, setChromeIdle] = useState(false);
+    const chromeTimerRef = useRef<number | null>(null);
+    const chromeRef = useRef<HTMLDivElement | null>(null);
+    /** 渲染时同步的「此刻是否淡出」，给下面 window 上的监听读。 */
+    const chromeHiddenRef = useRef(false);
+    /** 淡出时点在按钮上的那一下只负责唤醒：它后面跟来的 click 也吞掉。 */
+    const swallowChromeClickRef = useRef(false);
+    const wakeChrome = useCallback(() => {
+        setChromeIdle(false);
+        if (chromeTimerRef.current !== null) window.clearTimeout(chromeTimerRef.current);
+        chromeTimerRef.current = window.setTimeout(() => {
+            // 键盘焦点停在按钮上时不淡出（看不见焦点在哪就没法操作）。
+            const focused = document.activeElement;
+            if (focused && chromeRef.current?.contains(focused) && focused.matches(':focus-visible')) return;
+            setChromeIdle(true);
+        }, CHROME_IDLE_MS);
+    }, []);
+    useEffect(() => {
+        const inChrome = (target: EventTarget | null) => target instanceof Node && Boolean(chromeRef.current?.contains(target));
+        // 按钮淡出时仍然接指针（读屏的「按下」按坐标命中，不能让它穿到底下去），只是第一下只唤醒、不触发按钮。
+        const onPointerDown = (event: PointerEvent) => {
+            if (chromeHiddenRef.current && inChrome(event.target)) {
+                event.preventDefault();
+                event.stopPropagation();
+                swallowChromeClickRef.current = true;
+            }
+            wakeChrome();
+        };
+        // 读屏双击只发 click、不发 pointerdown：这种 click 照常触发按钮，同时把按钮唤醒。
+        const onClick = (event: MouseEvent) => {
+            if (swallowChromeClickRef.current && inChrome(event.target)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            swallowChromeClickRef.current = false;
+            wakeChrome();
+        };
+        wakeChrome();
+        window.addEventListener('pointerdown', onPointerDown, true);
+        window.addEventListener('click', onClick, true);
+        window.addEventListener('keydown', wakeChrome, true);
+        window.addEventListener('focusin', wakeChrome, true);
+        return () => {
+            window.removeEventListener('pointerdown', onPointerDown, true);
+            window.removeEventListener('click', onClick, true);
+            window.removeEventListener('keydown', wakeChrome, true);
+            window.removeEventListener('focusin', wakeChrome, true);
+            if (chromeTimerRef.current !== null) window.clearTimeout(chromeTimerRef.current);
+        };
+    }, [wakeChrome]);
+    const chromeHidden = chromeIdle && !editing;
+    chromeHiddenRef.current = chromeHidden;
 
     const update = useCallback((next: NightstandWidgetsConfig) => {
         setConfig(next);
@@ -447,7 +504,7 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
                             key={id}
                             type="button"
                             onClick={() => toggleWidget(id)}
-                            className="flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-sm"
+                            className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1 text-sm"
                             style={{ borderColor: 'color-mix(in srgb, var(--text-primary) 25%, transparent)' }}
                         >
                             <Plus size={12} />
@@ -464,7 +521,11 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
             )}
 
             {/* 右上角：编辑模式开关（齿轮进、对勾出）；样式与排列面板只留皮肤与排布 */}
-            <div className="pointer-events-auto absolute right-6 top-6 flex gap-2" style={{ top: 'max(1.5rem, env(safe-area-inset-top))', right: 'max(1.5rem, env(safe-area-inset-right))' }}>
+            <div
+                ref={chromeRef}
+                className={`pointer-events-auto absolute right-6 top-6 flex gap-2 transition-opacity duration-500 motion-reduce:transition-none ${chromeHidden ? 'opacity-0' : 'opacity-100'}`}
+                style={{ top: 'max(1.5rem, env(safe-area-inset-top))', right: 'max(1.5rem, env(safe-area-inset-right))' }}
+            >
                 {editing && (
                     <button
                         type="button"
@@ -496,7 +557,7 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
                 >
                     <div className="flex items-center justify-between">
                         <span className="text-lg font-medium">{t('nightstand.styleAndLayout')}</span>
-                        <button type="button" aria-label={t('ui.close')} onClick={() => setPanelOpen(false)} className="opacity-70 hover:opacity-100">
+                        <button type="button" aria-label={t('ui.close')} onClick={() => setPanelOpen(false)} className="-mr-3 flex h-11 w-11 items-center justify-center opacity-70 hover:opacity-100">
                             <X size={18} />
                         </button>
                     </div>
@@ -508,7 +569,7 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
                                     key={style}
                                     type="button"
                                     onClick={() => update({ ...config, cardStyle: style })}
-                                    className={`flex-1 rounded-xl border px-2 py-1.5 text-sm ${config.cardStyle === style ? 'font-medium' : 'opacity-60'}`}
+                                    className={`min-h-11 flex-1 rounded-xl border px-2 py-1.5 text-sm ${config.cardStyle === style ? 'font-medium' : 'opacity-60'}`}
                                     style={{ borderColor: 'color-mix(in srgb, var(--text-primary) 20%, transparent)' }}
                                 >
                                     {t(`nightstand.style${style[0].toUpperCase()}${style.slice(1)}`)}
@@ -524,7 +585,7 @@ const NightstandOverlay: React.FC<NightstandOverlayProps> = ({ theme, isDaylight
                                     key={layout}
                                     type="button"
                                     onClick={() => update({ ...config, layout })}
-                                    className={`flex-1 rounded-xl border px-2 py-1.5 text-sm ${config.layout === layout ? 'font-medium' : 'opacity-60'}`}
+                                    className={`min-h-11 flex-1 rounded-xl border px-2 py-1.5 text-sm ${config.layout === layout ? 'font-medium' : 'opacity-60'}`}
                                     style={{ borderColor: 'color-mix(in srgb, var(--text-primary) 20%, transparent)' }}
                                 >
                                     {t(`nightstand.layout${layout[0].toUpperCase()}${layout.slice(1)}`)}

@@ -720,7 +720,9 @@
     font-weight: 700;
     line-height: 1.18;
     letter-spacing: -0.01em;
-    color: color-mix(in srgb, var(--text-primary, #fff) 22%, transparent);
+    /* 48%: still a faded hint, but large bold text reaches 3:1 on both the dark (#0a0a0b, ~4.6:1) and the
+       daylight wall (~3.1:1). It was 22% (~1.8:1). HIG accessibility › Vision, contrast. */
+    color: color-mix(in srgb, var(--text-primary, #fff) 48%, transparent);
     text-wrap: balance;
 }
 
@@ -729,7 +731,8 @@
     max-width: 30em;
     font-size: clamp(13px, 1.1vw, 16px);
     line-height: 1.65;
-    color: color-mix(in srgb, var(--text-primary, #fff) 36%, transparent);
+    /* 60%: body-size text needs 4.5:1 (dark ~6.7:1, daylight ~5.3:1); it was 36% (~3:1). */
+    color: color-mix(in srgb, var(--text-primary, #fff) 60%, transparent);
     text-wrap: pretty;
 }
 

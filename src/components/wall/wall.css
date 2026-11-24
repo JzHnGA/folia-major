@@ -277,6 +277,14 @@
     background: rgb(var(--lattice-shade-rgb) / 62%);
 }
 
+/* Touch screens: the phone camera draws the world at about half size, so an 11px badge reads as ~6pt.
+   Keep the badge and the artist line at least 11pt on screen (HIG accessibility › Vision, minimum 11pt):
+   the world size grows by 1 / --wall-scale (set by PosterWall), capped so a zoomed-out wall stays tidy. */
+@media (pointer: coarse) {
+    .lattice-poster-badge { font-size: clamp(11px, calc(11px / var(--wall-scale, 1)), 24px); }
+    .lattice-poster .lattice-poster-copy small { font-size: clamp(13px, calc(11px / var(--wall-scale, 1)), 24px); }
+}
+
 /* The playing poster already wears the accent border; its badge only borrows the colour. */
 .lattice-poster-badge.is-current {
     color: var(--text-accent, var(--text-primary, #fff));

@@ -405,7 +405,7 @@ test.describe(`[${suite}] signing in`, () => {
         await expect(driver.confirmDialog(page)).toHaveCount(0);
         expect(await pendingSwitch(page)).toBeNull();
         // 现状：未知 provider 的登录文案回落到网易的（LOGIN_COPY_BY_PROVIDER 只有 kugou / qq / bodian）。
-        await expect(loginDialog(page)).toHaveAccessibleName('Scan with Netease App');
+        await expect(loginDialog(page)).toHaveAccessibleName('Scan with NetEase Cloud Music');
         await expect(statusText(page, 'waiting')).toBeVisible();
         await expect.poll(() => calls(page, 'create', ACCOUNT_GAMMA)).toEqual([
             expect.objectContaining({ methodId: null }),
@@ -713,7 +713,7 @@ test.describe(`[${suite}] NetEase backend`, () => {
         await expect(loginDialog(page)).toHaveCount(0);
 
         await driver.selectProvider(page, ACCOUNT_NETEASE);
-        await expect(loginDialog(page)).toHaveAccessibleName('Scan with Netease App');
+        await expect(loginDialog(page)).toHaveAccessibleName('Scan with NetEase Cloud Music');
         await expect(loginDialog(page).getByText('The local NetEase service is not running')).toBeVisible();
         await expect(loginDialog(page).getByText('probe: xeapi key missing')).toBeVisible();
         await driver.expectRestartLabel(page, 'Restart backend');
@@ -820,7 +820,7 @@ test.describe('[switch] grid and TUI share the account flows', () => {
         expect(await startLogin(page, ACCOUNT_GAMMA)).toBe('started');
         await expect(loginDialog(page)).toBeVisible();
         await expect(loginDialog(page)).toHaveAttribute('data-tui-account-login', ACCOUNT_GAMMA);
-        await expect(loginDialog(page)).toHaveAccessibleName('Scan with Netease App');
+        await expect(loginDialog(page)).toHaveAccessibleName('Scan with NetEase Cloud Music');
         await expectQrKey(page, await lastKey(page, ACCOUNT_GAMMA));
         await expect(statusText(page, 'scanned')).toBeVisible();
         await expectSwitchedWithoutAsking(page, TUI_DRIVER, ACCOUNT_GAMMA);

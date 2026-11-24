@@ -258,6 +258,24 @@ body:lang(vi) {
   color: var(--text-primary) !important;
 }
 
+/* Reduce Transparency / Increase Contrast (HIG accessibility › Vision, materials): glass panels turn
+   solid and lose the blur behind them, and their edge gets stronger so they still separate from what is
+   underneath. Only .theme-glass-panel is covered here; other one-off blurs keep their own look. */
+@media (prefers-contrast: more) {
+  .theme-glass-panel {
+    background-color: color-mix(in srgb, var(--bg-color) 97%, transparent) !important;
+    border-color: color-mix(in srgb, var(--text-primary) 45%, transparent) !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .theme-glass-panel {
+    background-color: var(--bg-color) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
 /* Click-through: the window ignores real clicks but still receives forwarded mouse-move, so hover
    styles would keep lighting up components nobody can reach. Only the unlock control stays live. */
 html[data-click-through='active'] body * {
